@@ -121,10 +121,10 @@ def print_hit_details(
     input_text = tokenizer.decode(
         inputs["input_ids"][index], skip_special_tokens=True
     )
-    print(f"Input: {input_text}")
-    print("-" * 50)
-    print(f"Target: {targets[index]}")
-    print("-" * 50)
+    # print(f"Input: {input_text}")
+    # print("-" * 50)
+    # print(f"Target: {targets[index]}")
+    # print("-" * 50)
 
     # 提取并排序当前样本的预测结果
     start_idx = index * num_beams
