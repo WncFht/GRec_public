@@ -9,6 +9,7 @@ import torch
 from peft import PeftModel
 from torch.utils.data import ConcatDataset
 from transformers import (
+    AutoModelForCausalLM,
     AutoProcessor,
     AutoTokenizer,
     InstructBlipForConditionalGeneration,
@@ -16,7 +17,6 @@ from transformers import (
     LlamaTokenizer,
     Qwen2_5_VLForConditionalGeneration,
     T5ForConditionalGeneration,
-    AutoModelForCausalLM
 )
 
 from .data import (
@@ -27,7 +27,7 @@ from .data import (
     PreferenceObtainDataset,
     SeqRecDataset,
     TextEnrichDataset,
-    TextEnrichWihtoutItemIDDataset
+    TextEnrichWihtoutItemIDDataset,
 )
 from .type import Args
 
@@ -58,7 +58,7 @@ MODEL_CONFIG = {
         "model_class": AutoModelForCausalLM,
         "processor_class": AutoTokenizer,
         "from_pretrained_kwargs": {},
-    }
+    },
 }
 
 
@@ -111,7 +111,7 @@ def load_model_for_inference(
         ckpt_path = model_path
     print(f"从 '{ckpt_path}' 加载分词器...")
     processor = processor_class.from_pretrained(
-        ckpt_path, padding_side= "left", **from_pretrained_kwargs
+        ckpt_path, padding_side="left", **from_pretrained_kwargs
     )
     tokenizer = get_tokenizer(processor)
     print(f"词汇表大小: {len(tokenizer)}")
@@ -136,7 +136,9 @@ def load_model_for_inference(
                 token_meta = json.load(f)
             new_vocab_size = token_meta["new_vocab_size"]
             old_vocab_size = token_meta["original_vocab_size"]
-            print(f"从元数据中发现新词汇表大小: {new_vocab_size}, 旧词汇表大小: {old_vocab_size}")
+            print(
+                f"从元数据中发现新词汇表大小: {new_vocab_size}, 旧词汇表大小: {old_vocab_size}"
+            )
             model.resize_token_embeddings(new_vocab_size)
             model.config.vocab_size = new_vocab_size
         else:
@@ -161,7 +163,9 @@ def load_model_for_inference(
 
     final_vocab_size = model.get_input_embeddings().weight.shape[0]
     if len(tokenizer) != final_vocab_size:
-        print(f"Tokenizer size {len(tokenizer)} != model vocab size {final_vocab_size}")
+        print(
+            f"Tokenizer size {len(tokenizer)} != model vocab size {final_vocab_size}"
+        )
 
     model.eval()
     print("模型加载完成并已设置为评估模式。")
@@ -308,19 +312,19 @@ def load_datasets(args: Args):
     train_prompt_sample_num = [
         int(_) for _ in dataset_args.train_prompt_sample_num.split(",")
     ]
-    assert len(tasks) == len(
-        train_prompt_sample_num
-    ), "prompt sample number does not match task number"
+    assert len(tasks) == len(train_prompt_sample_num), (
+        "prompt sample number does not match task number"
+    )
     train_data_sample_num = [
         int(_) for _ in dataset_args.train_data_sample_num.split(",")
     ]
-    assert len(tasks) == len(
-        train_data_sample_num
-    ), "data sample number does not match task number"
-    
+    assert len(tasks) == len(train_data_sample_num), (
+        "data sample number does not match task number"
+    )
+
     print("train prompt sample num:", train_prompt_sample_num)
     print("train data sample num:", train_data_sample_num)
-    
+
     train_datasets = []
     for task, prompt_sample_num, data_sample_num in zip(
         tasks, train_prompt_sample_num, train_data_sample_num, strict=False
@@ -380,7 +384,7 @@ def load_datasets(args: Args):
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
             )
-        
+
         elif task.lower() == "mmitemenrichwithoutid":
             dataset = TextEnrichWihtoutItemIDDataset(
                 args,
@@ -397,7 +401,9 @@ def load_datasets(args: Args):
     # if task.lower() == "mmitemenrichwithoutid":
     # valid_data = TextEnrichWihtoutItemIDDataset(args, mode="valid", prompt_sample_num=dataset_args.valid_prompt_sample_num, sample_num=data_sample_num)
     # else:
-    valid_data = SeqRecDataset(args, "valid", dataset_args.valid_prompt_sample_num)
+    valid_data = SeqRecDataset(
+        args, "valid", dataset_args.valid_prompt_sample_num
+    )
     print("valid sample nums:", len(valid_data))
     return train_data, valid_data
 
@@ -406,7 +412,11 @@ def load_test_dataset(args: Args):
     """根据配置加载测试数据集"""
     test_args = args.test_args
     if test_args.test_task.lower() == "seqrec":
-        test_data = SeqRecDataset(args, mode="test", sample_num=test_args.sample_num,)
+        test_data = SeqRecDataset(
+            args,
+            mode="test",
+            sample_num=test_args.sample_num,
+        )
     elif test_args.test_task.lower() == "itemsearch":
         test_data = ItemSearchDataset(
             args, mode="test", sample_num=test_args.sample_num
@@ -427,7 +437,9 @@ def load_json(file):
     return data
 
 
-def verify_token_ordering(tokenizer_or_processor, original_vocab_size, new_tokens):
+def verify_token_ordering(
+    tokenizer_or_processor, original_vocab_size, new_tokens
+):
     """验证新添加的token是否真的在词汇表末尾"""
     from transformers import AutoProcessor
 
@@ -455,9 +467,7 @@ def verify_token_ordering(tokenizer_or_processor, original_vocab_size, new_token
     for i, expected_token in enumerate(new_tokens[:5]):  # 只显示前5个
         token_id = new_token_start + i
         if token_id < current_vocab_size:
-            actual_token = tokenizer.convert_ids_to_tokens(
-                [token_id]
-            )[0]
+            actual_token = tokenizer.convert_ids_to_tokens([token_id])[0]
             print(
                 f"  ID {token_id}: 期望 '{expected_token}' -> 实际 '{actual_token}' {'✓' if expected_token == actual_token else '✗'}"
             )
@@ -469,9 +479,7 @@ def verify_token_ordering(tokenizer_or_processor, original_vocab_size, new_token
             expected_token = new_tokens[i]
             token_id = new_token_start + i
             if token_id < current_vocab_size:
-                actual_token = tokenizer.convert_ids_to_tokens(
-                    [token_id]
-                )[0]
+                actual_token = tokenizer.convert_ids_to_tokens([token_id])[0]
                 print(
                     f"  ID {token_id}: 期望 '{expected_token}' -> 实际 '{actual_token}' {'✓' if expected_token == actual_token else '✗'}"
                 )
