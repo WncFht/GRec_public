@@ -1,0 +1,72 @@
+# ----------------- 全局配置 (Global Args) -----------------
+# 影响整个项目的基本行为
+global_args:
+  seed: 42  # 全局随机种子，用于保证实验可复现
+  model_type: "qwen_vl"  # 模型类型, 可选: "qwen_vl", "t5", "llama"
+  base_model: "/path/to/your/Qwen-VL-Chat" # 【重要】请替换为您的基础大模型本地路径
+  output_dir: "./ckpt" # 训练检查点和输出文件的保存目录
+
+# ----------------- 数据集配置 (Dataset Args) -----------------
+dataset_args:
+  data_path: "./data" # 【重要】请替换为您的数据存放根目录
+  # 需要执行的任务列表, 用逗号分隔。
+  # 可用任务: seqrec, item2index, index2item, fusionseqrec, itemsearch, preferenceobtain, mmitem2index, mmindex2item, mmitemenrich
+  tasks: "seqrec,item2index,index2item,fusionseqrec,itemsearch,preferenceobtain,mmitem2index,mmindex2item,mmitemenrich"
+  dataset: "Games"  # 使用的数据集名称, 例如 Games, Baby, Sports
+  index_file: ".index.json" # 存储物品索引的映射文件名
+  max_his_len: 20 # 用户历史序列的最大长度, -1表示不限制
+  add_prefix: false # 是否在历史序列前添加"1:, 2:, ..."这样的数字前缀
+  his_sep: ", " # 历史序列中物品之间的分隔符
+  only_train_response: false # 训练时是否只计算答案部分的loss
+
+  # 训练时为每个任务采样多少种prompt, 与tasks列表一一对应
+  train_prompt_sample_num: "1,1,1,1,1,1,1,1,1"
+  # 训练时为每个任务采样多少条数据, 0表示使用该任务的全部数据, 与tasks列表一一对应
+  train_data_sample_num: "100000,0,0,0,0,0,0,0,0"
+
+  valid_prompt_id: 0 # 验证时使用的prompt的ID
+  sample_valid: true # 验证时是否从多种prompt中采样
+  valid_prompt_sample_num: 2 # 如果sample_valid为True, 这里指定采样的prompt数量
+
+# ----------------- 训练配置 (Training Args) -----------------
+train_args:
+  optim: "adamw_torch"  # 优化器
+  epochs: 4 # 训练总轮数
+  learning_rate: 2.0e-5 # 学习率
+  per_device_batch_size: 8 # 每个GPU的批处理大小
+  gradient_accumulation_steps: 2 # 梯度累积步数. 全局批大小 = batch_size * num_gpus * grad_acc_steps
+  logging_step: 10 # 每隔多少步打印一次日志
+  model_max_length: 2048 # 模型能处理的最大序列长度 (token数)
+  weight_decay: 0.01 # 权重衰减
+
+  # --- LoRA 配置 ---
+  lora_r: 8 # LoRA的秩
+  lora_alpha: 32 # LoRA的alpha
+  lora_dropout: 0.05 # LoRA层的dropout概率
+  # LoRA作用的目标模块, 不同模型可能需要不同设置, 用逗号分隔
+  lora_target_modules: "q_proj,v_proj,k_proj,o_proj,gate_proj,down_proj,up_proj"
+  # 除了LoRA层外, 额外需要训练和保存的模块, 例如embedding和lm_head
+  lora_modules_to_save: "embed_tokens,lm_head"
+
+  resume_from_checkpoint: null # 从指定的检查点路径继续训练, 例如: "./ckpt/checkpoint-1000"
+  warmup_ratio: 0.01 # 学习率预热占总训练步数的比例
+  lr_scheduler_type: "cosine" # 学习率调度器类型
+  save_and_eval_strategy: "epoch" # 模型保存和评估策略, "epoch" 或 "steps"
+  save_and_eval_steps: 1000 # 如果策略是"steps", 每隔N步执行一次
+  fp16: false # 是否启用FP16混合精度训练
+  bf16: false # 是否启用BF16混合精度训练 (推荐在A100/H100上使用)
+  deepspeed: "./config/ds_z3_bf16.json" # DeepSpeed配置文件的路径, 不需要时可留空
+
+# ----------------- 测试配置 (Test Args) -----------------
+test_args:
+  ckpt_path: "" # 用于测试的模型检查点路径 (可以是完整模型或LoRA权重)
+  lora: false # 指明上面的ckpt_path是否为LoRA权重
+  filter_items: false # 评估时是否过滤掉不在候选集中的物品
+  results_file: "./results/test-ddp.json" # 保存测试结果的文件路径
+  test_batch_size: 1 # 测试时的批处理大小
+  num_beams: 20 # Beam search的束宽, 用于生成推荐结果
+  sample_num: -1 # 测试样本数量, -1表示使用所有测试数据
+  gpu_id: 0 # 单GPU测试时使用的GPU ID
+  test_prompt_ids: "0" # 测试时使用的prompt ID, 可用逗号分隔, "all"表示全部
+  metrics: "hit@1,hit@5,hit@10,ndcg@5,ndcg@10" # 评估指标, 用逗号分隔
+  test_task: "SeqRec" # 要执行的测试任务名称 

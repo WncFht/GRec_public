@@ -1,0 +1,51 @@
+line-length = 80 
+target-version = "py312"
+lint.select = [
+    "ALL", # 包括所有规则，包括新的
+]
+lint.ignore = [
+    #### 模块
+    "ANN", # flake8-annotations
+    "COM", # flake8-commas
+    "C90", # mccabe 复杂度
+    "DJ",  # django
+    "EXE", # flake8-executable
+    "T10", # 调试器
+    "TID", # flake8-tidy-imports
+    "PTH",
+    
+    #### 特定规则
+    "BLE001",
+    "D100",   # 忽略缺失的文档
+    "D101",
+    "D102",
+    "D103",
+    "D104",
+    "D105",
+    "D106",
+    "D107",
+    "D200",
+    "D203",   # 类定义前需要空行 (与 D211 冲突)
+    "D205",
+    "D212",
+    "D400",
+    "D401",
+    "D415",
+    "DTZ005", # 忽略时区警告
+    "E402",   # 本地导入的误报
+    "E501",   # 行太长
+    "EM102",
+    "G004",   # f-string
+    "ERA001",
+    "FBT001",
+    "FBT002",
+    "TRY003", # 异常中的外部消息太冗长
+    "TD002",
+    "TD003",
+    "T201",
+    "FIX002", # todo 的描述太冗长
+    "RUF001",
+    "RUF002",
+    "RUF003",
+    "S101", # assert
+]

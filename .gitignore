@@ -1,0 +1,12 @@
+data/*
+*.pth
+ckpt/*
+*.pyc
+*.log
+__pycache__/
+
+.ruff_cache/
+wandb
+log/*
+
+results/*

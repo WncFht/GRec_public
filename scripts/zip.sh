@@ -1,0 +1,12 @@
+tar \
+  --exclude='data' \
+  --exclude='*.pth' \
+  --exclude='ckpt' \
+  --exclude='*.pyc' \
+  --exclude='*.log' \
+  --exclude='__pycache__' \
+  --exclude='.ruff_cache' \
+  --exclude='wandb' \
+  --exclude='log' \
+  --exclude='results' \
+  -czvf my_project.tar.gz .

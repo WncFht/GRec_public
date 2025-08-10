@@ -1,0 +1,42 @@
+# docker-compose.yml
+services:
+  # 服务名称，您可以自定义
+  app:
+    # 构建指令
+    build:
+      # Dockerfile 所在的上下文路径
+      context: .
+      dockerfile: Dockerfile
+    # 为构建出的镜像命名
+    image: unifymmgrec:latest
+    # 容器的名称
+    container_name: unifymmgrec-container
+    
+    # 将共享内存大小增加到 64GB，以解决 DataLoader 因 shm 不足而崩溃的问题。
+    # 您可以根据机器的物理内存调整这个值，例如 '16gb', '32gb'。
+    shm_size: '64gb'
+    
+    # 卷挂载
+    # 将本地的 unifymmgrec-master 目录挂载到容器的 /app 目录
+    volumes:
+      - .:/app
+    
+    environment:
+      - WANDB_API_KEY=${WANDB_API_KEY}
+      - LOCAL_USER_ID=${UID:-1000}
+      - LOCAL_GROUP_ID=${GID:-1000}
+
+    # GPU 配置
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+              
+    # 保持容器在前台运行并开启交互式终端
+    stdin_open: true
+    tty: true 
+    # 添加runtime: nvidia 以确保使用NVIDIA容器运行时
+    runtime: nvidia 

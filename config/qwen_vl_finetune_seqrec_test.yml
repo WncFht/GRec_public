@@ -1,0 +1,45 @@
+# ===================================================================
+# 序列推荐评估 Benchmark 配置文件
+#
+# 使用方法:
+# 1. 修改下面的模型配置，将 `enabled` 设置为 `true` 来激活你想评测的模型。
+# 2. 运行主启动脚本 (例如: ./scripts/evaluate/run_seqrec_benchmark.sh)
+# ===================================================================
+
+global_args:
+  # 调试模式: 设置为 true 时，只会处理一个样本并打印详细的输入输出信息
+  debug: true
+  # 结果将保存在此根目录下, 按模型名称分子目录
+  output_dir: "./results/"
+
+dataset_args:
+  # 数据集根目录和名称
+  data_path: ./data
+  dataset: Instruments
+  # 默认索引文件, 可在模型配置中被覆盖
+  index_file: ".index.json"
+  ratio_dataset: 0.01
+
+test_args:
+  # --- 全局测试参数 ---
+  test_task: "seqrec" # or "itemsearch", "fusionseqrec"
+  test_prompt_ids: "all" # or "0,1,2"
+  test_batch_size: 2
+  num_beams: 20
+  metrics: "hit@1,hit@5,hit@10,ndcg@5,ndcg@10"
+  filter_items: false
+  use_constrained_generation: false
+  max_new_tokens: 4
+  print_freq: 100
+
+  # --- 模型列表 ---
+  # 在此定义所有需要参加评测的模型
+  models:
+    - name: "Qwen-VL-Finetune"
+      enabled: true
+      model_type: "qwen_vl"
+      path: "./ckpt/base_model/Qwen2.5-VL-3B-Instruct"
+      lora: false
+      ckpt_path: "./ckpt/Instruments/Qwen2.5-VL-3B-Instruct-finetune-seqrec-qwen7B/checkpoint-3184"
+      # 特定于此模型的索引文件
+      index_file: ".index_qwen7B.json"

@@ -1,0 +1,76 @@
+# ===================================================================
+# 文本生成与评估 Benchmark 配置文件 (统一配置版)
+#
+# 使用方法:
+# 1. (可选) 在启动脚本中设置环境变量 (如 $BASE_MODEL_DIR), 
+#    此文件会自动展开这些变量。
+# 2. 修改下面的模型配置，将 `enabled` 设置为 `true` 来激活你想评测的模型。
+# 3. 运行主启动脚本 (例如: ./scripts/text_generate/run_benchmark.sh)
+# ===================================================================
+
+global_args:
+  # 调试模式: 设置为 true 时，只会处理一个样本并打印详细的输入输出信息
+  debug: true
+  # Benchmark 的结果将保存在这个目录
+  output_dir: "./results/benchmark"
+
+dataset_args:
+  # 数据集根目录
+  data_path: ./data
+  # 数据集名称
+  dataset: Instruments
+  # 索引文件，确保与模型微调时使用的一致
+  index_file: ".index_qwen7B.json"
+
+test_args:
+  # 使用的GPU ID
+  gpu_id: 0
+  # 用于文本生成 benchmark 的评估指标, 逗号分隔
+  # 可选: "bleu", "rouge", "bert_score", "semantic_similarity"
+  # 注意: bert_score 首次运行时需要下载模型，可能会比较慢
+  benchmark_metrics: "bleu,rouge,bert_score,semantic_similarity"
+  # 在此定义所有需要参加评测的模型
+  models:
+    - name: "Qwen-VL-LoRA" # 模型的显示名称
+      enabled: false # 设置为 true 来在评测中包含此模型
+      model_type: "qwen_vl"
+      # 基座模型路径，可通过环境变量 $BASE_MODEL_DIR 设置
+      path: "./ckpt/base_model/Qwen2.5-VL-3B-Instruct"
+      lora: true # 指明这是一个LoRA模型
+      # LoRA 权重路径，可通过环境变量 $FINETUNED_MODEL_DIR 设置
+      ckpt_path: "./ckpt/Instruments/Qwen2.5-VL-3B-Instruct"
+
+    - name: "Qwen-2.5-VL-3B-Base" # 示例：一个未微调的基座模型
+      enabled: false # 默认不启用，可以设为 true 来进行对比
+      model_type: "qwen_vl"
+      path: "./ckpt/base_model/Qwen2.5-VL-3B-Instruct"
+      lora: false
+      ckpt_path: "" # 非 LoRA 模型没有 ckpt_path
+    
+    - name: "Qwen-2.5-VL-7B-Base"
+      enabled: false
+      model_type: "qwen_vl"
+      path: "./ckpt/base_model/qwen/Qwen2.5-VL-7B-Instruct"
+      lora: false
+      ckpt_path: ""
+
+    # - name: "LLaVA-v1.5-7B"
+    #   enabled: false
+    #   model_type: "llava"
+    #   path: ${LLAVA_MODEL_DIR:-/path/to/your/llava-v1.5-7b}
+    #   lora: false
+    #
+    - name: "InstructBLIP-Vicuna-7B"
+      enabled: true
+      model_type: "instructblip"
+      path: ./ckpt/base_model/AI-ModelScope/instructblip-vicuna-7b
+      lora: false
+
+text_generation_args:
+  # 这些参数将应用于所有启用的模型
+  max_new_tokens: 512
+  temperature: 0.7
+  top_p: 0.9
+  do_sample: true
+  # 从测试集中选择多少样本进行生成, -1表示全部
+  sample_num: -1 

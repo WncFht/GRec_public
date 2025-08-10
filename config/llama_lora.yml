@@ -1,0 +1,43 @@
+# ===================================================================
+# 多模态 LoRA 微调配置文件
+#
+# 使用方法:
+# 1. 修改下面的参数来配置你的训练任务。
+# 2. 运行主启动脚本: ./scripts/finetune/multimodal_finetune_lora.sh
+# ===================================================================
+
+global_args:
+  base_model: "/hpc_stor03/sjtu_home/haotian.fang/.cache/modelscope/hub/models/skyline2006/llama-7b"
+  output_dir: "./ckpt/Instruments/llama-7b-lora"
+  debug: true
+  seed: 42
+
+dataset_args:
+  data_path: ./data
+  dataset: Instruments
+  tasks: "seqrec,mmitem2index,mmindex2item,mmitemenrich"
+  # 对应 tasks, 为每个任务采样多少种 prompt
+  train_prompt_sample_num: "1,1,1,1"
+  # 对应 tasks, 为每个任务采样多少条数据, 0 表示全部使用
+  train_data_sample_num: "0,0,0,0"
+  index_file: ".index_llama-td.json"
+  only_train_response: true
+
+train_args:
+  # --- 训练核心参数 ---
+  epochs: 1
+  per_device_batch_size: 16
+  gradient_accumulation_steps: 4
+  learning_rate: 1e-4
+  weight_decay: 0.01
+  save_and_eval_strategy: "steps"
+  save_and_eval_steps: 200
+  bf16: true
+  use_lora: true
+  device: "cuda"
+  
+  # --- LoRA 相关参数 ---
+  lora_r: 16
+  lora_alpha: 64
+  lora_dropout: 0.15
+  lora_target_modules: "q_proj,v_proj,k_proj,o_proj,gate_proj,down_proj,up_proj" 
