@@ -7,15 +7,14 @@ from typing import Any
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import AutoProcessor, AutoTokenizer
+from transformers import AutoTokenizer
 
-from ..collator import UnifiedTestCollator, TestCollator
+from ..collator import TestCollator
 from ..config import parse_args
 from ..evaluate import get_metrics_results, get_topk_results
 from ..prompt import all_prompt
 from ..type import Args
 from ..utils import (
-    get_tokenizer,
     load_model_for_inference,
     load_test_dataset,
     set_seed,
@@ -29,9 +28,10 @@ def setup_test(
     use_lora: bool,
     gpu_id: int,
     seed: int,
+    args: Args,
 ) -> tuple[
     Any,
-    AutoProcessor | AutoTokenizer,
+    AutoTokenizer,
     torch.device,
 ]:
     """
@@ -48,11 +48,14 @@ def setup_test(
         ckpt_path=ckpt_path,
         use_lora=use_lora,
     )
-    # tokenizer = get_tokenizer(tokenizer_or_processor)
-    # tokenizer.padding_side = "left"
-    # if tokenizer.pad_token is None:
-    #     tokenizer.pad_token = tokenizer.eos_token
-    return model, tokenizer_or_processor, device
+    if args.test_args.models[0].model_type == "qwen_vl":
+        tokenizer = tokenizer_or_processor.tokenizer
+    else:
+        tokenizer = tokenizer_or_processor
+    tokenizer.padding_side = "left"
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    return model, tokenizer, device
 
 
 def get_prompt_ids(args: Args) -> list[int]:
@@ -75,22 +78,21 @@ def get_prompt_ids(args: Args) -> list[int]:
 
 def prepare_test_data(
     args: Args,
-    tokenizer_or_processor: AutoProcessor | AutoTokenizer,
+    tokenizer: AutoTokenizer,
 ) -> tuple[DataLoader, list, Callable]:
     """
     准备测试数据.
     """
     test_data = load_test_dataset(args)
-    # if args.test_args.models[0].model_type == "qwen_vl":
-    #     tokenizer = tokenizer_or_processor.tokenizer
-    # else:
-    #     tokenizer = tokenizer_or_processor
-    tokenizer = get_tokenizer(tokenizer_or_processor)
     collator = TestCollator(args.dataset_args, tokenizer)
     # else:
-        # collator = UnifiedTestCollator(args.dataset_args, tokenizer_or_processor)
+    # collator = UnifiedTestCollator(args.dataset_args, tokenizer_or_processor)
     all_items = test_data.get_all_items()
-    prefix_allowed_tokens = test_data.get_prefix_allowed_tokens_fn(tokenizer)
+    prefix_allowed_tokens = (
+        test_data.get_prefix_allowed_tokens_fn(tokenizer)
+        if args.test_args.use_constrained_generation
+        else None
+    )
     test_loader = DataLoader(
         test_data,
         batch_size=args.test_args.test_batch_size,
@@ -110,12 +112,11 @@ def print_hit_details(
     targets: list[str],
     output_texts: list[str],
     scores: torch.Tensor,
-    tokenizer_or_processor: AutoProcessor | AutoTokenizer,
+    tokenizer: AutoTokenizer,
     num_beams: int,
 ):
     """为有命中的样本打印详细信息。"""
     print("\n")
-    tokenizer = get_tokenizer(tokenizer_or_processor)
     # 解码输入
     input_text = tokenizer.decode(
         inputs["input_ids"][index], skip_special_tokens=True
@@ -150,10 +151,11 @@ def evaluate_prompt(
     model: Any,
     test_loader: DataLoader,
     device: torch.device,
-    tokenizer_or_processor: AutoProcessor | AutoTokenizer,
-    args: Args,
+    tokenizer: AutoTokenizer,
+    prefix_allowed_tokens: Callable,
     all_items: list,
     metrics: list[str],
+    args: Args,
 ) -> dict[str, float]:
     """
     评估单个prompt.
@@ -174,28 +176,21 @@ def evaluate_prompt(
             print(f"  - 批次大小 (Batch Size): {len(targets)}")
             # print(f"  - 真实目标 (Targets): {targets}")
             # print(f"  - 输入: {inputs}")
-            # 解码并打印批次中第一个样本的文本输入，以了解其构成
-            first_sample_text = tokenizer_or_processor.decode(
+            first_sample_text = tokenizer.decode(
                 inputs["input_ids"][0], skip_special_tokens=False
             )
             print(f"  - 第一个样本的文本输入 (解码后):\n'{first_sample_text}'")
-            if "pixel_values" in inputs and inputs["pixel_values"] is not None:
-                print(f"  - 图像数据维度: {inputs['pixel_values'].shape}")
-            else:
-                print("  - 无图像输入")
-        # 将 inputs 中的所有张量移动到 device 上
+
         inputs = {
             k: v.to(device) if isinstance(v, torch.Tensor) else v
             for k, v in inputs.items()
         }
-        tokenizer = get_tokenizer(tokenizer_or_processor)
-        prefix_allowed_tokens_fn = (
-            test_loader.dataset.get_prefix_allowed_tokens_fn(tokenizer)
-            if test_args.use_constrained_generation
-            else None
-        )
+
         if global_args.debug:
-            print("test_args.use_constrained_generation:", test_args.use_constrained_generation)
+            print(
+                "test_args.use_constrained_generation:",
+                test_args.use_constrained_generation,
+            )
         output: dict[str, torch.Tensor] = model.generate(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
@@ -205,7 +200,7 @@ def evaluate_prompt(
             output_scores=True,
             return_dict_in_generate=True,
             early_stopping=True,
-            prefix_allowed_tokens_fn=prefix_allowed_tokens_fn,
+            prefix_allowed_tokens_fn=prefix_allowed_tokens,
         )
 
         output_ids = output["sequences"]
@@ -216,7 +211,7 @@ def evaluate_prompt(
         if global_args.debug and step == 0:
             print("  - 模型原始输出 (解码后):")
             for i in range(len(targets)):
-                print(f"    - 样本 {i+1} (目标: {targets[i]}):")
+                print(f"    - 样本 {i + 1} (目标: {targets[i]}):")
                 sample_predictions = output_texts[
                     i * test_args.num_beams : (i + 1) * test_args.num_beams
                 ]
@@ -229,7 +224,7 @@ def evaluate_prompt(
                     # 清理预测文本以提高可读性
                     clean_pred = pred.split("Response:")[-1].strip()
                     print(
-                        f"      - Beam {j+1}: '{clean_pred}' (Score: {score:.4f})"
+                        f"      - Beam {j + 1}: '{clean_pred}' (Score: {score:.4f})"
                     )
         # 获得 topk 结果
         topk_res = get_topk_results(
@@ -243,7 +238,10 @@ def evaluate_prompt(
         batch_metrics_res = get_metrics_results(topk_res, metrics)
 
         for m, res in batch_metrics_res.items():
-            metrics_results[m] = metrics_results.get(m, 0) + res
+            if m not in metrics_results:
+                metrics_results[m] = res
+            else:
+                metrics_results[m] += res
 
         if (step + 1) % test_args.print_freq == 0:
             current_metrics = {k: v / total for k, v in metrics_results.items()}
@@ -253,7 +251,14 @@ def evaluate_prompt(
             print("\n[DEBUG MODE] 只处理一个批次。")
             # 可以在这里加入更详细的debug信息，比如打印topk_res
             print_hit_details(
-                0, topk_res[0], inputs, targets, output_texts, scores, tokenizer_or_processor, test_args.num_beams
+                0,
+                topk_res[0],
+                inputs,
+                targets,
+                output_texts,
+                scores,
+                tokenizer,
+                test_args.num_beams,
             )
             break
 
@@ -269,8 +274,8 @@ def summarize_and_save_results(
     all_prompt_results: list[dict[str, float]],
     metrics: list[str],
     args: Args,
-    model_config: Any, # BenchmarkModelArgs
-    tokenizer_or_processor: AutoProcessor | AutoTokenizer,
+    model_config: Any,
+    tokenizer: AutoTokenizer,
 ) -> None:
     """
     汇总并保存结果.
@@ -288,10 +293,11 @@ def summarize_and_save_results(
 
     # 动态构建结果文件路径
     output_root = Path(args.global_args.output_dir)
-    model_result_dir = output_root / args.dataset_args.dataset / model_config.name
+    model_result_dir = (
+        output_root / args.dataset_args.dataset / model_config.name
+    )
     model_result_dir.mkdir(parents=True, exist_ok=True)
     results_file = model_result_dir / "test_results.json"
-
 
     save_data = {
         "model_name": model_config.name,
@@ -306,7 +312,7 @@ def summarize_and_save_results(
             "base_model": model_config.path,
             "ckpt_path": model_config.ckpt_path,
             "lora": model_config.lora,
-            "vocab_size": len(get_tokenizer(tokenizer_or_processor)),
+            "vocab_size": len(tokenizer),
         },
         "test_config": {
             "num_beams": args.test_args.num_beams,
@@ -334,24 +340,26 @@ def main() -> None:
         if not model_config.enabled:
             continue
 
-        print(f"\n{'='*25} 开始评测模型: {model_config.name} {'='*25}\n")
+        print(f"\n{'=' * 25} 开始评测模型: {model_config.name} {'=' * 25}\n")
 
         # 1. 覆盖数据集相关的模型特定参数
         if hasattr(model_config, "index_file") and model_config.index_file:
-             args.dataset_args.index_file = model_config.index_file
+            args.dataset_args.index_file = model_config.index_file
 
         # 2. 初始化
-        model, tokenizer_or_processor, device = setup_test(
+        model, tokenizer, device = setup_test(
             model_type=model_config.model_type,
             model_path=model_config.path,
             ckpt_path=model_config.ckpt_path,
             use_lora=model_config.lora,
             gpu_id=args.test_args.gpu_id,
             seed=args.global_args.seed,
+            args=args,
         )
-
         # 3. 准备数据
-        test_loader, all_items, _ = prepare_test_data(args, tokenizer_or_processor)
+        test_loader, all_items, prefix_allowed_tokens = prepare_test_data(
+            args, tokenizer
+        )
 
         # 4. 执行评测
         model.eval()
@@ -363,22 +371,28 @@ def main() -> None:
                     model,
                     test_loader,
                     device,
-                    tokenizer_or_processor,
-                    args,
+                    tokenizer,
+                    prefix_allowed_tokens,
                     all_items,
                     metrics,
+                    args,
                 )
                 all_prompt_results.append(metrics_results)
 
         # 5. 汇总并保存结果
         if all_prompt_results:
             summarize_and_save_results(
-                all_prompt_results, metrics, args, model_config, tokenizer_or_processor
+                all_prompt_results,
+                metrics,
+                args,
+                model_config,
+                tokenizer,
             )
         else:
             print(f"模型 {model_config.name} 没有可供汇总的结果。")
 
-        print(f"\n{'='*25} 模型: {model_config.name} 评测完成 {'='*25}\n")
+        print(f"\n{'=' * 25} 模型: {model_config.name} 评测完成 {'=' * 25}\n")
+
 
 if __name__ == "__main__":
     main()
