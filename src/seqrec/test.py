@@ -1,11 +1,10 @@
-import argparse
 import json
 
 import torch
 from peft import PeftModel
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import LlamaForCausalLM, LlamaTokenizer
+from transformers import AutoModelForCausalLM, AutoProcessor
 
 from ..collator import TestCollator
 from ..config import parse_args
@@ -22,11 +21,16 @@ def test(args: Args):
     device_map = {"": args.test_args.gpu_id}
     device = torch.device("cuda", args.test_args.gpu_id)
 
-    tokenizer = LlamaTokenizer.from_pretrained(
+    processor = AutoProcessor.from_pretrained(
         args.test_args.models[0].ckpt_path
     )
+    tokenizer = processor.tokenizer
+    tokenizer.padding_side = "left"
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
     if args.test_args.models[0].lora:
-        model = LlamaForCausalLM.from_pretrained(
+        model = AutoModelForCausalLM.from_pretrained(
             args.test_args.models[0].path,
             torch_dtype=torch.bfloat16,
             low_cpu_mem_usage=True,
@@ -40,7 +44,7 @@ def test(args: Args):
             device_map=device_map,
         )
     else:
-        model = LlamaForCausalLM.from_pretrained(
+        model = AutoModelForCausalLM.from_pretrained(
             args.test_args.models[0].ckpt_path,
             torch_dtype=torch.bfloat16,
             low_cpu_mem_usage=True,
@@ -171,7 +175,6 @@ def test(args: Args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="LLMRec_test")
-    args: Args = parse_args(parser)
+    args: Args = parse_args()
 
     test(args)
