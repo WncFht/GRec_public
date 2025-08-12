@@ -1,10 +1,8 @@
-import argparse
 import os
 import sys
 
 import torch
 import transformers
-from ..collator import MultiModalCollator, Collator
 from torch.utils.data import ConcatDataset, Dataset
 from transformers import (
     AutoConfig,
@@ -16,8 +14,10 @@ from transformers import (
     Qwen2_5_VLForConditionalGeneration,
     TrainingArguments,
 )
-from ..type import Args
+
+from ..collator import Collator
 from ..config import parse_args
+from ..type import Args
 from ..utils import (
     ensure_dir,
     load_datasets,
@@ -69,10 +69,13 @@ def get_tokenizer(
         return tokenizer_or_processor.tokenizer
     return tokenizer_or_processor
 
+
 def load_and_prepare_model_tokenizer(
     args: Args, local_rank: int
 ) -> tuple[
-    Qwen2_5_VLForConditionalGeneration | LlamaForCausalLM | AutoModelForCausalLM,
+    Qwen2_5_VLForConditionalGeneration
+    | LlamaForCausalLM
+    | AutoModelForCausalLM,
     AutoProcessor | AutoTokenizer,
     int,
     ConcatDataset,
@@ -91,7 +94,9 @@ def load_and_prepare_model_tokenizer(
         tuple: (model, processor, original_vocab_size, train_data, valid_data)
 
     """
-    config = AutoConfig.from_pretrained(args.global_args.base_model, trust_remote_code=True)
+    config = AutoConfig.from_pretrained(
+        args.global_args.base_model, trust_remote_code=True
+    )
     if args.global_args.model_type == "qwen_vl":
         tokenizer_or_processor = AutoProcessor.from_pretrained(
             args.global_args.base_model, trust_remote_code=True
@@ -109,7 +114,9 @@ def load_and_prepare_model_tokenizer(
             args.global_args.base_model
         )
     else:
-        raise ValueError(f"Unsupported model_type: {args.global_args.model_type}")
+        raise ValueError(
+            f"Unsupported model_type: {args.global_args.model_type}"
+        )
 
     train_data, valid_data = load_datasets(args)
     new_tokens = train_data.datasets[0].get_new_tokens()
@@ -128,7 +135,9 @@ def load_and_prepare_model_tokenizer(
     elif args.global_args.model_type in ["llama", "qwen"]:
         model_class = AutoModelForCausalLM
     else:
-        raise ValueError(f"Unsupported model_type: {args.global_args.model_type}")
+        raise ValueError(
+            f"Unsupported model_type: {args.global_args.model_type}"
+        )
 
     model = model_class.from_pretrained(
         args.global_args.base_model,
@@ -158,10 +167,12 @@ def load_and_prepare_model_tokenizer(
             tokenizer_or_processor.save_pretrained(args.global_args.output_dir)
         tokenizer.save_pretrained(args.global_args.output_dir)
         config.save_pretrained(args.global_args.output_dir)
-    print("="*50)
+    print("=" * 50)
     print("model_type:", args.global_args.model_type)
     for name, param in model.named_parameters():
-        print(f"{name}: {tuple(param.shape)}, reqires_grad={name, param.requires_grad}")
+        print(
+            f"{name}: {tuple(param.shape)}, reqires_grad={name, param.requires_grad}"
+        )
     if args.global_args.model_type == "qwen_vl":
         if hasattr(model, "visual"):
             for name, param in model.visual.named_parameters():
@@ -171,7 +182,14 @@ def load_and_prepare_model_tokenizer(
             for name, param in model.visual.merger.named_parameters():
                 param.requires_grad = False
             print("冻结视觉模型融合层参数")
-    return model, tokenizer_or_processor, original_vocab_size, train_data, valid_data
+    return (
+        model,
+        tokenizer_or_processor,
+        original_vocab_size,
+        train_data,
+        valid_data,
+    )
+
 
 def get_training_args(args: Args, ddp: bool) -> TrainingArguments:
     """
@@ -215,11 +233,10 @@ def get_training_args(args: Args, ddp: bool) -> TrainingArguments:
         ddp_find_unused_parameters=False if ddp else None,
         dataloader_num_workers=0,
         remove_unused_columns=False,
-        report_to="wandb",
-        eval_delay=1
-        if train_args.save_and_eval_strategy == "epoch"
-        else 2000,
+        report_to="tensorboard",
+        eval_delay=1 if train_args.save_and_eval_strategy == "epoch" else 2000,
     )
+
 
 def train(args: Args) -> None:
     """
@@ -267,7 +284,8 @@ def train(args: Args) -> None:
 
     trainer.save_state()
     trainer.save_model(output_dir=args.global_args.output_dir)
-    
+
+
 if __name__ == "__main__":
     args = parse_args()
     train(args)

@@ -1,4 +1,4 @@
-# --extra-index-url https://pypi.tuna.tsinghua.edu.cn/simple
+--extra-index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
 accelerate
 annotated-types==0.7.0
@@ -75,7 +75,7 @@ triton
 typing-inspection
 typing_extensions
 urllib3
-wandb
+tensorboard
 # modelscope
 sentencepiece
 rouge-score

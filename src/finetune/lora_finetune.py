@@ -4,7 +4,6 @@ import sys
 
 import torch
 import transformers
-from collator import Collator
 from peft import (
     LoraConfig,
     TaskType,
@@ -12,6 +11,8 @@ from peft import (
     set_peft_model_state_dict,
 )
 from transformers import LlamaConfig, LlamaForCausalLM, LlamaTokenizer
+
+from collator import Collator
 from utils import *
 
 

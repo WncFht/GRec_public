@@ -1,5 +1,4 @@
 #!/bin/bash
-export WANDB_MODE=offline
 export CUDA_VISIBLE_DEVICES=1
 
 # --- 配置文件路径 ---

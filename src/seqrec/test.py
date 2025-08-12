@@ -66,7 +66,7 @@ def test(args: Args):
     collator = TestCollator(args, tokenizer)
     all_items = test_data.get_all_items()
 
-    prefix_allowed_tokens = test_data.get_prefix_allowed_tokens_fn(tokenizer)
+    # prefix_allowed_tokens = test_data.get_prefix_allowed_tokens_fn(tokenizer)
 
     test_loader = DataLoader(
         test_data,
@@ -97,9 +97,9 @@ def test(args: Args):
                 output = model.generate(
                     input_ids=inputs["input_ids"],
                     attention_mask=inputs["attention_mask"],
-                    max_new_tokens=10,
+                    max_new_tokens=args.test_args.max_new_tokens,
                     # max_length=10,
-                    prefix_allowed_tokens_fn=prefix_allowed_tokens,
+                    # prefix_allowed_tokens_fn=prefix_allowed_tokens,
                     num_beams=args.test_args.num_beams,
                     num_return_sequences=args.test_args.num_beams,
                     output_scores=True,

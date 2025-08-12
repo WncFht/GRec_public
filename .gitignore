@@ -1,4 +1,4 @@
-data/*
+data.zip
 *.pth
 ckpt/*
 *.pyc
@@ -11,3 +11,4 @@ log/*
 
 results/*
 *.pid
+flash_attn*
