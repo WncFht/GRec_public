@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "🔧 Qwen-VL 微调调试",
+            "name": "qwen_vl_finetune_seqrec",
             "type": "python",
             "request": "launch",
             "module": "src.finetune.qwen_vl_finetune",
@@ -21,7 +21,7 @@
             "python": "${command:python.interpreterPath}"
         },
         {
-            "name": "🧪 Qwen-VL 序列推荐测试调试",
+            "name": "qwen_vl_finetune_seqrec_test",
             "type": "python",
             "request": "launch",
             "module": "src.seqrec.evaluate",
@@ -39,5 +39,24 @@
             "stopOnEntry": false,
             "python": "${command:python.interpreterPath}"
         },
+        {
+            "name": "qwen_vl_finetune_seqrec_withoutid",
+            "type": "python",
+            "request": "launch",
+            "module": "src.finetune.qwen_vl_finetune_without_itemid",
+            "args": [
+                "--config_file",
+                "./config/qwen_vl_finetune_seqrec_withoutid.yml"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0",
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "justMyCode": false,
+            "stopOnEntry": false,
+            "python": "${command:python.interpreterPath}"
+        }
     ]
 }

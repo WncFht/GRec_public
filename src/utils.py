@@ -26,8 +26,8 @@ from .data import (
     MultimodalDataset,
     PreferenceObtainDataset,
     SeqRecDataset,
+    SeqRectWithoutItemIDDataset_1,
     TextEnrichDataset,
-    TextEnrichWihtoutItemIDDataset,
 )
 from .type import Args
 
@@ -337,6 +337,13 @@ def load_datasets(args: Args):
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
             )
+        elif task.lower() == "seqrec_without_id":
+            dataset = SeqRectWithoutItemIDDataset_1(
+                args,
+                mode="train",
+                prompt_sample_num=prompt_sample_num,
+                sample_num=data_sample_num,
+            )
 
         elif task.lower() == "item2index" or task.lower() == "index2item":
             dataset = ItemFeatDataset(
@@ -386,7 +393,7 @@ def load_datasets(args: Args):
             )
 
         elif task.lower() == "mmitemenrichwithoutid":
-            dataset = TextEnrichWihtoutItemIDDataset(
+            dataset = SeqRectWithoutItemIDDataset_1(
                 args,
                 mode="train",
                 prompt_sample_num=prompt_sample_num,
@@ -401,9 +408,20 @@ def load_datasets(args: Args):
     # if task.lower() == "mmitemenrichwithoutid":
     # valid_data = TextEnrichWihtoutItemIDDataset(args, mode="valid", prompt_sample_num=dataset_args.valid_prompt_sample_num, sample_num=data_sample_num)
     # else:
-    valid_data = SeqRecDataset(
-        args, "valid", dataset_args.valid_prompt_sample_num
-    )
+    if task.lower() == "seqrec_without_id":
+        valid_data = SeqRectWithoutItemIDDataset_1(
+            args,
+            mode="valid",
+            prompt_sample_num=dataset_args.valid_prompt_sample_num,
+            sample_num=data_sample_num,
+        )
+    else:
+        valid_data = SeqRecDataset(
+            args,
+            mode="valid",
+            prompt_sample_num=dataset_args.valid_prompt_sample_num,
+            sample_num=data_sample_num,
+        )
     print("valid sample nums:", len(valid_data))
     return train_data, valid_data
 

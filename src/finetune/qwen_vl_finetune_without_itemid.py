@@ -22,7 +22,6 @@ from ..utils import (
     ensure_dir,
     load_datasets,
     set_seed,
-    verify_token_ordering,
 )
 
 
@@ -77,7 +76,6 @@ def load_and_prepare_model_tokenizer(
     | LlamaForCausalLM
     | AutoModelForCausalLM,
     AutoProcessor | AutoTokenizer,
-    int,
     ConcatDataset,
     Dataset | None,
 ]:
@@ -119,16 +117,10 @@ def load_and_prepare_model_tokenizer(
         )
 
     train_data, valid_data = load_datasets(args)
-    new_tokens = train_data.datasets[0].get_new_tokens()
     if args.global_args.model_type == "qwen_vl":
         tokenizer = tokenizer_or_processor.tokenizer
     else:
         tokenizer = tokenizer_or_processor
-    original_vocab_size = len(tokenizer)
-
-    if local_rank == 0:
-        print(f"原始词汇表大小: {original_vocab_size}")
-        print(f"需要添加新token数量: {len(new_tokens)}")
 
     if args.global_args.model_type == "qwen_vl":
         model_class = Qwen2_5_VLForConditionalGeneration
@@ -146,18 +138,7 @@ def load_and_prepare_model_tokenizer(
         torch_dtype=torch.bfloat16 if args.train_args.bf16 else None,
     )
 
-    add_num = tokenizer.add_tokens(new_tokens)
-    model.resize_token_embeddings(len(tokenizer))
-
-    verify_token_ordering(tokenizer, original_vocab_size, new_tokens)
-
-    new_vocab_size = len(tokenizer)
-    config.vocab_size = new_vocab_size
-    model.config.vocab_size = new_vocab_size
-
     if local_rank == 0:
-        print(f"添加了 {add_num} 个新token")
-        print(f"新词汇表大小: {new_vocab_size}")
         print(f"数据量: {len(train_data)}")
         print(
             f"有效batch size: {args.train_args.per_device_batch_size * args.train_args.gradient_accumulation_steps * int(os.environ.get('WORLD_SIZE', 1))}"
@@ -185,7 +166,6 @@ def load_and_prepare_model_tokenizer(
     return (
         model,
         tokenizer_or_processor,
-        original_vocab_size,
         train_data,
         valid_data,
     )
@@ -252,7 +232,6 @@ def train(args: Args) -> None:
     (
         model,
         tokenizer_or_processor,
-        original_vocab_size,
         train_data,
         valid_data,
     ) = load_and_prepare_model_tokenizer(args, local_rank)
