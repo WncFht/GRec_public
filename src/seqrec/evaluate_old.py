@@ -6,12 +6,14 @@ from collections.abc import Callable
 from typing import Any
 
 import torch
-from collator import UnifiedTestCollator
-from evaluate import get_metrics_results, get_topk_results
-from prompt import all_prompt
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoProcessor, AutoTokenizer
+
+from collator import UnifiedTestCollator
+from config import parse_args
+from evaluate import get_metrics_results, get_topk_results
+from prompt import all_prompt
 from type import Args
 from utils import (
     get_tokenizer,
@@ -19,8 +21,6 @@ from utils import (
     load_test_dataset,
     set_seed,
 )
-
-from config import parse_args
 
 
 def setup_test(

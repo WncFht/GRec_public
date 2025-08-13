@@ -278,8 +278,8 @@ class UnifiedTestCollator:
     def __call__(self, batch: list[TrainingSample]) -> tuple:
         """统一处理接口：根据batch内容自动选择单模态或多模态处理"""
         # 如果不支持多模态，或者batch中没有图像，则使用纯文本处理
-        if not self._has_images(batch):
-            return self._process_text_only_batch(batch)
+        # if not self._has_images(batch):
+        #     return self._process_text_only_batch(batch)
         # 否则使用多模态处理
         return self._process_multimodal_batch(batch)
 
