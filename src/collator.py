@@ -1,4 +1,3 @@
-import copy
 import os
 from typing import TYPE_CHECKING
 
@@ -25,53 +24,33 @@ class Collator:
         # print(self.tokenizer.model_max_length)
 
     def __call__(self, batch: list[TrainingSample]):
-        # 从批次中提取输入文本和完整文本（包括标签和EOS token）
         input_texts = [d.input_text for d in batch]
-        # 在SFT任务中，标签通常是完整的 instruction + response
-        full_texts = [d.label_text + self.tokenizer.eos_token for d in batch]
+        label_texts = [d.label_text for d in batch]
 
         inputs = self.tokenizer(
-            text=full_texts,
-            # text_target=input_texts, # 移除 text_target，因为它在此处用途不正确
+            input_texts,
             return_tensors="pt",
             padding="longest",
             max_length=self.tokenizer.model_max_length,
             truncation=True,
             return_attention_mask=True,
         )
-        labels = copy.deepcopy(inputs["input_ids"])  # labels 是 tokenized full_texts
-        if self.only_train_response:
-            # 忽略 padding token
-            labels[labels == self.tokenizer.pad_token_id] = -100
 
-            # 重新 tokenized input_texts 以获取其真实长度，用于掩码指令部分
-            instruction_tokenized_inputs = self.tokenizer(
-                text=input_texts,
-                return_tensors="pt",
-                padding="longest",  # 对齐子批次中的长度
-                max_length=self.tokenizer.model_max_length,
-                truncation=True,
-            )
-
-            # 逐样本掩码指令部分
-            for i in range(len(batch)):
-                # 获取当前样本指令的实际非填充长度
-                instruction_len = (
-                    instruction_tokenized_inputs["input_ids"][i]
-                    != self.tokenizer.pad_token_id
-                ).sum().item()
-
-                # 掩码指令部分，将其标签设置为 -100
-                if instruction_len > 0:
-                    labels[i, :instruction_len] = -100
-
-        inputs["labels"] = labels
+        labels = self.tokenizer(
+            label_texts,
+            return_tensors="pt",
+            padding="longest",
+            max_length=self.tokenizer.model_max_length,
+            truncation=True,
+            return_attention_mask=True,
+        )
+        inputs["labels"] = labels["input_ids"]
+        inputs["labels"][inputs["labels"] == self.tokenizer.pad_token_id] = -100
 
         return inputs
 
 
 class TestCollator:
-
     def __init__(self, args: Args, tokenizer):
         self.args = args
         self.tokenizer = tokenizer
@@ -115,64 +94,13 @@ class MultiModalCollator:
 
     def __call__(self, batch: list[TrainingSample]) -> dict[str, torch.Tensor]:
         """处理一批多模态数据 - 支持混合batch"""
-        # Text-only logic for models like Llama
-        # Check if the batch is text-only by looking at the first sample
-        if not batch or not batch[0].is_multimodal:
-            input_texts = [d.input_text for d in batch]
-            # 兼容SFT训练，label_text可能已经是完整的 instruction+response
-            # 在纯文本模式下，我们假设label_text是完整的
-            full_texts = [d.label_text + self.tokenizer.eos_token for d in batch]
-
-            inputs = self.tokenizer(
-                text=full_texts,
-                # text_target=input_texts, # 移除 text_target
-                return_tensors="pt",
-                padding="longest",
-                max_length=self.tokenizer.model_max_length,
-                truncation=True,
-                return_attention_mask=True,
-            )
-            labels = copy.deepcopy(inputs["input_ids"])  # labels 是 tokenized full_texts
-            if self.only_train_response:
-                # 忽略 padding token
-                labels[labels == self.tokenizer.pad_token_id] = -100
-
-                # 重新 tokenized input_texts 以获取其真实长度，用于掩码指令部分
-                instruction_tokenized_inputs = self.tokenizer(
-                    text=input_texts,
-                    return_tensors="pt",
-                    padding="longest",
-                    max_length=self.tokenizer.model_max_length,
-                    truncation=True,
-                )
-
-                # 逐样本掩码指令部分
-                for i in range(len(batch)):
-                    # 获取当前样本指令的实际非填充长度
-                    instruction_len = (
-                        instruction_tokenized_inputs["input_ids"][i]
-                        != self.tokenizer.pad_token_id
-                    ).sum().item()
-                    # 掩码指令部分，将其标签设置为 -100
-                    if instruction_len > 0:
-                        labels[i, :instruction_len] = -100
-
-            inputs["labels"] = labels
-            return inputs
-
-        # Existing multimodal logic
-        # 分别构造用户消息和完整对话列表
         user_messages_list = []
         full_messages_list = []
 
         for item in batch:
             input_data = item.input_text
             labels_data = item.label_text
-            image_path = (
-                item.image_path
-                if item.image_path
-                else ""
-            )
+            image_path = item.image_path
 
             # 构建用户消息内容，支持图像和文本
             user_content = []
@@ -271,7 +199,9 @@ class MultiModalCollator:
 class UnifiedTestCollator:
     """统一的测试数据整理器 - 自动检测并处理单模态/多模态数据"""
 
-    def __init__(self, args: Args, processor_or_tokenizer, model_type: str | None = None):
+    def __init__(
+        self, args: Args, processor_or_tokenizer, model_type: str | None = None
+    ):
         self.args = args
         self.model_type = model_type
 
@@ -307,9 +237,7 @@ class UnifiedTestCollator:
             for item in batch
         )
 
-    def _process_text_only_batch(
-        self, batch: list[TrainingSample]
-    ) -> tuple:
+    def _process_text_only_batch(self, batch: list[TrainingSample]) -> tuple:
         """处理纯文本batch"""
         # 提取输入文本和目标文本
         input_texts = [item.input_text for item in batch]
@@ -326,13 +254,11 @@ class UnifiedTestCollator:
 
         return (inputs, targets)
 
-    def _process_multimodal_batch(
-        self, batch: list[TrainingSample]
-    ) -> tuple:
+    def _process_multimodal_batch(self, batch: list[TrainingSample]) -> tuple:
         """处理多模态batch"""
         messages_list = []  # 存储所有样本的用户消息列表
         targets = []  # 存储所有样本的目标文本列表
-        item_ids = [] # 存储item_id
+        item_ids = []  # 存储item_id
 
         for item in batch:
             image_path = item.image_path

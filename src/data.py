@@ -7,6 +7,8 @@ from dataclasses import asdict
 import numpy as np
 from torch.utils.data import Dataset
 
+from src.config import parse_args
+
 from .prompt import all_prompt, sft_prompt
 from .type import Args, EnrichedData, TrainingSample
 
@@ -1621,11 +1623,6 @@ class SeqRectWithoutItemIDDataset_1(BaseDataset):
         sorted_items = sorted(self.inters.items(), key=lambda x: int(x[0]))
         self.inters = dict(sorted_items[:target_size])
         print("new total inters:", len(self.inters))
-        # 加载物品索引数据
-        with open(
-            os.path.join(self.data_path, self.dataset + self.index_file)
-        ) as f:
-            self.indices = json.load(f)
 
     def _remap_items(self):
         # 将用户交互序列中的物品ID映射为对应的token字符串
@@ -1757,12 +1754,9 @@ class SeqRectWithoutItemIDDataset_1(BaseDataset):
         instruction = prompt["instruction"].format(**data)
         response = prompt["response"].format(**data)
 
-        # 构建输入文本（包含instruction，response为空）
         input_text = sft_prompt.format(instruction=instruction, response="")
         # 标签文本应该是完整的 instruction + response 格式
-        label_text = sft_prompt.format(
-            instruction=instruction, response=response
-        )
+        label_text = response
 
         return input_text, label_text
 
@@ -1791,3 +1785,17 @@ class SeqRectWithoutItemIDDataset_1(BaseDataset):
             label_text=label_text,
             is_multimodal=False,
         )
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    dataset = SeqRectWithoutItemIDDataset_1(args, mode="train")
+    print(dataset[0])
+
+    from transformers import AutoProcessor
+
+    from .collator import MultiModalCollator
+
+    tokenizer = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-3B-Instruct")
+    collator = MultiModalCollator(args, processor_or_tokenizer=tokenizer)
+    print(collator([dataset[i] for i in range(4)]))

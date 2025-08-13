@@ -15,7 +15,7 @@ from transformers import (
     TrainingArguments,
 )
 
-from ..collator import Collator
+from ..collator import MultiModalCollator
 from ..config import parse_args
 from ..type import Args
 from ..utils import (
@@ -236,8 +236,7 @@ def train(args: Args) -> None:
         valid_data,
     ) = load_and_prepare_model_tokenizer(args, local_rank)
 
-    tokenizer = tokenizer_or_processor.tokenizer
-    collator = Collator(args, tokenizer)
+    collator = MultiModalCollator(args, tokenizer_or_processor)
 
     if not ddp and torch.cuda.device_count() > 1:
         model.is_parallelizable = True
@@ -245,6 +244,7 @@ def train(args: Args) -> None:
 
     training_args = get_training_args(args, ddp)
 
+    tokenizer = tokenizer_or_processor.tokenizer
     trainer = transformers.Trainer(
         model=model,
         train_dataset=train_data,

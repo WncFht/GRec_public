@@ -107,8 +107,8 @@ class DatasetArgs:
     data_path: str = ""
     image_path: str = "images"
     tasks: str = "seqrec,item2index,index2item,fusionseqrec,itemsearch,preferenceobtain,mmitem2index,mmindex2item,mmitemenrich,mmitemenrichwithoutid"
-    dataset: str = "Games"
-    index_file: str = ".index.json"
+    dataset: str = "Instruments"
+    index_file: str = ".index_qwen7B.json"
     max_his_len: int = 20
     add_prefix: bool = False
     his_sep: str = ", "

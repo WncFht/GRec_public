@@ -12,12 +12,12 @@ dataset_args:
   # 需要执行的任务列表, 用逗号分隔。
   # 可用任务: seqrec, item2index, index2item, fusionseqrec, itemsearch, preferenceobtain, mmitem2index, mmindex2item, mmitemenrich
   tasks: "seqrec,item2index,index2item,fusionseqrec,itemsearch,preferenceobtain,mmitem2index,mmindex2item,mmitemenrich"
-  dataset: "Games"  # 使用的数据集名称, 例如 Games, Baby, Sports
-  index_file: ".index.json" # 存储物品索引的映射文件名
+  dataset: "Instruments"  # 使用的数据集名称, 例如 Games, Baby, Sports
+  index_file: ".index_qwen7B.json" # 存储物品索引的映射文件名
   max_his_len: 20 # 用户历史序列的最大长度, -1表示不限制
   add_prefix: false # 是否在历史序列前添加"1:, 2:, ..."这样的数字前缀
   his_sep: ", " # 历史序列中物品之间的分隔符
-  only_train_response: false # 训练时是否只计算答案部分的loss
+  only_train_response: True # 训练时是否只计算答案部分的loss
 
   # 训练时为每个任务采样多少种prompt, 与tasks列表一一对应
   train_prompt_sample_num: "1,1,1,1,1,1,1,1,1"
@@ -59,8 +59,6 @@ train_args:
 
 # ----------------- 测试配置 (Test Args) -----------------
 test_args:
-  ckpt_path: "" # 用于测试的模型检查点路径 (可以是完整模型或LoRA权重)
-  lora: false # 指明上面的ckpt_path是否为LoRA权重
   filter_items: false # 评估时是否过滤掉不在候选集中的物品
   results_file: "./results/test-ddp.json" # 保存测试结果的文件路径
   test_batch_size: 1 # 测试时的批处理大小

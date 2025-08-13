@@ -2,8 +2,18 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "dataset and collator",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.data",
+            "args": [
+                "--config_file",
+                "./config/qwen_vl_finetune_seqrec.yml"
+            ]
+        },
+        {
             "name": "qwen_vl_finetune_seqrec",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "module": "src.finetune.qwen_vl_finetune",
             "args": [
@@ -22,7 +32,7 @@
         },
         {
             "name": "qwen_vl_finetune_seqrec_test",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "module": "src.seqrec.evaluate",
             "args": [
@@ -41,7 +51,7 @@
         },
         {
             "name": "qwen_vl_finetune_seqrec_withoutid",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "module": "src.finetune.qwen_vl_finetune_without_itemid",
             "args": [
@@ -53,6 +63,23 @@
             "env": {
                 "CUDA_VISIBLE_DEVICES": "0",
                 "PYTHONPATH": "${workspaceFolder}"
+            },
+            "justMyCode": false,
+            "stopOnEntry": false,
+            "python": "${command:python.interpreterPath}"
+        },
+        {
+            "name": "infer_seqrec_without_itemid",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.infer.test_seqrec_without_itemid",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "2",
+                "PYTHONPATH": "${workspaceFolder}",
+                // "CKPT_PATH": "/home/fanghaotian/src/GRec/ckpt/Instruments/Qwen2.5-VL-3B-Instruct-finetune-seqrec-qwen7B-withtout-id-1/checkpoint-3184"
+                "CKPT_PATH": "/home/fanghaotian/src/GRec/ckpt/base_model/Qwen2.5-VL-3B-Instruct"
             },
             "justMyCode": false,
             "stopOnEntry": false,
