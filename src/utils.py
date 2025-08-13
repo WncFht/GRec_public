@@ -216,6 +216,15 @@ def load_model_for_training(
 
     # 1. 加载 Processor / Tokenizer
     print(f"从 '{base_model_path}' 加载分词器...")
+
+    # 根据模型类型设置正确的 padding_side
+    if model_type in ["qwen_vl", "llama", "qwen"]:
+        # Decoder-only 模型需要 left padding 以保持因果性
+        from_pretrained_kwargs["padding_side"] = "left"
+    elif model_type in ["t5", "instructblip"]:
+        # Encoder-decoder 模型可以使用 right padding
+        from_pretrained_kwargs["padding_side"] = "right"
+
     processor = processor_class.from_pretrained(
         base_model_path, **from_pretrained_kwargs
     )

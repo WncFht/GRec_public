@@ -21,6 +21,17 @@ class Collator:
         # 如果tokenizer没有pad_token_id，则将其设置为unk_token_id
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token_id = self.tokenizer.unk_token_id
+
+        # 确保 decoder-only 模型使用正确的 padding_side
+        if hasattr(self.tokenizer, "padding_side"):
+            # 检查模型类型，如果是 decoder-only 模型，强制使用 left padding
+            if args.dataset_args.model_type in ["qwen_vl", "llama", "qwen"]:
+                if self.tokenizer.padding_side != "left":
+                    print(
+                        f"警告: 检测到 {args.dataset_args.model_type} 模型使用 {self.tokenizer.padding_side} padding，"
+                        f"已自动调整为 left padding 以保持因果性"
+                    )
+                    self.tokenizer.padding_side = "left"
         # print(self.tokenizer.model_max_length)
 
     def __call__(self, batch: list[TrainingSample]):
@@ -91,6 +102,17 @@ class MultiModalCollator:
         # 如果tokenizer没有pad_token_id，则将其设置为unk_token_id
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token_id = self.tokenizer.unk_token_id
+
+        # 确保 decoder-only 模型使用正确的 padding_side
+        if hasattr(self.tokenizer, "padding_side"):
+            # 检查模型类型，如果是 decoder-only 模型，强制使用 left padding
+            if args.global_args.model_type in ["qwen_vl", "llama", "qwen"]:
+                if self.tokenizer.padding_side != "left":
+                    print(
+                        f"警告: 检测到 {args.global_args.model_type} 模型使用 {self.tokenizer.padding_side} padding，"
+                        f"已自动调整为 left padding 以保持因果性"
+                    )
+                    self.tokenizer.padding_side = "left"
 
     def __call__(self, batch: list[TrainingSample]) -> dict[str, torch.Tensor]:
         """处理一批多模态数据 - 支持混合batch"""
@@ -218,6 +240,17 @@ class UnifiedTestCollator:
             self.tokenizer.pad_token_id = getattr(
                 self.tokenizer, "unk_token_id", 0
             )
+
+        # 确保 decoder-only 模型使用正确的 padding_side
+        if hasattr(self.tokenizer, "padding_side"):
+            # 检查模型类型，如果是 decoder-only 模型，强制使用 left padding
+            if self.model_type in ["qwen_vl", "llama", "qwen"]:
+                if self.tokenizer.padding_side != "left":
+                    print(
+                        f"警告: 检测到 {self.model_type} 模型使用 {self.tokenizer.padding_side} padding，"
+                        f"已自动调整为 left padding 以保持因果性"
+                    )
+                    self.tokenizer.padding_side = "left"
 
     def __call__(self, batch: list[TrainingSample]) -> tuple:
         """统一处理接口：根据batch内容自动选择单模态或多模态处理"""
