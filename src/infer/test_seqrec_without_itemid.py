@@ -21,7 +21,7 @@ model.eval()
 model.to("cuda")
 
 inputs = collator([dataset[i] for i in range(4)])
-print(inputs)
+print(inputs["targets"])
 inputs = {k: v.to("cuda") for k, v in inputs.items()}
 results = model.generate(**inputs)
 
