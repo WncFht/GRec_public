@@ -1795,17 +1795,17 @@ if __name__ == "__main__":
 
     from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
 
-    from src.collator import MultiModalCollator
+    from src.collator import Collator
 
     processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-3B-Instruct")
 
     tokenizer = processor.tokenizer
-    # collator = Collator(args, tokenizer=tokenizer)
+    collator = Collator(args, tokenizer=tokenizer)
 
     new_tokens = dataset.get_new_tokens()
     tokenizer.add_tokens(new_tokens)
 
-    collator = MultiModalCollator(args, processor_or_tokenizer=processor)
+    # collator = MultiModalCollator(args, processor_or_tokenizer=processor)
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         "Qwen/Qwen2.5-VL-3B-Instruct", trust_remote_code=True
     )

@@ -234,7 +234,7 @@ class MultiModalCollator:
         labels[labels == self.tokenizer.pad_token_id] = -100
 
         return {
-            "input_ids": user_batch_result["input_ids"],
+            "input_ids": batch_result["input_ids"],
             "attention_mask": batch_result["attention_mask"],
             "labels": labels,
         }

@@ -22,7 +22,7 @@ dataset_args:
   train_data_sample_num: "0"
   index_file: ".index_qwen7B.json"
   only_train_response: true
-  ratio_dataset: 0.1
+  ratio_dataset: 0.01
 
 train_args:
   # --- 训练核心参数 ---

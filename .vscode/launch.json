@@ -101,7 +101,7 @@
             "console": "integratedTerminal",
             "cwd": "${workspaceFolder}",
             "env": {
-                "CUDA_VISIBLE_DEVICES": "6",
+                "CUDA_VISIBLE_DEVICES": "5",
                 "PYTHONPATH": "${workspaceFolder}"
             },
             "justMyCode": false,
