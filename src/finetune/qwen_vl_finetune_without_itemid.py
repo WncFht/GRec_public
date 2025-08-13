@@ -149,11 +149,6 @@ def load_and_prepare_model_tokenizer(
         tokenizer.save_pretrained(args.global_args.output_dir)
         config.save_pretrained(args.global_args.output_dir)
     print("=" * 50)
-    print("model_type:", args.global_args.model_type)
-    for name, param in model.named_parameters():
-        print(
-            f"{name}: {tuple(param.shape)}, reqires_grad={name, param.requires_grad}"
-        )
     if args.global_args.model_type == "qwen_vl":
         if hasattr(model, "visual"):
             for name, param in model.visual.named_parameters():
@@ -163,6 +158,11 @@ def load_and_prepare_model_tokenizer(
             for name, param in model.visual.merger.named_parameters():
                 param.requires_grad = False
             print("冻结视觉模型融合层参数")
+    print("model_type:", args.global_args.model_type)
+    for name, param in model.named_parameters():
+        print(
+            f"{name}: {tuple(param.shape)}, reqires_grad={name, param.requires_grad}"
+        )
     return (
         model,
         tokenizer_or_processor,
