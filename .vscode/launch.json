@@ -2,6 +2,23 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "test_without_id",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.infer.test_without_id",
+            "args": [
+                "--config_file",
+                "./config/qwen_vl_finetune_seqrec_withoutid_test.yml"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "2",
+                "PYTHONPATH": "${workspaceFolder}",
+                "CKPT_PATH": "/home/fanghaotian/src/GRec/ckpt/base_model/Qwen2.5-VL-3B-Instruct"
+            },
+        },
+        {
             "name": "dataset and collator",
             "type": "debugpy",
             "request": "launch",

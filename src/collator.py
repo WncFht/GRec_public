@@ -321,7 +321,6 @@ class UnifiedTestCollator:
         if self.model_type == "instructblip":
             input_texts = [item.input_text for item in batch]
         else:
-            # 批量应用聊天模板到输入文本，不进行tokenize，添加生成提示（因为是测试阶段）
             input_texts = [
                 self.processor.apply_chat_template(
                     messages, tokenize=False, add_generation_prompt=True

@@ -1760,6 +1760,9 @@ class SeqRectWithoutItemIDDataset_1(BaseDataset):
 
         return input_text, label_text
 
+    def get_all_items(self):
+        return list(self.remapped_inters.values())
+
     def __getitem__(self, index):
         # 根据索引获取数据
         if self.mode == "valid":
@@ -1789,7 +1792,7 @@ class SeqRectWithoutItemIDDataset_1(BaseDataset):
 
 if __name__ == "__main__":
     args = parse_args()
-    dataset = SeqRectWithoutItemIDDataset_1(args, mode="train")
+    dataset = SeqRectWithoutItemIDDataset_1(args, mode="test")
     print(dataset[0])
 
     from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration

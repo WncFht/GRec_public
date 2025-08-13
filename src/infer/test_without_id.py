@@ -1,0 +1,162 @@
+import json
+import os
+
+import torch
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+from transformers import (
+    AutoProcessor,
+    Qwen2_5_VLForConditionalGeneration,
+)
+
+from ..collator import UnifiedTestCollator
+from ..config import parse_args
+from ..data import SeqRectWithoutItemIDDataset_1
+from ..evaluate import get_metrics_results, get_topk_results
+from ..prompt import all_prompt
+from ..type import Args
+from ..utils import set_seed
+
+
+def test(args: Args):
+    set_seed(args.global_args.seed)
+    print(vars(args))
+
+    device_map = {"": args.test_args.gpu_id}
+    device = torch.device("cuda", args.test_args.gpu_id)
+
+    ckpt_path = os.environ.get("CKPT_PATH")
+    processor = AutoProcessor.from_pretrained(ckpt_path)
+    tokenizer = processor.tokenizer
+    tokenizer.padding_side = "left"
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+        ckpt_path,
+        torch_dtype=torch.bfloat16,
+        low_cpu_mem_usage=True,
+        device_map=device_map,
+    )
+
+    if args.test_args.test_prompt_ids == "all":
+        prompt_ids = range(len(all_prompt["seqrec"]))
+    else:
+        prompt_ids = [int(_) for _ in args.test_args.test_prompt_ids.split(",")]
+
+    test_data = SeqRectWithoutItemIDDataset_1(args, mode="test")
+    collator = UnifiedTestCollator(args, tokenizer)
+    all_items = test_data.get_all_items()
+
+    # prefix_allowed_tokens = test_data.get_prefix_allowed_tokens_fn(tokenizer)
+
+    test_loader = DataLoader(
+        test_data,
+        batch_size=args.test_args.test_batch_size,
+        collate_fn=collator,
+        shuffle=True,
+        num_workers=4,
+        pin_memory=True,
+    )
+
+    print("data num:", len(test_data))
+
+    model.eval()
+
+    metrics = args.test_args.metrics.split(",")
+    all_prompt_results = []
+    with torch.no_grad():
+        for prompt_id in prompt_ids:
+            test_loader.dataset.set_prompt(prompt_id)
+            metrics_results = {}
+            total = 0
+
+            for step, batch in enumerate(tqdm(test_loader)):
+                inputs = batch[0].to(device)
+                targets = batch[1]
+                total += len(targets)
+
+                output = model.generate(
+                    input_ids=inputs["input_ids"],
+                    attention_mask=inputs["attention_mask"],
+                    max_new_tokens=2,
+                    # max_length=10,
+                    # prefix_allowed_tokens_fn=prefix_allowed_tokens,
+                    num_beams=args.test_args.num_beams,
+                    num_return_sequences=args.test_args.num_beams,
+                    output_scores=True,
+                    return_dict_in_generate=True,
+                    early_stopping=True,
+                )
+                output_ids = output["sequences"]
+                scores = output["sequences_scores"]
+
+                output = tokenizer.batch_decode(
+                    output_ids, skip_special_tokens=True
+                )
+                # print(output)
+                topk_res = get_topk_results(
+                    output,
+                    scores,
+                    targets,
+                    args.test_args.num_beams,
+                    all_items=all_items
+                    if args.test_args.filter_items
+                    else None,
+                )
+
+                batch_metrics_res = get_metrics_results(topk_res, metrics)
+                # print(batch_metrics_res)
+
+                for m, res in batch_metrics_res.items():
+                    if m not in metrics_results:
+                        metrics_results[m] = res
+                    else:
+                        metrics_results[m] += res
+
+                if (step + 1) % 10 == 0:
+                    temp = {}
+                    for m in metrics_results:
+                        temp[m] = metrics_results[m] / total
+                    print(temp)
+
+            for m in metrics_results:
+                metrics_results[m] = metrics_results[m] / total
+
+            all_prompt_results.append(metrics_results)
+            print("======================================================")
+            print(f"Prompt {prompt_id} results: ", metrics_results)
+            print("======================================================")
+            print()
+
+    mean_results = {}
+    min_results = {}
+    max_results = {}
+
+    for m in metrics:
+        all_res = [_[m] for _ in all_prompt_results]
+        mean_results[m] = sum(all_res) / len(all_res)
+        min_results[m] = min(all_res)
+        max_results[m] = max(all_res)
+
+    print("======================================================")
+    print("Mean results: ", mean_results)
+    print("Min results: ", min_results)
+    print("Max results: ", max_results)
+    print("======================================================")
+
+    save_data = {}
+    save_data["test_prompt_ids"] = args.test_args.test_prompt_ids
+    save_data["mean_results"] = mean_results
+    save_data["min_results"] = min_results
+    save_data["max_results"] = max_results
+    save_data["all_prompt_results"] = all_prompt_results
+
+    with open(args.test_args.results_file, "w") as f:
+        json.dump(save_data, f, indent=4)
+
+
+if __name__ == "__main__":
+    args: Args = parse_args()
+
+    test(args)
