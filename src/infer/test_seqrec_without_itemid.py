@@ -20,9 +20,12 @@ model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
 model.eval()
 model.to("cuda")
 
-inputs = collator([dataset[i] for i in range(4)])
-print(inputs["targets"])
-inputs = {k: v.to("cuda") for k, v in inputs.items()}
-results = model.generate(**inputs)
+length = len(dataset)
+for i in range(length - 11, length):
+    inputs = collator([dataset[i]])
+    print(dataset[i].label_text)
+    inputs = {k: v.to("cuda") for k, v in inputs.items()}
+    results = model.generate(**inputs)
 
-print(tokenizer.decode(results[0], skip_special_tokens=True))
+    print("Outputs:", "=" * 50)
+    print(tokenizer.decode(results[0], skip_special_tokens=True))
