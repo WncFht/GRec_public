@@ -124,6 +124,23 @@
             "justMyCode": false,
             "stopOnEntry": false,
             "python": "${command:python.interpreterPath}"
+        },
+        {
+            "name": "infer_seqrec_with_item_id",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.infer.test_seqrec_with_item_id",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "5",
+                "PYTHONPATH": "${workspaceFolder}",
+                "CKPT_PATH": "/home/fanghaotian/src/GRec/ckpt/Instruments/Qwen2.5-VL-3B-Instruct-finetune-seqrec-qwen7B-with-id-0.1/checkpoint-328"
+                // "CKPT_PATH": "/home/fanghaotian/src/GRec/ckpt/base_model/Qwen2.5-VL-3B-Instruct"
+            },
+            "justMyCode": false,
+            "stopOnEntry": false,
+            "python": "${command:python.interpreterPath}"
         }
     ]
 }

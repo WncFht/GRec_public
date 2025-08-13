@@ -4,7 +4,7 @@ from src.config import parse_args
 from src.data import SeqRecDataset
 
 args = parse_args()
-dataset = SeqRecDataset(args, mode="train")
+dataset = SeqRecDataset(args, mode="test")
 print(dataset[0])
 
 from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
@@ -20,9 +20,13 @@ model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
 model.eval()
 model.to("cuda")
 
-inputs = collator([dataset[i] for i in range(4)])
-print(inputs["targets"])
-inputs = {k: v.to("cuda") for k, v in inputs.items()}
-results = model.generate(**inputs)
+length = len(dataset)
+for i in range(length - 5, length):
+    inputs = collator([dataset[i]])
+    print("Inputs:", "=" * 50)
+    print(dataset[i].label_text)
+    inputs = {k: v.to("cuda") for k, v in inputs.items()}
+    results = model.generate(**inputs)
 
-print(tokenizer.decode(results[0], skip_special_tokens=True))
+    print("Outputs:", "=" * 50)
+    print(tokenizer.decode(results[0], skip_special_tokens=True))
