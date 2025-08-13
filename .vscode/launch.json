@@ -6,6 +6,10 @@
             "type": "debugpy",
             "request": "launch",
             "module": "src.data",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "2",
+                "PYTHONPATH": "${workspaceFolder}"
+            },
             "args": [
                 "--config_file",
                 "./config/qwen_vl_finetune_seqrec.yml"

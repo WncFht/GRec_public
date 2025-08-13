@@ -1792,10 +1792,21 @@ if __name__ == "__main__":
     dataset = SeqRectWithoutItemIDDataset_1(args, mode="train")
     print(dataset[0])
 
-    from transformers import AutoProcessor
+    from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
 
     from .collator import MultiModalCollator
 
     tokenizer = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-3B-Instruct")
     collator = MultiModalCollator(args, processor_or_tokenizer=tokenizer)
-    print(collator([dataset[i] for i in range(4)]))
+    model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+        "Qwen/Qwen2.5-VL-3B-Instruct", trust_remote_code=True
+    )
+    model.eval()
+    model.to("cuda")
+
+    inputs = collator([dataset[i] for i in range(4)])
+    print(inputs)
+    inputs = {k: v.to("cuda") for k, v in inputs.items()}
+    results = model.generate(**inputs)
+
+    print(tokenizer.decode(results[0], skip_special_tokens=True))

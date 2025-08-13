@@ -1,9 +1,9 @@
 import os
 
 import torch
-from transformers import AutoTokenizer, Qwen2_5_VLForConditionalGeneration
+from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
 
-from ..collator import UnifiedTestCollator
+from ..collator import MultiModalCollator
 from ..config import parse_args
 from ..data import SeqRectWithoutItemIDDataset_1
 
@@ -18,7 +18,7 @@ def main():
     args.dataset_args.dataset = "Instruments"
 
     # 加载tokenizer和模型
-    tokenizer = AutoTokenizer.from_pretrained(ckpt_dir, trust_remote_code=True)
+    processor = AutoProcessor.from_pretrained(ckpt_dir, trust_remote_code=True)
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         ckpt_dir, trust_remote_code=True
     ).to(device)
@@ -27,11 +27,11 @@ def main():
     # 加载数据集（只取前2个样本）
     dataset = SeqRectWithoutItemIDDataset_1(args, mode="test", sample_num=2)
     # 使用 UnifiedTestCollator 适配 Qwen2.5-VL
-    collator = UnifiedTestCollator(args, tokenizer, model_type="qwen_vl")
-
+    collator = MultiModalCollator(args, processor)
+    tokenizer = processor.tokenizer
     for i in range(len(dataset)):
         batch = [dataset[i]]
-        inputs, targets = collator(batch)
+        inputs = collator(batch)
         inputs = {k: v.to(device) for k, v in inputs.items()}
         print(f"\n==== Sample {i} ====")
         print("Input:")
