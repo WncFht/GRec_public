@@ -90,6 +90,25 @@
             "python": "${command:python.interpreterPath}"
         },
         {
+            "name": "qwen_vl_finetune_seqrec_with_itemid",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.finetune.qwen_vl_finetune_with_itemid",
+            "args": [
+                "--config_file",
+                "./config/qwen_vl_finetune_seqrec_with_id.yml"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "6",
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "justMyCode": false,
+            "stopOnEntry": false,
+            "python": "${command:python.interpreterPath}"
+        },
+        {
             "name": "infer_seqrec_without_itemid",
             "type": "debugpy",
             "request": "launch",

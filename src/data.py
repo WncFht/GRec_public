@@ -330,9 +330,7 @@ class SeqRecDataset(BaseDataset):
         # 构建输入文本（包含instruction，response为空）
         input_text = sft_prompt.format(instruction=instruction, response="")
         # 标签文本应该是完整的 instruction + response 格式
-        label_text = sft_prompt.format(
-            instruction=instruction, response=response
-        )
+        label_text = response
 
         return input_text, label_text
 
@@ -1792,15 +1790,22 @@ class SeqRectWithoutItemIDDataset_1(BaseDataset):
 
 if __name__ == "__main__":
     args = parse_args()
-    dataset = SeqRectWithoutItemIDDataset_1(args, mode="test")
+    dataset = SeqRecDataset(args, mode="test")
     print(dataset[0])
 
     from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
 
-    from .collator import MultiModalCollator
+    from src.collator import MultiModalCollator
 
-    tokenizer = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-3B-Instruct")
-    collator = MultiModalCollator(args, processor_or_tokenizer=tokenizer)
+    processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-3B-Instruct")
+
+    tokenizer = processor.tokenizer
+    # collator = Collator(args, tokenizer=tokenizer)
+
+    new_tokens = dataset.get_new_tokens()
+    tokenizer.add_tokens(new_tokens)
+
+    collator = MultiModalCollator(args, processor_or_tokenizer=processor)
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         "Qwen/Qwen2.5-VL-3B-Instruct", trust_remote_code=True
     )
