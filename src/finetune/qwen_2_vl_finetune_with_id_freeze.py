@@ -17,6 +17,7 @@ from ..config import parse_args
 from ..type import Args
 from ..utils import (
     ensure_dir,
+    freeze_original_embeddings_with_hook,
     load_datasets,
     set_seed,
     verify_token_ordering,
@@ -67,26 +68,6 @@ def get_tokenizer(
     return tokenizer_or_processor
 
 
-def count_trainable_parameters(model: torch.nn.Module) -> tuple[int, int]:
-    """
-    统计模型中可训练和不可训练参数的数量。
-
-    Args:
-        model: PyTorch模型
-
-    Returns:
-        tuple[int, int]: (可训练参数数量, 总参数数量)
-
-    """
-    trainable_params = 0
-    all_params = 0
-    for param in model.parameters():
-        all_params += param.numel()
-        if param.requires_grad:
-            trainable_params += param.numel()
-    return trainable_params, all_params
-
-
 def load_and_prepare_model_tokenizer(
     args: Args, local_rank: int
 ) -> tuple[
@@ -95,6 +76,7 @@ def load_and_prepare_model_tokenizer(
     int,
     ConcatDataset,
     Dataset | None,
+    list,
 ]:
     """
     加载基础模型和处理器，并根据数据集准备tokenizer。
@@ -143,21 +125,12 @@ def load_and_prepare_model_tokenizer(
     config.vocab_size = new_vocab_size
     model.config.vocab_size = new_vocab_size
 
-    # 冻结原始token embedding，只训练新添加的token embedding
-    input_embeddings = model.get_input_embeddings()
-    if hasattr(input_embeddings, "weight"):
-        # 冻结原始词汇表的embedding参数
-        input_embeddings.weight.data[:original_vocab_size].requires_grad_(False)
-        print(f"冻结原始词汇表embedding参数 (0-{original_vocab_size - 1})")
-
-        # 只训练新添加的token embedding
-        if add_num > 0:
-            input_embeddings.weight.data[original_vocab_size:].requires_grad_(
-                True
-            )
-            print(
-                f"训练新添加的token embedding参数 ({original_vocab_size}-{new_vocab_size - 1})"
-            )
+    # 使用梯度hook冻结原始token embedding
+    print("=" * 50)
+    embedding_hooks = freeze_original_embeddings_with_hook(
+        model, original_vocab_size
+    )
+    print("=" * 50)
 
     if local_rank == 0:
         print(f"添加了 {add_num} 个新token")
@@ -169,12 +142,6 @@ def load_and_prepare_model_tokenizer(
         print("embedding size: ", model.get_input_embeddings().weight.shape)
         tokenizer_or_processor.save_pretrained(args.global_args.output_dir)
         config.save_pretrained(args.global_args.output_dir)
-    print("=" * 50)
-    print("model_type:", args.global_args.model_type)
-    for name, param in model.named_parameters():
-        print(
-            f"{name}: {tuple(param.shape)}, requires_grad={param.requires_grad}"
-        )
     if args.global_args.model_type == "qwen_vl":
         if hasattr(model, "visual"):
             for name, param in model.visual.named_parameters():
@@ -185,12 +152,12 @@ def load_and_prepare_model_tokenizer(
                 param.requires_grad = False
             print("冻结视觉模型融合层参数")
 
-    # 统计参数训练状态
-    trainable_params, total_params = count_trainable_parameters(model)
-    print(f"可训练参数: {trainable_params:,}")
-    print(f"总参数: {total_params:,}")
-    print(f"冻结参数: {total_params - trainable_params:,}")
-    print(f"训练参数比例: {trainable_params / total_params * 100:.2f}%")
+    print("=" * 50)
+    print("model_type:", args.global_args.model_type)
+    for name, param in model.named_parameters():
+        print(
+            f"{name}: {tuple(param.shape)}, requires_grad={param.requires_grad}"
+        )
 
     return (
         model,
@@ -198,6 +165,7 @@ def load_and_prepare_model_tokenizer(
         original_vocab_size,
         train_data,
         valid_data,
+        embedding_hooks,
     )
 
 
@@ -265,6 +233,7 @@ def train(args: Args) -> None:
         original_vocab_size,
         train_data,
         valid_data,
+        embedding_hooks,
     ) = load_and_prepare_model_tokenizer(args, local_rank)
 
     tokenizer = tokenizer_or_processor.tokenizer
@@ -291,6 +260,12 @@ def train(args: Args) -> None:
         model = torch.compile(model)
 
     trainer.train(resume_from_checkpoint=args.train_args.resume_from_checkpoint)
+
+    # 清理embedding梯度hook
+    if embedding_hooks:
+        for hook in embedding_hooks:
+            hook.remove()
+        print(f"清理了 {len(embedding_hooks)} 个embedding梯度hook")
 
     trainer.save_state()
     trainer.save_model(output_dir=args.global_args.output_dir)

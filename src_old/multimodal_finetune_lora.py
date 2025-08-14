@@ -5,7 +5,6 @@ from typing import Any
 
 import torch
 import transformers
-from collator import MultiModalCollator
 from peft import LoraConfig, PeftModel, TaskType, get_peft_model
 from torch.utils.data import ConcatDataset, Dataset
 from transformers import (
@@ -14,6 +13,8 @@ from transformers import (
     Qwen2_5_VLForConditionalGeneration,
     TrainingArguments,
 )
+
+from collator import MultiModalCollator
 from utils import (
     ensure_dir,
     freeze_original_embeddings_with_hook,
