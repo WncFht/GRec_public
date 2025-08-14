@@ -44,4 +44,4 @@ for i in range(length - 5, length):
     # decode all the results
     output_texts = tokenizer.batch_decode(output_ids, skip_special_tokens=True)
     for i, o in enumerate(output_texts):
-        print(o, "|", float(scores[i]))
+        print(o, "|", dataset[i].label_text, "|", float(scores[i]))
