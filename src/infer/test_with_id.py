@@ -45,7 +45,7 @@ def test(args: Args):
         prompt_ids = [int(_) for _ in args.test_args.test_prompt_ids.split(",")]
 
     test_data = SeqRecDataset(args, mode="test")
-    collator = UnifiedTestCollator(args, tokenizer)
+    collator = UnifiedTestCollator(args, processor_or_tokenizer=processor)
     all_items = test_data.get_all_items()
 
     # prefix_allowed_tokens = test_data.get_prefix_allowed_tokens_fn(tokenizer)
@@ -79,7 +79,7 @@ def test(args: Args):
                 output = model.generate(
                     input_ids=inputs["input_ids"],
                     attention_mask=inputs["attention_mask"],
-                    max_new_tokens=2,
+                    # max_new_tokens=2,
                     # max_length=10,
                     # prefix_allowed_tokens_fn=prefix_allowed_tokens,
                     num_beams=args.test_args.num_beams,

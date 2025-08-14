@@ -27,7 +27,9 @@ from .data import (
     PreferenceObtainDataset,
     SeqRecDataset,
     SeqRectWithoutItemIDDataset_1,
+    SeqRecWithTitleDataset,
     TextEnrichDataset,
+    TextEnrichWihtoutItemIDDataset,
 )
 from .type import Args
 
@@ -353,7 +355,13 @@ def load_datasets(args: Args):
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
             )
-
+        elif task.lower() == "seqrec_with_title":
+            dataset = SeqRecWithTitleDataset(
+                args,
+                mode="train",
+                prompt_sample_num=prompt_sample_num,
+                sample_num=data_sample_num,
+            )
         elif task.lower() == "item2index" or task.lower() == "index2item":
             dataset = ItemFeatDataset(
                 args,
@@ -402,7 +410,7 @@ def load_datasets(args: Args):
             )
 
         elif task.lower() == "mmitemenrichwithoutid":
-            dataset = SeqRectWithoutItemIDDataset_1(
+            dataset = TextEnrichWihtoutItemIDDataset(
                 args,
                 mode="train",
                 prompt_sample_num=prompt_sample_num,

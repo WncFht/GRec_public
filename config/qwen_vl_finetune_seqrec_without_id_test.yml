@@ -1,11 +1,3 @@
-# ===================================================================
-# 序列推荐评估 Benchmark 配置文件
-#
-# 使用方法:
-# 1. 修改下面的模型配置，将 `enabled` 设置为 `true` 来激活你想评测的模型。
-# 2. 运行主启动脚本 (例如: ./scripts/evaluate/run_seqrec_benchmark.sh)
-# ===================================================================
-
 global_args:
   # 调试模式: 设置为 true 时，只会处理一个样本并打印详细的输入输出信息
   debug: true
@@ -17,7 +9,7 @@ dataset_args:
   data_path: ./data
   dataset: Instruments
   # 默认索引文件, 可在模型配置中被覆盖
-  index_file: ".index.json"
+  index_file: ".index_qwen7B.json"
   ratio_dataset: 0.1
 
 test_args:

@@ -8,7 +8,7 @@
 
 global_args:
   base_model: "./ckpt/base_model/Qwen2.5-VL-3B-Instruct"
-  output_dir: "./ckpt/Instruments/Qwen2.5-VL-3B-Instruct-finetune-seqrec-qwen7B-with-id-0.1"
+  output_dir: "./ckpt/Instruments/Qwen2.5-VL-3B-Instruct-finetune-seqrec-qwen7B-with-id-0.1-nonewtoken"
   debug: true
   seed: 42
 

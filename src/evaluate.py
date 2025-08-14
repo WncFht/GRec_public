@@ -1,21 +1,31 @@
 import math
 
+
 def get_topk_results(predictions, scores, targets, k, all_items=None):
     results = []
     B = len(targets)
     predictions = [_.split("Response:")[-1] for _ in predictions]
-    predictions = [_.strip().replace(" ","") for _ in predictions]
+    predictions = [_.strip().replace(" ", "") for _ in predictions]
 
+    # remove \n and assitant
+    predictions = [
+        _.replace("\n", "").replace("assistant", "") for _ in predictions
+    ]
+
+    # add > to the end of the prediction if it is not there, like <a_1><b_2><c_3><d_12 to <a_1><b_2><c_3><d_12>
+    for i, pred in enumerate(predictions):
+        if pred and pred[-1] != ">":
+            predictions[i] += ">"
     if all_items is not None:
         for i, seq in enumerate(predictions):
             if seq not in all_items:
                 scores[i] = -1000
 
     for b in range(B):
-        batch_seqs = predictions[b * k: (b + 1) * k]
-        batch_scores = scores[b * k: (b + 1) * k]
+        batch_seqs = predictions[b * k : (b + 1) * k]
+        batch_scores = scores[b * k : (b + 1) * k]
 
-        pairs = [(a, b) for a, b in zip(batch_seqs, batch_scores)]
+        pairs = [(a, b) for a, b in zip(batch_seqs, batch_scores, strict=False)]
         sorted_pairs = sorted(pairs, key=lambda x: x[1], reverse=True)
         target_item = targets[b]
         one_results = []
@@ -28,6 +38,7 @@ def get_topk_results(predictions, scores, targets, k, all_items=None):
         results.append(one_results)
 
     return results
+
 
 def get_metrics_results(topk_results, metrics):
     res = {}
@@ -45,7 +56,6 @@ def get_metrics_results(topk_results, metrics):
 
 
 def ndcg_k(topk_results, k):
-
     ndcg = 0.0
     for row in topk_results:
         res = row[:k]
@@ -63,4 +73,3 @@ def hit_k(topk_results, k):
         if sum(res) > 0:
             hit += 1
     return hit
-

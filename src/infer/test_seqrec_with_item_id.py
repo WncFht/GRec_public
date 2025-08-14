@@ -32,7 +32,7 @@ for i in range(length - 5, length):
     outputs = model.generate(
         **inputs,
         num_beams=10,
-        max_new_tokens=10,
+        # max_new_tokens=10,
         output_scores=True,
         return_dict_in_generate=True,
         early_stopping=True,
