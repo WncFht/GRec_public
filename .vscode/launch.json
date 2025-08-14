@@ -178,6 +178,25 @@
                 "PYTHONPATH": "${workspaceFolder}",
                 "CKPT_PATH": "/home/fanghaotian/src/GRec/ckpt/Instruments/Qwen2.5-VL-3B-Instruct-finetune-seqrec-qwen7B-with-id-0.1-nonewtoken/checkpoint-1592"
             },
+        },
+        {
+            "name": "qwen_vl_finetune_seqrec_with_title",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.finetune.qwen_vl_finetune_with_title",
+            "args": [
+                "--config_file",
+                "./config/qwen_vl_finetune_seqrec_with_title.yml"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "5",
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "justMyCode": false,
+            "stopOnEntry": false,
+            "python": "${command:python.interpreterPath}"
         }
     ]
 }

@@ -1851,7 +1851,7 @@ class SeqRecWithTitleDataset(BaseDataset):
         self.remapped_inters = dict()
         for uid, items in self.inters.items():
             new_items = [
-                f"<title>{self.items[i]['title']}</title>" for i in items
+                f"<title>{self.items[str(i)]['title']}</title>" for i in items
             ]
             self.remapped_inters[uid] = new_items
 
