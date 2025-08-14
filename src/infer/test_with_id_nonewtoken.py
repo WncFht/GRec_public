@@ -79,7 +79,7 @@ def test(args: Args):
                 output = model.generate(
                     input_ids=inputs["input_ids"],
                     attention_mask=inputs["attention_mask"],
-                    max_new_tokens=4,
+                    # max_new_tokens=4,
                     # max_length=10,
                     # prefix_allowed_tokens_fn=prefix_allowed_tokens,
                     num_beams=args.test_args.num_beams,

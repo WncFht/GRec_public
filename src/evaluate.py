@@ -14,8 +14,10 @@ def get_topk_results(predictions, scores, targets, k, all_items=None):
 
     # add > to the end of the prediction if it is not there, like <a_1><b_2><c_3><d_12 to <a_1><b_2><c_3><d_12>
     for i, pred in enumerate(predictions):
-        if pred and pred[-1] != ">":
+        if pred and pred[0] == "<" and pred[-1] != ">":
             predictions[i] += ">"
+    print(predictions[: min(k // 2, 5)])
+    print([targets[0]] * min(k // 2, 5))
     if all_items is not None:
         for i, seq in enumerate(predictions):
             if seq not in all_items:
