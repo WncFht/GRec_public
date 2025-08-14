@@ -105,6 +105,7 @@ def test(args: Args):
                     output_ids, skip_special_tokens=True
                 )
                 # print(output)
+                print(scores)
                 topk_res = get_topk_results(
                     output,
                     scores,

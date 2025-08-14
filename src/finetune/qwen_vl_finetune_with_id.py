@@ -126,11 +126,11 @@ def load_and_prepare_model_tokenizer(
     model.config.vocab_size = new_vocab_size
 
     print("=" * 50)
-
     embedding_hooks = freeze_original_embeddings_with_hook(
         model, original_vocab_size
     )
     print("=" * 50)
+
     if local_rank == 0:
         print(f"添加了 {add_num} 个新token")
         print(f"新词汇表大小: {new_vocab_size}")
@@ -141,12 +141,6 @@ def load_and_prepare_model_tokenizer(
         print("embedding size: ", model.get_input_embeddings().weight.shape)
         tokenizer_or_processor.save_pretrained(args.global_args.output_dir)
         config.save_pretrained(args.global_args.output_dir)
-    print("=" * 50)
-    print("model_type:", args.global_args.model_type)
-    for name, param in model.named_parameters():
-        print(
-            f"{name}: {tuple(param.shape)}, requires_grad={param.requires_grad}"
-        )
     if args.global_args.model_type == "qwen_vl":
         if hasattr(model, "visual"):
             for name, param in model.visual.named_parameters():
@@ -156,6 +150,14 @@ def load_and_prepare_model_tokenizer(
             for name, param in model.visual.merger.named_parameters():
                 param.requires_grad = False
             print("冻结视觉模型融合层参数")
+
+    print("=" * 50)
+    print("model_type:", args.global_args.model_type)
+    for name, param in model.named_parameters():
+        print(
+            f"{name}: {tuple(param.shape)}, requires_grad={param.requires_grad}"
+        )
+
     return (
         model,
         tokenizer_or_processor,

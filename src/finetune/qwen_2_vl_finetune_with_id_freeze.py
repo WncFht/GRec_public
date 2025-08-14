@@ -17,6 +17,7 @@ from ..config import parse_args
 from ..type import Args
 from ..utils import (
     ensure_dir,
+    freeze_original_embeddings_with_hook,
     load_datasets,
     set_seed,
     verify_token_ordering,
@@ -65,59 +66,6 @@ def get_tokenizer(
     if isinstance(tokenizer_or_processor, AutoProcessor):
         return tokenizer_or_processor.tokenizer
     return tokenizer_or_processor
-
-
-def freeze_original_embeddings_with_hook(
-    model: torch.nn.Module, original_vocab_size: int
-) -> list:
-    """
-    使用梯度hook冻结原始embedding参数，只训练新添加的token embedding
-
-    Args:
-        model: PyTorch模型
-        original_vocab_size: 原始词汇表大小
-
-    Returns:
-        list: 注册的hook句柄列表，用于后续清理
-
-    """
-    hooks = []
-
-    def set_grads_to_zero_hook(grad: torch.Tensor) -> torch.Tensor:
-        """梯度hook函数，将原始token的梯度置零"""
-        if grad is not None:
-            new_grad = grad.clone()
-            new_grad[:original_vocab_size] = 0.0
-            return new_grad
-        return grad
-
-    if hasattr(model, "language_model") and hasattr(
-        model.language_model, "embed_tokens"
-    ):
-        embed_module = model.language_model.embed_tokens
-        if (
-            hasattr(embed_module, "weight")
-            and embed_module.weight.requires_grad
-        ):
-            handle = embed_module.weight.register_hook(set_grads_to_zero_hook)
-            hooks.append(handle)
-            print(
-                f"为 language_model.embed_tokens 注册hook, shape: {embed_module.weight.shape}"
-            )
-            print(f"冻结前 {original_vocab_size} 个token的梯度")
-    # 3. 冻结视觉模型的rotary_emb
-    # if hasattr(model, "language_model") and hasattr(
-    #     model.language_model, "rotary_emb"
-    # ):
-    #     visual_rotary = model.language_model.rotary_emb
-    #     if (
-    #         hasattr(visual_rotary, "weight")
-    #         and visual_rotary.weight.requires_grad
-    #     ):
-    #         visual_rotary.weight.requires_grad_(False)
-    #         print("冻结 visual.rotary_pos_emb 参数")
-
-    return hooks
 
 
 def load_and_prepare_model_tokenizer(
