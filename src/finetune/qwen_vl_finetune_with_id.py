@@ -17,6 +17,7 @@ from ..config import parse_args
 from ..type import Args
 from ..utils import (
     ensure_dir,
+    freeze_original_embeddings_with_hook,
     load_datasets,
     set_seed,
     verify_token_ordering,
@@ -75,6 +76,7 @@ def load_and_prepare_model_tokenizer(
     int,
     ConcatDataset,
     Dataset | None,
+    list,
 ]:
     """
     加载基础模型和处理器，并根据数据集准备tokenizer。
@@ -123,6 +125,12 @@ def load_and_prepare_model_tokenizer(
     config.vocab_size = new_vocab_size
     model.config.vocab_size = new_vocab_size
 
+    print("=" * 50)
+
+    embedding_hooks = freeze_original_embeddings_with_hook(
+        model, original_vocab_size
+    )
+    print("=" * 50)
     if local_rank == 0:
         print(f"添加了 {add_num} 个新token")
         print(f"新词汇表大小: {new_vocab_size}")
@@ -137,7 +145,7 @@ def load_and_prepare_model_tokenizer(
     print("model_type:", args.global_args.model_type)
     for name, param in model.named_parameters():
         print(
-            f"{name}: {tuple(param.shape)}, reqires_grad={name, param.requires_grad}"
+            f"{name}: {tuple(param.shape)}, requires_grad={param.requires_grad}"
         )
     if args.global_args.model_type == "qwen_vl":
         if hasattr(model, "visual"):
@@ -154,6 +162,7 @@ def load_and_prepare_model_tokenizer(
         original_vocab_size,
         train_data,
         valid_data,
+        embedding_hooks,
     )
 
 
@@ -221,6 +230,7 @@ def train(args: Args) -> None:
         original_vocab_size,
         train_data,
         valid_data,
+        embedding_hooks,
     ) = load_and_prepare_model_tokenizer(args, local_rank)
 
     tokenizer = tokenizer_or_processor.tokenizer
@@ -247,6 +257,11 @@ def train(args: Args) -> None:
         model = torch.compile(model)
 
     trainer.train(resume_from_checkpoint=args.train_args.resume_from_checkpoint)
+
+    if embedding_hooks:
+        for hook in embedding_hooks:
+            hook.remove()
+        print(f"清理了 {len(embedding_hooks)} 个embedding梯度hook")
 
     trainer.save_state()
     trainer.save_model(output_dir=args.global_args.output_dir)

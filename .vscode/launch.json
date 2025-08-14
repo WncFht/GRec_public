@@ -197,6 +197,23 @@
             "justMyCode": false,
             "stopOnEntry": false,
             "python": "${command:python.interpreterPath}"
+        },
+        {
+            "name": "qwen_2_vl_finetune_with_id_freeze",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.finetune.qwen_2_vl_finetune_with_id_freeze",
+            "args": [
+                "--config_file",
+                "./config/qwen_2_vl_finetune_seqrec_with_id_0.1.yml"
+            ],
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "5",
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "justMyCode": false,
+            "stopOnEntry": false,
+            "python": "${command:python.interpreterPath}"
         }
     ]
 }

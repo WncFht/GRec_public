@@ -534,74 +534,54 @@ def verify_token_ordering(
     )
 
 
-def freeze_original_embeddings_simple(model, original_vocab_size):
-    """简单版本：直接冻结原有embedding参数"""
-    input_embeddings = model.get_input_embeddings()
-
-    # 冻结原有token的embedding
-    with torch.no_grad():
-        # 将原有embedding参数的requires_grad设为False
-        original_embeddings = input_embeddings.weight[:original_vocab_size]
-        original_embeddings.requires_grad_(False)
-
-        # 确保新增embedding参数可以训练
-        new_embeddings = input_embeddings.weight[original_vocab_size:]
-        new_embeddings.requires_grad_(True)
-
-    print(f"冻结了前 {original_vocab_size} 个token的embedding参数")
-    print(
-        f"保持后 {len(input_embeddings.weight) - original_vocab_size} 个新token的embedding可训练"
-    )
-
-
-def freeze_original_embeddings_for_lora(model, original_vocab_size):
-    """适用于LoRA+modules_to_save的选择性冻结"""
-    # 找到modules_to_save中的embed_tokens
-    for name, module in model.named_modules():
-        if "embed_tokens" in name and hasattr(module, "weight"):
-            print(f"找到embedding层: {name}, shape: {module.weight.shape}")
-
-            # 冻结原始token (0 到 original_vocab_size-1)
-            module.weight[:original_vocab_size].requires_grad_(False)
-
-            # 保持新token可训练 (original_vocab_size 到 end)
-            module.weight[original_vocab_size:].requires_grad_(True)
-
-            print(f"冻结了前 {original_vocab_size} 个token")
-            print(
-                f"保持后 {module.weight.shape[0] - original_vocab_size} 个新token可训练"
-            )
-            break
-
-
-def freeze_original_embeddings_with_hook(model, original_vocab_size):
+def freeze_original_embeddings_with_hook(
+    model: torch.nn.Module, original_vocab_size: int
+) -> list:
     """
-    使用梯度hook冻结原始embedding参数
+    使用梯度hook冻结原始embedding参数，只训练新添加的token embedding
+
+    Args:
+        model: PyTorch模型
+        original_vocab_size: 原始词汇表大小
+
+    Returns:
+        list: 注册的hook句柄列表，用于后续清理
+
     """
     hooks = []
 
-    def create_embedding_hook(vocab_size):
-        def hook_fn(grad):
-            if grad is not None:
-                # 创建新的梯度，原始token位置置零
-                new_grad = grad.clone()
-                new_grad[:vocab_size] = 0.0
-                return new_grad
-            return grad
+    def set_grads_to_zero_hook(grad: torch.Tensor) -> torch.Tensor:
+        """梯度hook函数，将原始token的梯度置零"""
+        if grad is not None:
+            new_grad = grad.clone()
+            new_grad[:original_vocab_size] = 0.0
+            return new_grad
+        return grad
 
-        return hook_fn
+    if hasattr(model, "language_model") and hasattr(
+        model.language_model, "embed_tokens"
+    ):
+        embed_module = model.language_model.embed_tokens
+        if (
+            hasattr(embed_module, "weight")
+            and embed_module.weight.requires_grad
+        ):
+            handle = embed_module.weight.register_hook(set_grads_to_zero_hook)
+            hooks.append(handle)
+            print(
+                f"为 language_model.embed_tokens 注册hook, shape: {embed_module.weight.shape}"
+            )
+            print(f"冻结前 {original_vocab_size} 个token的梯度")
+    # 3. 冻结视觉模型的rotary_emb
+    # if hasattr(model, "language_model") and hasattr(
+    #     model.language_model, "rotary_emb"
+    # ):
+    #     visual_rotary = model.language_model.rotary_emb
+    #     if (
+    #         hasattr(visual_rotary, "weight")
+    #         and visual_rotary.weight.requires_grad
+    #     ):
+    #         visual_rotary.weight.requires_grad_(False)
+    #         print("冻结 visual.rotary_pos_emb 参数")
 
-    # 为embedding注册hook
-    for name, param in model.named_parameters():
-        if param.requires_grad:
-            if "embed_tokens" in name:
-                handle = param.register_hook(
-                    create_embedding_hook(original_vocab_size)
-                )
-                hooks.append(handle)
-                print(f"为 {name} 注册embedding hook, shape: {param.shape}")
-
-    print(
-        f"注册了 {len(hooks)} 个梯度hook来冻结前 {original_vocab_size} 个token"
-    )
     return hooks
