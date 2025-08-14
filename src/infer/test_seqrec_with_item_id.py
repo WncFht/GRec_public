@@ -7,16 +7,26 @@ args = parse_args()
 dataset = SeqRecDataset(args, mode="test")
 print(dataset[0])
 
-from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
+from transformers import (
+    AutoProcessor,
+    Qwen2_5_VLForConditionalGeneration,
+    Qwen2VLForConditionalGeneration,
+)
 
 from src.collator import UnifiedTestCollator
 
 ckpt_path = os.environ.get("CKPT_PATH")
+model_type = os.environ.get("MODEL_TYPE")
 tokenizer = AutoProcessor.from_pretrained(ckpt_path)
 collator = UnifiedTestCollator(args, processor_or_tokenizer=tokenizer)
-model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-    ckpt_path, trust_remote_code=True
-)
+if model_type == "qwen2_5_vl":
+    model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+        ckpt_path, trust_remote_code=True
+    )
+elif model_type == "qwen_2_vl":
+    model = Qwen2VLForConditionalGeneration.from_pretrained(
+        ckpt_path, trust_remote_code=True
+    )
 model.eval()
 model.to("cuda")
 

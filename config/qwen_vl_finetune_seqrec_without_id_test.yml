@@ -16,7 +16,7 @@ test_args:
   # --- 全局测试参数 ---
   test_task: "seqrec" # or "itemsearch", "fusionseqrec"
   test_prompt_ids: "0" # or "0,1,2"
-  test_batch_size: 2
+  test_batch_size: 16
   num_beams: 20
   metrics: "hit@1,hit@5,hit@10,ndcg@5,ndcg@10"
   filter_items: false

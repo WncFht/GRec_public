@@ -1,0 +1,37 @@
+# ===================================================================
+# 多模态 LoRA 微调配置文件
+#
+# 使用方法:
+# 1. 修改下面的参数来配置你的训练任务。
+# 2. 运行主启动脚本: ./scripts/finetune/multimodal_finetune_lora.sh
+# ===================================================================
+
+global_args:
+  base_model: "Qwen/Qwen2-VL-2B-Instruct"
+  output_dir: "./ckpt/Instruments/Qwen2-VL-2B-Instruct-finetune-seqrec-qwen7B-with-id-0.01"
+  debug: true
+  seed: 42
+
+dataset_args:
+  data_path: ./data
+  dataset: Instruments
+  tasks: "seqrec"
+  # 对应 tasks, 为每个任务采样多少种 prompt
+  train_prompt_sample_num: "1"
+  # 对应 tasks, 为每个任务采样多少条数据, 0 表示全部使用
+  train_data_sample_num: "0"
+  index_file: ".index_qwen7B.json"
+  only_train_response: true
+  ratio_dataset: 0.01
+
+train_args:
+  # --- 训练核心参数 ---
+  epochs: 4
+  per_device_batch_size: 16
+  gradient_accumulation_steps: 2
+  # learning_rate: 1e-4
+  weight_decay: 0.01
+  save_and_eval_strategy: "epoch"
+  bf16: true
+  use_lora: true
+  device: "cuda"

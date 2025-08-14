@@ -7,6 +7,7 @@ from tqdm import tqdm
 from transformers import (
     AutoProcessor,
     Qwen2_5_VLForConditionalGeneration,
+    Qwen2VLForConditionalGeneration,
 )
 
 from ..collator import UnifiedTestCollator
@@ -32,12 +33,21 @@ def test(args: Args):
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-        ckpt_path,
-        torch_dtype=torch.bfloat16,
-        low_cpu_mem_usage=True,
-        device_map=device_map,
-    )
+    model_type = os.environ.get("MODEL_TYPE")
+    if model_type == "qwen2_5_vl":
+        model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+            ckpt_path,
+            torch_dtype=torch.bfloat16,
+            low_cpu_mem_usage=True,
+            device_map=device_map,
+        )
+    elif model_type == "qwen_2_vl":
+        model = Qwen2VLForConditionalGeneration.from_pretrained(
+            ckpt_path,
+            torch_dtype=torch.bfloat16,
+            low_cpu_mem_usage=True,
+            device_map=device_map,
+        )
 
     if args.test_args.test_prompt_ids == "all":
         prompt_ids = range(len(all_prompt["seqrec"]))
