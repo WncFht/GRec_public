@@ -16,6 +16,7 @@ def get_topk_results(predictions, scores, targets, k, all_items=None):
     for i, pred in enumerate(predictions):
         if pred and pred[0] == "<" and pred[-1] != ">":
             predictions[i] += ">"
+    print()
     print(predictions[: min(k // 2, 5)])
     print([targets[0]] * min(k // 2, 5))
     if all_items is not None:

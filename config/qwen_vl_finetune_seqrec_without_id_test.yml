@@ -10,7 +10,7 @@ dataset_args:
   dataset: Instruments
   # 默认索引文件, 可在模型配置中被覆盖
   index_file: ".index_qwen7B.json"
-  ratio_dataset: 0.1
+  ratio_dataset: 1
 
 test_args:
   # --- 全局测试参数 ---
