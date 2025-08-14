@@ -6,11 +6,8 @@ import transformers
 from torch.utils.data import ConcatDataset, Dataset
 from transformers import (
     AutoConfig,
-    AutoModelForCausalLM,
     AutoProcessor,
     AutoTokenizer,
-    LlamaForCausalLM,
-    LlamaTokenizer,
     Qwen2_5_VLForConditionalGeneration,
     TrainingArguments,
 )
@@ -73,10 +70,8 @@ def get_tokenizer(
 def load_and_prepare_model_tokenizer(
     args: Args, local_rank: int
 ) -> tuple[
-    Qwen2_5_VLForConditionalGeneration
-    | LlamaForCausalLM
-    | AutoModelForCausalLM,
-    AutoProcessor | AutoTokenizer,
+    Qwen2_5_VLForConditionalGeneration,
+    AutoProcessor,
     int,
     ConcatDataset,
     Dataset | None,
@@ -97,26 +92,9 @@ def load_and_prepare_model_tokenizer(
     config = AutoConfig.from_pretrained(
         args.global_args.base_model, trust_remote_code=True
     )
-    if args.global_args.model_type == "qwen_vl":
-        tokenizer_or_processor = AutoProcessor.from_pretrained(
-            args.global_args.base_model, trust_remote_code=True
-        )
-    elif args.global_args.model_type == "llama":
-        tokenizer_or_processor = LlamaTokenizer.from_pretrained(
-            args.global_args.base_model,
-            model_max_length=args.train_args.model_max_length,
-            padding_side="right",
-            trust_remote_code=True,
-        )
-        tokenizer_or_processor.pad_token_id = 0
-    elif args.global_args.model_type == "qwen":
-        tokenizer_or_processor = AutoTokenizer.from_pretrained(
-            args.global_args.base_model
-        )
-    else:
-        raise ValueError(
-            f"Unsupported model_type: {args.global_args.model_type}"
-        )
+    tokenizer_or_processor = AutoProcessor.from_pretrained(
+        args.global_args.base_model, trust_remote_code=True
+    )
 
     train_data, valid_data = load_datasets(args)
     new_tokens = train_data.datasets[0].get_new_tokens()
