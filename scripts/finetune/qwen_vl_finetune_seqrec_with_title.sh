@@ -17,11 +17,10 @@ echo "-------------------------------------------------"
 # 使用 tee 同时将输出打印到控制台和日志文件
 LOG_DIR=./log/seqrec_benchmark
 mkdir -p $LOG_DIR
-LOG_FILE=$LOG_DIR/debug-qwen-vl-3b-finetune-qwen7B-with-title-$(date +%Y-%m-%d_%H-%M-%S).log
+LOG_FILE=$LOG_DIR/qwen-vl-3b-finetune-qwen7B-with-title-0.01-$(date +%Y-%m-%d_%H-%M-%S).log
 
 echo "Log will be saved to: $LOG_FILE"
 echo "-------------------------------------------------"
 
 python3 -m src.finetune.qwen_vl_finetune_with_title \
-    --config_file $CONFIG_FILE  
-    # | tee $LOG_FILE
+    --config_file $CONFIG_FILE  | tee $LOG_FILE
