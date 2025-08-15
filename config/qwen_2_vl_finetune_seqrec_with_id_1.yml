@@ -8,7 +8,7 @@
 
 global_args:
   base_model: "Qwen/Qwen2-VL-2B-Instruct"
-  output_dir: "./ckpt/Instruments/Qwen2-VL-2B-Instruct-finetune-seqrec-qwen7B-with-id-1"
+  output_dir: "./ckpt/Instruments/Qwen2-VL-2B-Instruct-finetune-seqrec-qwen7B-with-id-1-freeze"
   debug: true
   seed: 42
 
@@ -27,11 +27,9 @@ dataset_args:
 train_args:
   # --- 训练核心参数 ---
   epochs: 4
-  per_device_batch_size: 16
-  gradient_accumulation_steps: 2
+  per_device_batch_size: 32
   # learning_rate: 1e-4
   weight_decay: 0.01
   save_and_eval_strategy: "epoch"
   bf16: true
-  use_lora: true
   device: "cuda"

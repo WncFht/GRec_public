@@ -103,10 +103,6 @@ def load_and_prepare_model_tokenizer(
     tokenizer = tokenizer_or_processor.tokenizer
     original_vocab_size = len(tokenizer)
 
-    if local_rank == 0:
-        print(f"原始词汇表大小: {original_vocab_size}")
-        print(f"需要添加新token数量: {len(new_tokens)}")
-
     model_class = Qwen2VLForConditionalGeneration
 
     model = model_class.from_pretrained(
@@ -136,28 +132,33 @@ def load_and_prepare_model_tokenizer(
         print(f"添加了 {add_num} 个新token")
         print(f"新词汇表大小: {new_vocab_size}")
         print(f"数据量: {len(train_data)}")
-        print(
-            f"有效batch size: {args.train_args.per_device_batch_size * args.train_args.gradient_accumulation_steps * int(os.environ.get('WORLD_SIZE', 1))}"
-        )
-        print("embedding size: ", model.get_input_embeddings().weight.shape)
+        if args.train_args.gradient_accumulation_steps > 1:
+            print(
+                f"有效batch size: {args.train_args.per_device_batch_size * args.train_args.gradient_accumulation_steps * int(os.environ.get('WORLD_SIZE', 1))}"
+            )
+        else:
+            print(
+                f"有效batch size: {args.train_args.per_device_batch_size * int(os.environ.get('WORLD_SIZE', 1))}"
+            )
         tokenizer_or_processor.save_pretrained(args.global_args.output_dir)
         config.save_pretrained(args.global_args.output_dir)
-    if args.global_args.model_type == "qwen_vl":
-        if hasattr(model, "visual"):
-            for name, param in model.visual.named_parameters():
-                param.requires_grad = False
-            print("冻结视觉模型参数")
-        if hasattr(model, "visual") and hasattr(model.visual, "merger"):
-            for name, param in model.visual.merger.named_parameters():
-                param.requires_grad = False
-            print("冻结视觉模型融合层参数")
 
-    print("=" * 50)
-    print("model_type:", args.global_args.model_type)
-    for name, param in model.named_parameters():
-        print(
-            f"{name}: {tuple(param.shape)}, requires_grad={param.requires_grad}"
-        )
+    # if args.global_args.model_type == "qwen_vl":
+    if hasattr(model, "visual"):
+        for name, param in model.visual.named_parameters():
+            param.requires_grad = False
+        print("冻结视觉模型参数")
+    if hasattr(model, "visual") and hasattr(model.visual, "merger"):
+        for name, param in model.visual.merger.named_parameters():
+            param.requires_grad = False
+        print("冻结视觉模型融合层参数")
+
+    # print("=" * 50)
+    # print("model_type:", args.global_args.model_type)
+    # for name, param in model.named_parameters():
+    #     print(
+    #         f"{name}: {tuple(param.shape)}, requires_grad={param.requires_grad}"
+    #     )
 
     return (
         model,
@@ -189,7 +190,7 @@ def get_training_args(args: Args, ddp: bool) -> TrainingArguments:
         seed=global_args.seed,
         per_device_train_batch_size=train_args.per_device_batch_size,
         per_device_eval_batch_size=train_args.per_device_batch_size,
-        gradient_accumulation_steps=train_args.gradient_accumulation_steps,
+        # gradient_accumulation_steps=train_args.gradient_accumulation_steps,
         warmup_ratio=train_args.warmup_ratio,
         num_train_epochs=train_args.epochs,
         learning_rate=train_args.learning_rate,
@@ -199,7 +200,7 @@ def get_training_args(args: Args, ddp: bool) -> TrainingArguments:
         bf16=train_args.bf16,
         logging_steps=train_args.logging_step,
         optim=train_args.optim,
-        gradient_checkpointing=True,
+        # gradient_checkpointing=True,
         eval_strategy=train_args.save_and_eval_strategy,
         save_strategy=train_args.save_and_eval_strategy,
         eval_steps=train_args.save_and_eval_steps,
