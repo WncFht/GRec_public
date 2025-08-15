@@ -1,3 +1,4 @@
+import argparse
 import os
 import sys
 
@@ -8,6 +9,7 @@ from transformers import (
     AutoConfig,
     AutoProcessor,
     AutoTokenizer,
+    Qwen2_5_VLForConditionalGeneration,
     Qwen2VLForConditionalGeneration,
     TrainingArguments,
 )
@@ -39,7 +41,7 @@ def setup_environment(args: Args) -> tuple[int, bool]:
     """
     global_args = args.global_args
     set_seed(global_args.seed)
-    ensure_dir(global_args.output_dir)
+    ensure_dir(args_terminal.output_dir)
 
     device_map = "auto"
     world_size = int(os.environ.get("WORLD_SIZE", 1))
@@ -69,7 +71,7 @@ def get_tokenizer(
 
 
 def load_and_prepare_model_tokenizer(
-    args: Args, local_rank: int
+    args_terminal: argparse.Namespace, args: Args, local_rank: int
 ) -> tuple[
     Qwen2VLForConditionalGeneration,
     AutoProcessor,
@@ -92,10 +94,10 @@ def load_and_prepare_model_tokenizer(
 
     """
     config = AutoConfig.from_pretrained(
-        "Qwen/Qwen2-VL-2B-Instruct", trust_remote_code=True
+        args_terminal.ckpt_path, trust_remote_code=True
     )
     tokenizer_or_processor = AutoProcessor.from_pretrained(
-        "Qwen/Qwen2-VL-2B-Instruct", trust_remote_code=True
+        args_terminal.ckpt_path, trust_remote_code=True
     )
 
     train_data, valid_data = load_datasets(args)
@@ -103,10 +105,13 @@ def load_and_prepare_model_tokenizer(
     tokenizer = tokenizer_or_processor.tokenizer
     original_vocab_size = len(tokenizer)
 
-    model_class = Qwen2VLForConditionalGeneration
+    if args_terminal.model_type == "qwen2_vl":
+        model_class = Qwen2VLForConditionalGeneration
+    elif args_terminal.model_type == "qwen2_5_vl":
+        model_class = Qwen2_5_VLForConditionalGeneration
 
     model = model_class.from_pretrained(
-        "Qwen/Qwen2-VL-2B-Instruct",
+        args_terminal.ckpt_path,
         config=config,
         trust_remote_code=True,
         torch_dtype=torch.bfloat16 if args.train_args.bf16 else None,
@@ -140,8 +145,8 @@ def load_and_prepare_model_tokenizer(
             print(
                 f"有效batch size: {args.train_args.per_device_batch_size * int(os.environ.get('WORLD_SIZE', 1))}"
             )
-        tokenizer_or_processor.save_pretrained(args.global_args.output_dir)
-        config.save_pretrained(args.global_args.output_dir)
+        tokenizer_or_processor.save_pretrained(args_terminal.output_dir)
+        config.save_pretrained(args_terminal.output_dir)
 
     # if args.global_args.model_type == "qwen_vl":
     if hasattr(model, "visual"):
@@ -205,7 +210,7 @@ def get_training_args(args: Args, ddp: bool) -> TrainingArguments:
         save_strategy=train_args.save_and_eval_strategy,
         eval_steps=train_args.save_and_eval_steps,
         save_steps=train_args.save_and_eval_steps,
-        output_dir=global_args.output_dir,
+        output_dir=args_terminal.output_dir,
         # save_total_limit=5,
         load_best_model_at_end=True,
         # deepspeed=train_args.deepspeed,
@@ -217,7 +222,7 @@ def get_training_args(args: Args, ddp: bool) -> TrainingArguments:
     )
 
 
-def train(args: Args) -> None:
+def train(args_terminal: argparse.Namespace, args_file: Args) -> None:
     """
     主训练函数，协调整个全量微调流程。
 
@@ -226,6 +231,7 @@ def train(args: Args) -> None:
         args (argparse.Namespace): 包含所有配置的参数。
 
     """
+    args = args_file
     local_rank, ddp = setup_environment(args)
 
     (
@@ -235,7 +241,7 @@ def train(args: Args) -> None:
         train_data,
         valid_data,
         embedding_hooks,
-    ) = load_and_prepare_model_tokenizer(args, local_rank)
+    ) = load_and_prepare_model_tokenizer(args_terminal, args, local_rank)
 
     tokenizer = tokenizer_or_processor.tokenizer
     collator = MultiModalCollator(args, tokenizer_or_processor)
@@ -269,9 +275,19 @@ def train(args: Args) -> None:
         print(f"清理了 {len(embedding_hooks)} 个embedding梯度hook")
 
     trainer.save_state()
-    trainer.save_model(output_dir=args.global_args.output_dir)
+    trainer.save_model(output_dir=args_terminal.output_dir)
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    train(args)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ckpt_path", type=str, required=True)
+    parser.add_argument("--output_dir", type=str, required=True)
+    parser.add_argument(
+        "--model_type",
+        type=str,
+        required=True,
+        choices=["qwen2_vl", "qwen2_5_vl"],
+    )
+    args_terminal = parser.parse_args()
+    args_file = parse_args()
+    train(args_terminal, args_file)

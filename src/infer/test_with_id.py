@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 
@@ -19,21 +20,23 @@ from ..type import Args
 from ..utils import set_seed
 
 
-def test(args: Args):
+def test(args_terminal: argparse.Namespace, args_file: Args):
+    args = args_file
+
     set_seed(args.global_args.seed)
     print(vars(args))
 
     device_map = {"": args.test_args.gpu_id}
     device = torch.device("cuda", args.test_args.gpu_id)
 
-    ckpt_path = os.environ.get("CKPT_PATH")
+    ckpt_path = args_terminal.ckpt_path
     processor = AutoProcessor.from_pretrained(ckpt_path)
     tokenizer = processor.tokenizer
     tokenizer.padding_side = "left"
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model_type = os.environ.get("MODEL_TYPE")
+    model_type = args_terminal.model_type
     if model_type == "qwen2_5_vl":
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             ckpt_path,
@@ -41,7 +44,7 @@ def test(args: Args):
             low_cpu_mem_usage=True,
             device_map=device_map,
         )
-    elif model_type == "qwen_2_vl":
+    elif model_type == "qwen2_vl":
         model = Qwen2VLForConditionalGeneration.from_pretrained(
             ckpt_path,
             torch_dtype=torch.bfloat16,
@@ -163,11 +166,21 @@ def test(args: Args):
     save_data["max_results"] = max_results
     save_data["all_prompt_results"] = all_prompt_results
 
-    with open(args.test_args.results_file, "w") as f:
+    results_file = os.path.join(args_terminal.output_dir, "results.json")
+    with open(results_file, "w") as f:
         json.dump(save_data, f, indent=4)
 
 
 if __name__ == "__main__":
-    args: Args = parse_args()
-
-    test(args)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ckpt_path", type=str, required=True)
+    parser.add_argument("--output_dir", type=str, required=True)
+    parser.add_argument(
+        "--model_type",
+        type=str,
+        required=True,
+        choices=["qwen2_vl", "qwen2_5_vl"],
+    )
+    args_terminal = parser.parse_args()
+    args_file = parse_args()
+    test(args_terminal, args_file)

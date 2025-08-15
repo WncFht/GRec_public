@@ -140,7 +140,7 @@
                 "CUDA_VISIBLE_DEVICES": "6",
                 "PYTHONPATH": "${workspaceFolder}",
                 // "CKPT_PATH": "/home/fanghaotian/src/GRec/ckpt/Instruments/Qwen2.5-VL-3B-Instruct-finetune-seqrec-qwen7B-with-id-0.1/checkpoint-796",
-                "CKPT_PATH": "/home/fanghaotian/src/GRec/ckpt/Instruments/Qwen2-VL-2B-Instruct-finetune-seqrec-qwen7B-with-id-1-freeze/checkpoint-5306",
+                "CKPT_PATH": "/home/fanghaotian/src/GRec/ckpt/Instruments/Qwen2-VL-2B-Instruct-finetune-seqrec-qwen7B-with-id-1-freeze/checkpoint-10612",
                 // "MODEL_TYPE": "qwen2_5_vl"
                 "MODEL_TYPE": "qwen_2_vl"
             },
