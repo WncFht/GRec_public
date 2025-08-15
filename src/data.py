@@ -1,3 +1,4 @@
+import argparse
 import copy
 import json
 import os
@@ -7,10 +8,10 @@ from dataclasses import asdict
 import numpy as np
 from torch.utils.data import Dataset
 
-from src.config import parse_args
+from src.parser import parse_dataset_args
 
 from .prompt import all_prompt, sft_prompt
-from .type import Args, EnrichedData, TrainingSample
+from .type import EnrichedData, TrainingSample
 
 
 def _split_item_ids(all_item_ids: list[str], seed: int) -> dict[str, list[str]]:
@@ -45,7 +46,7 @@ def _split_item_ids(all_item_ids: list[str], seed: int) -> dict[str, list[str]]:
 
 # 定义BaseDataset类，继承自PyTorch的Dataset
 class BaseDataset(Dataset):
-    def __init__(self, args: Args):
+    def __init__(self, args: argparse.Namespace):
         super().__init__()
 
         self.args = args
@@ -141,7 +142,7 @@ class BaseDataset(Dataset):
 class SeqRecDataset(BaseDataset):
     def __init__(
         self,
-        args: Args,
+        args: argparse.Namespace,
         mode="train",  # 数据集模式：训练、验证、测试
         prompt_sample_num=1,  # 每个数据点采样prompt的数量
         prompt_id=0,  # 使用的prompt ID
@@ -184,6 +185,7 @@ class SeqRecDataset(BaseDataset):
             os.path.join(self.data_path, self.dataset + ".inter.json")
         ) as f:
             self.inters = json.load(f)
+
         total_inters = len(self.inters)
         print("original total inters:", total_inters)
         ratio = self.args.dataset_args.ratio_dataset
@@ -191,6 +193,7 @@ class SeqRecDataset(BaseDataset):
         sorted_items = sorted(self.inters.items(), key=lambda x: int(x[0]))
         self.inters = dict(sorted_items[:target_size])
         print("new total inters:", len(self.inters))
+
         # 加载物品索引数据
         with open(
             os.path.join(self.data_path, self.dataset + self.index_file)
@@ -365,7 +368,7 @@ class SeqRecDataset(BaseDataset):
 class FusionSeqRecDataset(BaseDataset):
     def __init__(
         self,
-        args: Args,
+        args: argparse.Namespace,
         mode="train",
         prompt_sample_num=1,
         prompt_id=0,
@@ -620,9 +623,7 @@ class FusionSeqRecDataset(BaseDataset):
         # 构建输入和输出文本，这里output包含了instruction和response
         input_text = sft_prompt.format(instruction=instruction, response="")
         # 标签文本即为response
-        label_text = sft_prompt.format(
-            instruction=instruction, response=response
-        )
+        label_text = response
 
         # 测试模式下，只返回instruction作为输入，response作为目标
         if self.mode == "test":
@@ -658,7 +659,11 @@ class FusionSeqRecDataset(BaseDataset):
 # 物品特征数据集类，继承自BaseDataset
 class ItemFeatDataset(BaseDataset):
     def __init__(
-        self, args: Args, task="item2index", prompt_sample_num=1, sample_num=-1
+        self,
+        args: argparse.Namespace,
+        task="item2index",
+        prompt_sample_num=1,
+        sample_num=-1,
     ):
         super().__init__(args)
 
@@ -716,9 +721,7 @@ class ItemFeatDataset(BaseDataset):
 
         input_text = sft_prompt.format(instruction=instruction, response="")
         # 在SFT中，标签通常是完整的 "instruction + response"
-        label_text = sft_prompt.format(
-            instruction=instruction, response=response
-        )
+        label_text = response
 
         return input_text, label_text
 
@@ -744,7 +747,7 @@ class ItemFeatDataset(BaseDataset):
 class ItemSearchDataset(BaseDataset):
     def __init__(
         self,
-        args: Args,
+        args: argparse.Namespace,
         mode="train",
         prompt_sample_num=1,
         prompt_id=0,
@@ -843,13 +846,7 @@ class ItemSearchDataset(BaseDataset):
 
         input_text = sft_prompt.format(instruction=instruction, response="")
 
-        # 测试模式下，标签就是响应；否则是完整SFT提示
-        if self.mode == "test":
-            label_text = response
-        else:
-            label_text = sft_prompt.format(
-                instruction=instruction, response=response
-            )
+        label_text = response
 
         return input_text, label_text
 
@@ -882,7 +879,9 @@ class ItemSearchDataset(BaseDataset):
 
 # 偏好获取数据集类，继承自BaseDataset
 class PreferenceObtainDataset(BaseDataset):
-    def __init__(self, args: Args, prompt_sample_num=1, sample_num=-1):
+    def __init__(
+        self, args: argparse.Namespace, prompt_sample_num=1, sample_num=-1
+    ):
         super().__init__(args)
 
         self.prompt_sample_num = prompt_sample_num
@@ -967,9 +966,7 @@ class PreferenceObtainDataset(BaseDataset):
         response = prompt["response"].format(**data)
 
         input_text = sft_prompt.format(instruction=instruction, response="")
-        label_text = sft_prompt.format(
-            instruction=instruction, response=response
-        )
+        label_text = response
 
         return input_text, label_text
 
@@ -996,112 +993,13 @@ class PreferenceObtainDataset(BaseDataset):
         )
 
 
-# 这个类好像没啥用，没看到别的地方有用到
-# 序列推荐测试数据集类，继承自BaseDataset
-class SeqRecTestDataset(BaseDataset):
-    def __init__(self, args: Args, prompt_id=0, sample_num=-1):
-        super().__init__(args)
-
-        self.prompt_id = prompt_id
-        self.sample_num = sample_num
-
-        self.prompt = all_prompt["seqrec"][self.prompt_id]
-
-        # 加载数据
-        self._load_data()
-        self._remap_items()
-
-        self.inter_data = self._process_test_data()
-
-    def _load_data(self):
-        # 加载用户交互数据
-        with open(
-            os.path.join(self.data_path, self.dataset + ".inter.json")
-        ) as f:
-            self.inters = json.load(f)
-        # 加载物品索引数据
-        with open(
-            os.path.join(self.data_path, self.dataset + self.index_file)
-        ) as f:
-            self.indices = json.load(f)
-
-    def _remap_items(self):
-        # 将用户交互序列中的物品ID映射为对应的token字符串
-        self.remapped_inters = dict()
-        for uid, items in self.inters.items():
-            new_items = ["".join(self.indices[str(i)]) for i in items]
-            self.remapped_inters[uid] = new_items
-
-    def _process_test_data(self):
-        # 处理测试数据：构建历史交互和目标物品对
-        inter_data = []
-        for uid in self.remapped_inters:
-            items = self.remapped_inters[uid]
-            one_data = dict()
-            # one_data["user"] = uid
-            one_data["item"] = items[-1]  # 测试集的目标物品是最后一个
-            history = items[:-1]  # 历史交互物品
-            if self.max_his_len > 0:
-                history = history[-self.max_his_len :]
-            if self.add_prefix:
-                history = [
-                    str(k + 1) + ". " + item_idx
-                    for k, item_idx in enumerate(history)
-                ]
-            one_data["inters"] = self.his_sep.join(history)
-            inter_data.append(one_data)
-
-        # 如果指定了采样数量，则进行采样
-        if self.sample_num > 0:
-            all_inter_idx = range(len(inter_data))
-            sample_idx = np.random.choice(
-                all_inter_idx, self.sample_num, replace=False
-            )
-
-            inter_data = np.array(inter_data)[sample_idx].tolist()
-
-        return inter_data
-
-    def set_prompt(self, prompt_id):
-        self.prompt_id = prompt_id
-
-        self.prompt = all_prompt["seqrec"][self.prompt_id]
-
-    def __len__(self):
-        # 返回数据集长度
-        return len(self.inter_data)
-
-    def _get_text_data(self, data, prompt):
-        # 根据prompt和数据构造输入和输出文本
-        instruction = prompt["instruction"].format(**data)
-        response = prompt["response"].format(**data)
-
-        input_text = sft_prompt.format(instruction=instruction, response="")
-        # 标签文本应该是完整的 instruction + response 格式
-        label_text = sft_prompt.format(
-            instruction=instruction, response=response
-        )
-
-        return input_text, label_text
-
-    def __getitem__(self, index):
-        d = self.inter_data[index]
-        input_text, label_text = self._get_text_data(d, self.prompt)
-
-        return TrainingSample(
-            input_text=input_text,
-            label_text=label_text,
-            is_multimodal=False,
-        )
-
-
 # 多模态数据集类，继承自BaseDataset
 class MultimodalDataset(BaseDataset):
     """多模态数据集：支持mmitem2index和mmindex2item任务"""
 
     def __init__(
         self,
-        args: Args,
+        args: argparse.Namespace,
         mode="train",
         task="mmitem2index",
         prompt_sample_num=1,
@@ -1210,9 +1108,7 @@ class MultimodalDataset(BaseDataset):
         # 使用原有的sft_prompt格式
         input_text = sft_prompt.format(instruction=instruction, response="")
         # 标签文本应该是完整的 instruction + response 格式
-        label_text = sft_prompt.format(
-            instruction=instruction, response=response
-        )
+        label_text = response
 
         return input_text, label_text, data["image_path"]
 
@@ -1244,7 +1140,11 @@ class TextEnrichDataset(BaseDataset):
     """文本丰富任务数据集"""
 
     def __init__(
-        self, args: Args, mode="train", prompt_sample_num=1, sample_num=-1
+        self,
+        args: argparse.Namespace,
+        mode="train",
+        prompt_sample_num=1,
+        sample_num=-1,
     ):
         super().__init__(args)
 
@@ -1375,9 +1275,7 @@ class TextEnrichDataset(BaseDataset):
 
         input_text = sft_prompt.format(instruction=instruction, response="")
         # 标签文本应该是完整的 instruction + response 格式
-        label_text = sft_prompt.format(
-            instruction=instruction, response=response
-        )
+        label_text = response
 
         return input_text, label_text, data.image_path
 
@@ -1409,7 +1307,11 @@ class TextEnrichWihtoutItemIDDataset(BaseDataset):
     """文本丰富任务数据集"""
 
     def __init__(
-        self, args: Args, mode="train", prompt_sample_num=1, sample_num=-1
+        self,
+        args: argparse.Namespace,
+        mode="train",
+        prompt_sample_num=1,
+        sample_num=-1,
     ):
         super().__init__(args)
 
@@ -1538,9 +1440,7 @@ class TextEnrichWihtoutItemIDDataset(BaseDataset):
 
         input_text = sft_prompt.format(instruction=instruction, response="")
         # 标签文本应该是完整的 instruction + response 格式
-        label_text = sft_prompt.format(
-            instruction=instruction, response=response
-        )
+        label_text = response
 
         return input_text, label_text, data.image_path
 
@@ -1571,7 +1471,7 @@ class TextEnrichWihtoutItemIDDataset(BaseDataset):
 class SeqRectWithoutItemIDDataset_1(BaseDataset):
     def __init__(
         self,
-        args: Args,
+        args: argparse.Namespace,
         mode="train",  # 数据集模式：训练、验证、测试
         prompt_sample_num=1,  # 每个数据点采样prompt的数量
         prompt_id=0,  # 使用的prompt ID
@@ -1791,7 +1691,7 @@ class SeqRectWithoutItemIDDataset_1(BaseDataset):
 class SeqRecWithTitleDataset(BaseDataset):
     def __init__(
         self,
-        args: Args,
+        args: argparse.Namespace,
         mode="train",  # 数据集模式：训练、验证、测试
         prompt_sample_num=1,  # 每个数据点采样prompt的数量
         prompt_id=0,  # 使用的prompt ID
@@ -2015,7 +1915,9 @@ class SeqRecWithTitleDataset(BaseDataset):
 
 
 if __name__ == "__main__":
-    args = parse_args()
+    parser = argparse.ArgumentParser()
+    parser = parse_dataset_args(parser)
+    args = parser.parse_args()
     dataset = SeqRecDataset(args, mode="test")
     print(dataset[0])
 
