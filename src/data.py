@@ -50,17 +50,16 @@ class BaseDataset(Dataset):
         super().__init__()
 
         self.args = args
-        dataset_args = args.dataset_args
 
-        self.dataset = dataset_args.dataset
-        self.data_path = os.path.join(dataset_args.data_path, self.dataset)
+        self.dataset = self.args.dataset
+        self.data_path = os.path.join(self.args.data_path, self.dataset)
 
         # 设置历史记录的最大长度、历史记录分隔符和索引文件
-        self.max_his_len = dataset_args.max_his_len
-        self.his_sep = dataset_args.his_sep
-        self.index_file = dataset_args.index_file
+        self.max_his_len = args.max_his_len
+        self.his_sep = args.his_sep
+        self.index_file = args.index_file
         # 是否在历史记录中添加前缀（例如：1. itemA, 2. itemB）
-        self.add_prefix = dataset_args.add_prefix
+        self.add_prefix = args.add_prefix
 
         # 初始化与新token和允许token相关的变量
         self.new_tokens = None
@@ -168,8 +167,8 @@ class SeqRecDataset(BaseDataset):
             if self.sample_num > 0:
                 self.inter_data = self.inter_data[:sample_num]
         elif self.mode == "valid":
-            self.sample_valid = args.dataset_args.sample_valid
-            self.valid_prompt_id = args.dataset_args.valid_prompt_id
+            self.sample_valid = args.sample_valid
+            self.valid_prompt_id = args.valid_prompt_id
             self.inter_data = self._process_valid_data()
             self._construct_valid_text()  # 构建验证集文本数据
             if self.sample_num > 0:
@@ -188,7 +187,7 @@ class SeqRecDataset(BaseDataset):
 
         total_inters = len(self.inters)
         print("original total inters:", total_inters)
-        ratio = self.args.dataset_args.ratio_dataset
+        ratio = self.args.ratio_dataset
         target_size = int(ratio * total_inters)
         sorted_items = sorted(self.inters.items(), key=lambda x: int(x[0]))
         self.inters = dict(sorted_items[:target_size])
@@ -391,8 +390,8 @@ class FusionSeqRecDataset(BaseDataset):
         if self.mode == "train":
             self.inter_data = self._process_train_data()
         elif self.mode == "valid":
-            self.sample_valid = args.dataset_args.sample_valid
-            self.valid_prompt_id = args.dataset_args.valid_prompt_id
+            self.sample_valid = args.sample_valid
+            self.valid_prompt_id = args.valid_prompt_id
             self.inter_data = self._process_valid_data()
             self._construct_valid_text()
         elif self.mode == "test":
@@ -1011,14 +1010,12 @@ class MultimodalDataset(BaseDataset):
         self.task = task.lower()
         self.prompt_sample_num = prompt_sample_num
         self.sample_num = sample_num
-        self.image_path = os.path.join(
-            self.data_path, args.dataset_args.image_path
-        )
+        self.image_path = os.path.join(self.data_path, args.image_path)
         self.item_meta_path = os.path.join(
-            self.data_path, f"{args.dataset_args.dataset}.item.json"
+            self.data_path, f"{args.dataset}.item.json"
         )
         self.item2id_path = os.path.join(
-            self.data_path, f"{args.dataset_args.dataset}.item2id"
+            self.data_path, f"{args.dataset}.item2id"
         )
 
         # 根据任务类型选择对应的prompts
@@ -1151,14 +1148,12 @@ class TextEnrichDataset(BaseDataset):
         self.mode = mode
         self.prompt_sample_num = prompt_sample_num
         self.sample_num = sample_num
-        self.image_path = os.path.join(
-            self.data_path, args.dataset_args.image_path
-        )
+        self.image_path = os.path.join(self.data_path, args.image_path)
         self.item_meta_path = os.path.join(
-            self.data_path, f"{args.dataset_args.dataset}.item_enriched_v2.json"
+            self.data_path, f"{args.dataset}.item_enriched_v2.json"
         )
         self.item2id_path = os.path.join(
-            self.data_path, f"{args.dataset_args.dataset}.item2id"
+            self.data_path, f"{args.dataset}.item2id"
         )
 
         # TextEnrich任务的prompts
@@ -1194,7 +1189,7 @@ class TextEnrichDataset(BaseDataset):
 
         # 根据 8:1:1 规则获取当前模式下的物品ID列表
         all_item_ids = list(self.indices.keys())
-        split_map = _split_item_ids(all_item_ids, self.args.global_args.seed)
+        split_map = _split_item_ids(all_item_ids, self.args.seed)
         item_ids_for_mode = split_map[self.mode]
 
         for item_id in item_ids_for_mode:
@@ -1318,14 +1313,12 @@ class TextEnrichWihtoutItemIDDataset(BaseDataset):
         self.mode = mode
         self.prompt_sample_num = prompt_sample_num
         self.sample_num = sample_num
-        self.image_path = os.path.join(
-            self.data_path, args.dataset_args.image_path
-        )
+        self.image_path = os.path.join(self.data_path, args.image_path)
         self.item_meta_path = os.path.join(
-            self.data_path, f"{args.dataset_args.dataset}.item_enriched_v2.json"
+            self.data_path, f"{args.dataset}.item_enriched_v2.json"
         )
         self.item2id_path = os.path.join(
-            self.data_path, f"{args.dataset_args.dataset}.item2id"
+            self.data_path, f"{args.dataset}.item2id"
         )
 
         # TextEnrich任务的prompts
@@ -1368,7 +1361,7 @@ class TextEnrichWihtoutItemIDDataset(BaseDataset):
             # )
             sampled_indices = range(self.sample_num)
             all_item_ids = [all_item_ids[i] for i in sampled_indices]
-        split_map = _split_item_ids(all_item_ids, self.args.global_args.seed)
+        split_map = _split_item_ids(all_item_ids, self.args.seed)
         item_ids_for_mode = split_map[self.mode]
 
         for item_id in item_ids_for_mode:
@@ -1497,8 +1490,8 @@ class SeqRectWithoutItemIDDataset_1(BaseDataset):
             if self.sample_num > 0:
                 self.inter_data = self.inter_data[:sample_num]
         elif self.mode == "valid":
-            self.sample_valid = args.dataset_args.sample_valid
-            self.valid_prompt_id = args.dataset_args.valid_prompt_id
+            self.sample_valid = args.sample_valid
+            self.valid_prompt_id = args.valid_prompt_id
             self.inter_data = self._process_valid_data()
             self._construct_valid_text()  # 构建验证集文本数据
             if self.sample_num > 0:
@@ -1516,7 +1509,7 @@ class SeqRectWithoutItemIDDataset_1(BaseDataset):
             self.inters = json.load(f)
         total_inters = len(self.inters)
         print("original total inters:", total_inters)
-        ratio = self.args.dataset_args.ratio_dataset
+        ratio = self.args.ratio_dataset
         target_size = int(ratio * total_inters)
         sorted_items = sorted(self.inters.items(), key=lambda x: int(x[0]))
         self.inters = dict(sorted_items[:target_size])
@@ -1717,8 +1710,8 @@ class SeqRecWithTitleDataset(BaseDataset):
             if self.sample_num > 0:
                 self.inter_data = self.inter_data[:sample_num]
         elif self.mode == "valid":
-            self.sample_valid = args.dataset_args.sample_valid
-            self.valid_prompt_id = args.dataset_args.valid_prompt_id
+            self.sample_valid = args.sample_valid
+            self.valid_prompt_id = args.valid_prompt_id
             self.inter_data = self._process_valid_data()
             self._construct_valid_text()  # 构建验证集文本数据
             if self.sample_num > 0:
@@ -1740,7 +1733,7 @@ class SeqRecWithTitleDataset(BaseDataset):
             self.items = json.load(f)
         total_inters = len(self.inters)
         print("original total inters:", total_inters)
-        ratio = self.args.dataset_args.ratio_dataset
+        ratio = self.args.ratio_dataset
         target_size = int(ratio * total_inters)
         sorted_items = sorted(self.inters.items(), key=lambda x: int(x[0]))
         self.inters = dict(sorted_items[:target_size])

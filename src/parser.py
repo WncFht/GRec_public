@@ -17,27 +17,6 @@ def parse_global_args(
         help="模型类型 (qwen2_vl or qwen2_5_vl)",
     )
 
-    global_args.add_argument(
-        "--base_model",
-        type=str,
-        required=True,
-        default="Qwen/Qwen2-VL-2B-Instruct",
-        help="basic model path",
-    )
-    global_args.add_argument(
-        "--output_dir",
-        type=str,
-        required=True,
-        default="./ckpt/",
-        help="The output directory",
-    )
-    global_args.add_argument(
-        "--freeze",
-        type=str,
-        default=None,
-        choices=["all", "visual", "embeddings"],
-    )
-
     return parser
 
 
@@ -96,28 +75,6 @@ def parse_dataset_args(
         default=", ",
         help="The separator used for history",
     )
-    dataset_args.add_argument(
-        "--only_train_response",
-        action="store_true",
-        required=True,
-        default=True,
-        help="whether only train on responses",
-    )
-
-    dataset_args.add_argument(
-        "--train_prompt_sample_num",
-        type=str,
-        required=True,
-        default="1,1,1,1,1,1",
-        help="the number of sampling prompts for each task",
-    )
-    dataset_args.add_argument(
-        "--train_data_sample_num",
-        type=str,
-        required=True,
-        default="0,0,0,100000,0,0",
-        help="the number of sampling prompts for each task",
-    )
 
     dataset_args.add_argument(
         "--valid_prompt_id",
@@ -152,6 +109,27 @@ def parse_train_args(
     parser: argparse.ArgumentParser,
 ) -> argparse.ArgumentParser:
     train_args = parser.add_argument_group("train_args")
+    train_args.add_argument(
+        "--base_model",
+        type=str,
+        required=True,
+        default="Qwen/Qwen2-VL-2B-Instruct",
+        help="basic model path",
+    )
+    train_args.add_argument(
+        "--output_dir",
+        type=str,
+        required=True,
+        default="./ckpt/",
+        help="The output directory",
+    )
+    train_args.add_argument(
+        "--freeze",
+        type=str,
+        default=None,
+        choices=["all", "visual", "embeddings"],
+    )
+
     train_args.add_argument(
         "--optim",
         type=str,
@@ -199,7 +177,6 @@ def parse_train_args(
     train_args.add_argument(
         "--resume_from_checkpoint",
         type=str,
-        required=True,
         default=None,
         help="either training checkpoint or final adapter",
     )
@@ -214,6 +191,29 @@ def parse_train_args(
     train_args.add_argument("--bf16", action="store_true", default=False)
     train_args.add_argument(
         "--deepspeed", type=str, default="./config/ds_z3_bf16.json"
+    )
+
+    train_args.add_argument(
+        "--only_train_response",
+        action="store_true",
+        required=True,
+        default=True,
+        help="whether only train on responses",
+    )
+
+    train_args.add_argument(
+        "--train_prompt_sample_num",
+        type=str,
+        required=True,
+        default="1,1,1,1,1,1",
+        help="the number of sampling prompts for each task",
+    )
+    train_args.add_argument(
+        "--train_data_sample_num",
+        type=str,
+        required=True,
+        default="0,0,0,100000,0,0",
+        help="the number of sampling prompts for each task",
     )
 
     return parser
@@ -237,7 +237,7 @@ def parse_test_args(
     test_args.add_argument(
         "--results_file",
         type=str,
-        default="./results/test-ddp.json",
+        default="./results/results.json",
         help="result output path",
     )
 
@@ -288,12 +288,6 @@ def parse_test_args(
         "--print_freq",
         type=int,
         default=4,
-    )
-    test_args.add_argument(
-        "--index_file",
-        type=str,
-        default=".index_qwen7B.json",
-        help="the item indices file",
     )
 
     return parser

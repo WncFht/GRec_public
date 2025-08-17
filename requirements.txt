@@ -1,6 +1,9 @@
 --extra-index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
+seaborn
 accelerate
+plotly
+nbformat
 annotated-types==0.7.0
 anyio==4.9.0
 av==14.4.0

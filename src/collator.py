@@ -16,7 +16,7 @@ class Collator:
     def __init__(self, args: Args, tokenizer):
         self.args = args
         # 是否只训练响应部分（即不计算instruction部分的损失）
-        self.only_train_response = args.dataset_args.only_train_response
+        self.only_train_response = args.only_train_response
         self.tokenizer = tokenizer
         # 如果tokenizer没有pad_token_id，则将其设置为unk_token_id
         if self.tokenizer.pad_token_id is None:
@@ -25,7 +25,7 @@ class Collator:
         # 确保 decoder-only 模型使用正确的 padding_side
         if hasattr(self.tokenizer, "padding_side"):
             # 对于decoder-only模型，使用left padding保持因果性
-            if args.global_args.model_type in ["qwen_vl", "llama", "qwen"]:
+            if args.model_type in ["qwen_vl", "llama", "qwen"]:
                 if self.tokenizer.padding_side != "left":
                     print(
                         f"调整 padding_side 从 {self.tokenizer.padding_side} 到 left，"
@@ -109,7 +109,7 @@ class MultiModalCollator:
     def __init__(self, args: Args, processor_or_tokenizer):
         self.args = args
 
-        self.only_train_response = args.dataset_args.only_train_response
+        self.only_train_response = args.only_train_response
         self.tokenizer: AutoTokenizer = get_tokenizer(processor_or_tokenizer)
         self.processor = processor_or_tokenizer
 
@@ -120,7 +120,7 @@ class MultiModalCollator:
         # 确保 decoder-only 模型使用正确的 padding_side
         if hasattr(self.tokenizer, "padding_side"):
             # 对于decoder-only模型，使用left padding保持因果性
-            if args.global_args.model_type in ["qwen_vl", "llama", "qwen"]:
+            if args.model_type in ["qwen_vl", "llama", "qwen"]:
                 if self.tokenizer.padding_side != "left":
                     print(
                         f"调整 padding_side 从 {self.tokenizer.padding_side} 到 left，"

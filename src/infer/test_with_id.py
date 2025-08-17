@@ -1,6 +1,5 @@
 import argparse
 import json
-import os
 
 import torch
 from torch.utils.data import DataLoader
@@ -12,31 +11,28 @@ from transformers import (
 )
 
 from ..collator import UnifiedTestCollator
-from ..config import parse_args
 from ..data import SeqRecDataset
 from ..evaluate import get_metrics_results, get_topk_results
+from ..parser import parse_dataset_args, parse_global_args, parse_test_args
 from ..prompt import all_prompt
-from ..type import Args
 from ..utils import set_seed
 
 
-def test(args_terminal: argparse.Namespace, args_file: Args):
-    args = args_file
-
-    set_seed(args.global_args.seed)
+def test(args: argparse.Namespace):
+    set_seed(args.seed)
     print(vars(args))
 
-    device_map = {"": args.test_args.gpu_id}
-    device = torch.device("cuda", args.test_args.gpu_id)
+    device_map = {"": args.gpu_id}
+    device = torch.device("cuda", args.gpu_id)
 
-    ckpt_path = args_terminal.ckpt_path
+    ckpt_path = args.ckpt_path
     processor = AutoProcessor.from_pretrained(ckpt_path)
     tokenizer = processor.tokenizer
     tokenizer.padding_side = "left"
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model_type = args_terminal.model_type
+    model_type = args.model_type
     if model_type == "qwen2_5_vl":
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             ckpt_path,
@@ -52,10 +48,10 @@ def test(args_terminal: argparse.Namespace, args_file: Args):
             device_map=device_map,
         )
 
-    if args.test_args.test_prompt_ids == "all":
+    if args.test_prompt_ids == "all":
         prompt_ids = range(len(all_prompt["seqrec"]))
     else:
-        prompt_ids = [int(_) for _ in args.test_args.test_prompt_ids.split(",")]
+        prompt_ids = [int(_) for _ in args.test_prompt_ids.split(",")]
 
     test_data = SeqRecDataset(args, mode="test")
     collator = UnifiedTestCollator(args, processor_or_tokenizer=processor)
@@ -65,7 +61,7 @@ def test(args_terminal: argparse.Namespace, args_file: Args):
 
     test_loader = DataLoader(
         test_data,
-        batch_size=args.test_args.test_batch_size,
+        batch_size=args.test_batch_size,
         collate_fn=collator,
         shuffle=True,
         num_workers=4,
@@ -76,7 +72,7 @@ def test(args_terminal: argparse.Namespace, args_file: Args):
 
     model.eval()
 
-    metrics = args.test_args.metrics.split(",")
+    metrics = args.metrics.split(",")
     all_prompt_results = []
     with torch.no_grad():
         for prompt_id in prompt_ids:
@@ -95,8 +91,8 @@ def test(args_terminal: argparse.Namespace, args_file: Args):
                     max_new_tokens=4,
                     # max_length=10,
                     # prefix_allowed_tokens_fn=prefix_allowed_tokens,
-                    num_beams=args.test_args.num_beams,
-                    num_return_sequences=args.test_args.num_beams,
+                    num_beams=args.num_beams,
+                    num_return_sequences=args.num_beams,
                     output_scores=True,
                     return_dict_in_generate=True,
                     early_stopping=True,
@@ -113,10 +109,8 @@ def test(args_terminal: argparse.Namespace, args_file: Args):
                     output,
                     scores,
                     targets,
-                    args.test_args.num_beams,
-                    all_items=all_items
-                    if args.test_args.filter_items
-                    else None,
+                    args.num_beams,
+                    all_items=all_items if args.filter_items else None,
                 )
 
                 batch_metrics_res = get_metrics_results(topk_res, metrics)
@@ -160,27 +154,21 @@ def test(args_terminal: argparse.Namespace, args_file: Args):
     print("======================================================")
 
     save_data = {}
-    save_data["test_prompt_ids"] = args.test_args.test_prompt_ids
+    save_data["test_prompt_ids"] = args.test_prompt_ids
     save_data["mean_results"] = mean_results
     save_data["min_results"] = min_results
     save_data["max_results"] = max_results
     save_data["all_prompt_results"] = all_prompt_results
 
-    results_file = os.path.join(args_terminal.output_dir, "results.json")
-    with open(results_file, "w") as f:
+    with open(args.results_file, "w") as f:
         json.dump(save_data, f, indent=4)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ckpt_path", type=str, required=True)
-    parser.add_argument("--output_dir", type=str, required=True)
-    parser.add_argument(
-        "--model_type",
-        type=str,
-        required=True,
-        choices=["qwen2_vl", "qwen2_5_vl"],
-    )
-    args_terminal = parser.parse_args()
-    args_file = parse_args()
-    test(args_terminal, args_file)
+    parser = parse_global_args(parser)
+    parser = parse_dataset_args(parser)
+    parser = parse_test_args(parser)
+
+    args = parser.parse_args()
+    test(args)

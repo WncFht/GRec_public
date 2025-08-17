@@ -1,3 +1,4 @@
+import argparse
 import datetime
 import json
 import os
@@ -31,7 +32,6 @@ from .data import (
     TextEnrichDataset,
     TextEnrichWihtoutItemIDDataset,
 )
-from .type import Args
 
 # ----------------- 模型和分词器加载工具 -----------------
 
@@ -176,7 +176,7 @@ def load_model_for_inference(
 
 
 def load_model_for_training(
-    args: Args,
+    args: argparse.Namespace,
     new_tokens: list[str],
 ) -> tuple[Any, AutoProcessor | AutoTokenizer]:
     """
@@ -200,11 +200,8 @@ def load_model_for_training(
         tuple[Any, Union[AutoProcessor, AutoTokenizer]]: (加载和配置好的模型, 对应的处理器或分词器).
 
     """
-    model_args = args.global_args
-    train_args = args.train_args
-
-    model_type = model_args.model_type
-    base_model_path = model_args.base_model
+    model_type = args.model_type
+    base_model_path = args.base_model
 
     if model_type not in MODEL_CONFIG:
         raise ValueError(f"不支持的模型类型: {model_type}")
@@ -254,8 +251,8 @@ def load_model_for_training(
     model.config.vocab_size = new_vocab_size
 
     # 验证并保存词汇表元数据
-    ensure_dir(model_args.output_dir)
-    with open(os.path.join(model_args.output_dir, "token_meta.json"), "w") as f:
+    ensure_dir(args.output_dir)
+    with open(os.path.join(args.output_dir, "token_meta.json"), "w") as f:
         json.dump(
             {
                 "original_vocab_size": original_vocab_size,
@@ -267,7 +264,7 @@ def load_model_for_training(
         )
 
     # 4. 根据LoRA配置包装模型
-    if train_args.use_lora:
+    if args.use_lora:
         from peft import LoraConfig, TaskType, get_peft_model
 
         print("启用LoRA训练...")
@@ -277,17 +274,17 @@ def load_model_for_training(
         peft_config = LoraConfig(
             task_type=TaskType.CAUSAL_LM,
             inference_mode=False,
-            r=train_args.lora_r,
-            lora_alpha=train_args.lora_alpha,
-            lora_dropout=train_args.lora_dropout,
-            target_modules=train_args.lora_target_modules.split(","),
+            r=args.lora_r,
+            lora_alpha=args.lora_alpha,
+            lora_dropout=args.lora_dropout,
+            target_modules=args.lora_target_modules.split(","),
             modules_to_save=["embed_tokens", "lm_head"],
         )
         model = get_peft_model(model, peft_config)
         model.print_trainable_parameters()
 
     # 将模型移动到设备
-    model.to(train_args.device)
+    model.to(args.device)
     model.train()
     print("模型加载完成并已设置为训练模式。")
 
@@ -315,19 +312,18 @@ def ensure_dir(dir_path):
     os.makedirs(dir_path, exist_ok=True)
 
 
-def load_datasets(args: Args):
+def load_datasets(args: argparse.Namespace):
     """根据配置加载训练和验证数据集"""
-    dataset_args = args.dataset_args
-    tasks = dataset_args.tasks.split(",")
+    tasks = args.tasks.split(",")
 
     train_prompt_sample_num = [
-        int(_) for _ in dataset_args.train_prompt_sample_num.split(",")
+        int(_) for _ in args.train_prompt_sample_num.split(",")
     ]
     assert len(tasks) == len(train_prompt_sample_num), (
         "prompt sample number does not match task number"
     )
     train_data_sample_num = [
-        int(_) for _ in dataset_args.train_data_sample_num.split(",")
+        int(_) for _ in args.train_data_sample_num.split(",")
     ]
     assert len(tasks) == len(train_data_sample_num), (
         "data sample number does not match task number"
@@ -337,6 +333,7 @@ def load_datasets(args: Args):
     print("train data sample num:", train_data_sample_num)
 
     train_datasets = []
+    valid_datasets = []
     for task, prompt_sample_num, data_sample_num in zip(
         tasks, train_prompt_sample_num, train_data_sample_num, strict=False
     ):
@@ -418,47 +415,47 @@ def load_datasets(args: Args):
             )
         else:
             raise NotImplementedError
-        train_datasets.append(dataset)
-    train_data = ConcatDataset(train_datasets)
-    print("train sample nums:", len(train_data))
 
-    # if task.lower() == "mmitemenrichwithoutid":
-    # valid_data = TextEnrichWihtoutItemIDDataset(args, mode="valid", prompt_sample_num=dataset_args.valid_prompt_sample_num, sample_num=data_sample_num)
-    # else:
-    if task.lower() == "seqrec_without_id":
-        valid_data = SeqRectWithoutItemIDDataset_1(
-            args,
-            mode="valid",
-            prompt_sample_num=dataset_args.valid_prompt_sample_num,
-            sample_num=data_sample_num,
-        )
-    else:
-        valid_data = SeqRecDataset(
-            args,
-            mode="valid",
-            prompt_sample_num=dataset_args.valid_prompt_sample_num,
-            sample_num=data_sample_num,
-        )
-    print("valid sample nums:", len(valid_data))
+        if task.lower() == "seqrec":
+            valid_dataset = SeqRecDataset(
+                args,
+                mode="valid",
+                prompt_sample_num=args.valid_prompt_sample_num,
+                sample_num=data_sample_num,
+            )
+        elif task.lower() == "seqrec_without_id":
+            valid_dataset = SeqRectWithoutItemIDDataset_1(
+                args,
+                mode="valid",
+                prompt_sample_num=args.valid_prompt_sample_num,
+                sample_num=data_sample_num,
+            )
+
+        train_datasets.append(dataset)
+        valid_datasets.append(valid_dataset)
+    train_data = ConcatDataset(train_datasets)
+    valid_data = ConcatDataset(valid_datasets)
+
+    print("Train sample nums:", len(train_data))
+    print("Valid sample nums:", len(valid_data))
     return train_data, valid_data
 
 
-def load_test_dataset(args: Args):
+def load_test_dataset(args: argparse.Namespace):
     """根据配置加载测试数据集"""
-    test_args = args.test_args
-    if test_args.test_task.lower() == "seqrec":
+    if args.test_task.lower() == "seqrec":
         test_data = SeqRecDataset(
             args,
             mode="test",
-            sample_num=test_args.sample_num,
+            sample_num=args.sample_num,
         )
-    elif test_args.test_task.lower() == "itemsearch":
+    elif args.test_task.lower() == "itemsearch":
         test_data = ItemSearchDataset(
-            args, mode="test", sample_num=test_args.sample_num
+            args, mode="test", sample_num=args.sample_num
         )
-    elif test_args.test_task.lower() == "fusionseqrec":
+    elif args.test_task.lower() == "fusionseqrec":
         test_data = FusionSeqRecDataset(
-            args, mode="test", sample_num=test_args.sample_num
+            args, mode="test", sample_num=args.sample_num
         )
     else:
         raise NotImplementedError
