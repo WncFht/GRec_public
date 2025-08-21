@@ -108,7 +108,9 @@ def get_training_args(args: argparse.Namespace, ddp: bool) -> TrainingArguments:
 
 
 def save_new_token_embeddings(
-    model: Qwen2VLForConditionalGeneration,
+    model: Qwen2VLForConditionalGeneration
+    | Qwen2_5_VLForConditionalGeneration
+    | LlavaOnevisionForConditionalGeneration,
     original_vocab_size: int,
     new_vocab_size: int,
     new_tokens: list[str],
@@ -141,7 +143,9 @@ def save_new_token_embeddings(
 def load_and_prepare_model_tokenizer(
     args: argparse.Namespace, local_rank: int
 ) -> tuple[
-    Qwen2VLForConditionalGeneration,
+    Qwen2VLForConditionalGeneration
+    | Qwen2_5_VLForConditionalGeneration
+    | LlavaOnevisionForConditionalGeneration,
     AutoProcessor,
     ConcatDataset,
     Dataset | None,
