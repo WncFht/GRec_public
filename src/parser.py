@@ -13,8 +13,8 @@ def parse_global_args(
         type=str,
         default="qwen2_vl",
         required=True,
-        choices=["qwen2_vl", "qwen2_5_vl"],
-        help="模型类型 (qwen2_vl or qwen2_5_vl)",
+        choices=["qwen2_vl", "qwen2_5_vl", "llava_onevision"],
+        help="模型类型 (qwen2_vl or qwen2_5_vl, llava_onevision)",
     )
 
     return parser
