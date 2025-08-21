@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import (
     AutoProcessor,
+    LlavaOnevisionForConditionalGeneration,
     Qwen2_5_VLForConditionalGeneration,
     Qwen2VLForConditionalGeneration,
 )
@@ -42,6 +43,13 @@ def test(args: argparse.Namespace):
         )
     elif model_type == "qwen2_vl":
         model = Qwen2VLForConditionalGeneration.from_pretrained(
+            ckpt_path,
+            torch_dtype=torch.bfloat16,
+            low_cpu_mem_usage=True,
+            device_map=device_map,
+        )
+    elif model_type == "llava_onevision":
+        model = LlavaOnevisionForConditionalGeneration.from_pretrained(
             ckpt_path,
             torch_dtype=torch.bfloat16,
             low_cpu_mem_usage=True,

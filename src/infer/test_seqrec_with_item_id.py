@@ -2,6 +2,7 @@ import argparse
 
 from transformers import (
     AutoProcessor,
+    LlavaOnevisionForConditionalGeneration,
     Qwen2_5_VLForConditionalGeneration,
     Qwen2VLForConditionalGeneration,
 )
@@ -29,6 +30,10 @@ def main(args: argparse.Namespace):
         )
     elif model_type == "qwen_2_vl":
         model = Qwen2VLForConditionalGeneration.from_pretrained(
+            ckpt_path, trust_remote_code=True
+        )
+    elif model_type == "llava_onevision":
+        model = LlavaOnevisionForConditionalGeneration.from_pretrained(
             ckpt_path, trust_remote_code=True
         )
     model.eval()
