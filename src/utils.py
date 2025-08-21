@@ -329,6 +329,7 @@ def load_datasets(args: argparse.Namespace):
         "data sample number does not match task number"
     )
 
+    print("tasks:", tasks)
     print("train prompt sample num:", train_prompt_sample_num)
     print("train data sample num:", train_data_sample_num)
 
@@ -337,6 +338,7 @@ def load_datasets(args: argparse.Namespace):
     for task, prompt_sample_num, data_sample_num in zip(
         tasks, train_prompt_sample_num, train_data_sample_num, strict=False
     ):
+        dataset, valid_dataset = None, None
         # 统一将配置对象传递给各个数据集
         if task.lower() == "seqrec":
             dataset = SeqRecDataset(
@@ -359,7 +361,7 @@ def load_datasets(args: argparse.Namespace):
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
             )
-        elif task.lower() == "item2index" or task.lower() == "index2item":
+        elif task.lower() in ["item2index", "index2item"]:
             dataset = ItemFeatDataset(
                 args,
                 task=task.lower(),
@@ -390,13 +392,14 @@ def load_datasets(args: argparse.Namespace):
                 sample_num=data_sample_num,
             )
 
-        elif task.lower() == "mmitem2index" or task.lower() == "mmindex2item":
+        elif task.lower() in ["mmitem2index", "mmindex2item"]:
             dataset = MultimodalDataset(
                 args,
                 task=task.lower(),
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
             )
+            print("Prepare MultimodalDataset num:", len(dataset))
 
         elif task.lower() == "mmitemenrich":
             dataset = TextEnrichDataset(
@@ -413,8 +416,6 @@ def load_datasets(args: argparse.Namespace):
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
             )
-        else:
-            raise NotImplementedError
 
         if task.lower() == "seqrec":
             valid_dataset = SeqRecDataset(
@@ -430,9 +431,10 @@ def load_datasets(args: argparse.Namespace):
                 prompt_sample_num=args.valid_prompt_sample_num,
                 sample_num=data_sample_num,
             )
-
-        train_datasets.append(dataset)
-        valid_datasets.append(valid_dataset)
+        if dataset:
+            train_datasets.append(dataset)
+        if valid_dataset:
+            valid_datasets.append(valid_dataset)
     train_data = ConcatDataset(train_datasets)
     valid_data = ConcatDataset(valid_datasets)
 
