@@ -202,10 +202,18 @@ def load_and_prepare_model_tokenizer(
             for name, param in model.visual.named_parameters():
                 param.requires_grad = False
             print("冻结视觉模型参数")
+        if hasattr(model, "vision_tower"):
+            for name, param in model.vision_tower.named_parameters():
+                param.requires_grad = False
+            print("冻结视觉塔参数")
         if hasattr(model, "visual") and hasattr(model.visual, "merger"):
             for name, param in model.visual.merger.named_parameters():
                 param.requires_grad = False
             print("冻结视觉模型融合层参数")
+        if hasattr(model, "multi_modal_projector"):
+            for name, param in model.multi_modal_projector.named_parameters():
+                param.requires_grad = False
+            print("冻结多模态投影层参数")
     if args.freeze in ["embeddings", "all"]:
         embedding_hooks = freeze_original_embeddings_with_hook(
             model, original_vocab_size
