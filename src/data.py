@@ -429,12 +429,14 @@ class MultimodalSeqRecDataset(BaseDataset):
                 item_id, num_id = line.strip().split("\t")
                 self.item2id[item_id] = num_id
                 self.id2item[num_id] = item_id
+            print("item_id:", type(item_id), item_id)
+            print("num_id:", type(num_id), num_id)
 
     def _split_data(self):
         """8:1:1 划分交互序列"""
-        uids = sorted(self.raw_inters.keys())
-        split_map = _split_item_ids(uids, self.args.seed)
-        self.uids = split_map[self.mode]
+        self.uids = sorted(self.raw_inters.keys())
+        # split_map = _split_item_ids(uids, self.args.seed)
+        # self.uids = split_map[self.mode]
 
     # ------------------------------------------------------------------
     # 构造样本
@@ -477,7 +479,8 @@ class MultimodalSeqRecDataset(BaseDataset):
             hist_tokens = [f"{k + 1}. {t}" for k, t in enumerate(hist_tokens)]
 
         hist_str = self.his_sep.join(hist_tokens)
-
+        # import pdb
+        # pdb.set_trace()
         # 图片路径
         hist_img_paths = [self._img_path(iid) for iid in hist_ids]
         tgt_img_path = self._img_path(tgt_id)
@@ -492,7 +495,7 @@ class MultimodalSeqRecDataset(BaseDataset):
         }
 
     def _img_path(self, item_id: str) -> str:
-        num_id = self.item2id[str(item_id)]
+        num_id = self.id2item[str(item_id)]
         return os.path.join(self.image_root, f"{num_id}.jpg")
 
     # ------------------------------------------------------------------
@@ -1824,6 +1827,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser = parse_dataset_args(parser)
     args = parser.parse_args()
+    args.model_type = "qwen2_vl"
     dataset = MultimodalSeqRecDataset(args, mode="test")
     print(dataset[0])
 
@@ -1831,7 +1835,9 @@ if __name__ == "__main__":
 
     from src.collator import MultiModalCollator
 
-    processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-3B-Instruct")
+    processor = AutoProcessor.from_pretrained(
+        "./ckpt/base_model/Qwen2-VL-2B-Instruct"
+    )
 
     tokenizer = processor.tokenizer
     collator = MultiModalCollator(args, processor_or_tokenizer=processor)

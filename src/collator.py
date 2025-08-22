@@ -25,7 +25,12 @@ class Collator:
         # 确保 decoder-only 模型使用正确的 padding_side
         if hasattr(self.tokenizer, "padding_side"):
             # 对于decoder-only模型，使用left padding保持因果性
-            if args.model_type in ["qwen_vl", "llama", "qwen"]:
+            if args.model_type in [
+                "qwen_vl",
+                "llama",
+                "qwen",
+                "llama_onevision",
+            ]:
                 if self.tokenizer.padding_side != "left":
                     print(
                         f"调整 padding_side 从 {self.tokenizer.padding_side} 到 left，"
@@ -120,7 +125,12 @@ class MultiModalCollator:
         # 确保 decoder-only 模型使用正确的 padding_side
         if hasattr(self.tokenizer, "padding_side"):
             # 对于decoder-only模型，使用left padding保持因果性
-            if args.model_type in ["qwen_vl", "llama", "qwen"]:
+            if args.model_type in [
+                "qwen_vl",
+                "llama",
+                "qwen",
+                "llama_onevision",
+            ]:
                 if self.tokenizer.padding_side != "left":
                     print(
                         f"调整 padding_side 从 {self.tokenizer.padding_side} 到 left，"
@@ -233,6 +243,10 @@ class MultiModalCollator:
                     .item()
                 )
 
+                import pdb
+
+                pdb.set_trace()
+
                 # 这里有大问题，因为labels是 batch_result["input_ids"]，所以labels[i, :user_len] = -100 会导致有剩下的没覆盖掉
                 # 掩码用户输入部分
                 if user_len > 0:
@@ -275,7 +289,12 @@ class UnifiedTestCollator:
         # 确保 decoder-only 模型使用正确的 padding_side
         if hasattr(self.tokenizer, "padding_side"):
             # 对于decoder-only模型，使用left padding保持因果性
-            if self.model_type in ["qwen_vl", "llama", "qwen"]:
+            if self.model_type in [
+                "qwen_vl",
+                "llama",
+                "qwen",
+                "llava_onevision",
+            ]:
                 if self.tokenizer.padding_side != "left":
                     print(
                         f"调整 padding_side 从 {self.tokenizer.padding_side} 到 left，"

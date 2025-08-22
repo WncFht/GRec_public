@@ -23,10 +23,8 @@ from transformers import (
 from .data import (
     FusionSeqRecDataset,
     ItemFeatDataset,
-    ItemSearchDataset,
     MultimodalDataset,
     MultimodalSeqRecDataset,
-    PreferenceObtainDataset,
     SeqRecDataset,
     SeqRectWithoutItemIDDataset_1,
     SeqRecWithTitleDataset,
@@ -385,21 +383,6 @@ def load_datasets(args: argparse.Namespace):
                 sample_num=data_sample_num,
             )
 
-        elif task.lower() == "itemsearch":
-            dataset = ItemSearchDataset(
-                args,
-                mode="train",
-                prompt_sample_num=prompt_sample_num,
-                sample_num=data_sample_num,
-            )
-
-        elif task.lower() == "preferenceobtain":
-            dataset = PreferenceObtainDataset(
-                args,
-                prompt_sample_num=prompt_sample_num,
-                sample_num=data_sample_num,
-            )
-
         elif task.lower() in ["mmitem2index", "mmindex2item"]:
             dataset = MultimodalDataset(
                 args,
@@ -465,10 +448,6 @@ def load_test_dataset(args: argparse.Namespace):
             args,
             mode="test",
             sample_num=args.sample_num,
-        )
-    elif args.test_task.lower() == "itemsearch":
-        test_data = ItemSearchDataset(
-            args, mode="test", sample_num=args.sample_num
         )
     elif args.test_task.lower() == "fusionseqrec":
         test_data = FusionSeqRecDataset(

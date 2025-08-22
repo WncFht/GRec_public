@@ -102,6 +102,14 @@ def parse_dataset_args(
         help="the ratio of dataset",
     )
 
+    dataset_args.add_argument(
+        "--only_train_response",
+        action="store_true",
+        required=True,
+        default=True,
+        help="whether only train on responses",
+    )
+
     return parser
 
 
@@ -191,14 +199,6 @@ def parse_train_args(
     train_args.add_argument("--bf16", action="store_true", default=False)
     train_args.add_argument(
         "--deepspeed", type=str, default="./config/ds_z3_bf16.json"
-    )
-
-    train_args.add_argument(
-        "--only_train_response",
-        action="store_true",
-        required=True,
-        default=True,
-        help="whether only train on responses",
     )
 
     train_args.add_argument(
