@@ -147,20 +147,22 @@ class MultiModalCollator:
         for item in batch:
             input_data = item.input_text
             labels_data = item.label_text
-            # print("type(item.image_path):", type(item.image_path))
-            if isinstance(item.image_path, str):
-                image_path_list = [item.image_path]
-            else:
-                image_path_list = item.image_path
-
             # 构建用户消息内容，可以包含图像和文本
             user_content = []
             labels_content = []
+            if item.image_path:
+                # print("type(item.image_path):", type(item.image_path))
+                if isinstance(item.image_path, str):
+                    image_path_list = [item.image_path]
+                else:
+                    image_path_list = item.image_path
 
-            # 检查是否有有效的图片路径，如果存在则添加到用户消息内容中
-            for image_path in image_path_list:
-                if image_path and os.path.exists(image_path):
-                    user_content.append({"type": "image", "image": image_path})
+                # 检查是否有有效的图片路径，如果存在则添加到用户消息内容中
+                for image_path in image_path_list:
+                    if image_path and os.path.exists(image_path):
+                        user_content.append(
+                            {"type": "image", "image": image_path}
+                        )
 
             # 添加文本内容
             user_content.append({"type": "text", "text": input_data})
@@ -344,19 +346,20 @@ class UnifiedTestCollator:
         item_ids = []  # 存储item_id
 
         for item in batch:
-            # print("type(item.image_path):", type(item.image_path))
-            if isinstance(item.image_path, str):
-                image_path_list = [item.image_path]
-            else:
-                image_path_list = item.image_path
-
-            # 构建用户消息内容，可以包含图像和文本
             user_content = []
+            if item.image_path:
+                # print("type(item.image_path):", type(item.image_path))
+                if isinstance(item.image_path, str):
+                    image_path_list = [item.image_path]
+                else:
+                    image_path_list = item.image_path
 
-            # 检查是否有有效的图片路径，如果存在则添加到用户消息内容中
-            for image_path in image_path_list:
-                if image_path and os.path.exists(image_path):
-                    user_content.append({"type": "image", "image": image_path})
+                # 检查是否有有效的图片路径，如果存在则添加到用户消息内容中
+                for image_path in image_path_list:
+                    if image_path and os.path.exists(image_path):
+                        user_content.append(
+                            {"type": "image", "image": image_path}
+                        )
 
             # 添加文本内容到用户消息内容中
             user_content.append({"type": "text", "text": item.input_text})

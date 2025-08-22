@@ -105,7 +105,6 @@ def parse_dataset_args(
     dataset_args.add_argument(
         "--only_train_response",
         action="store_true",
-        required=True,
         default=True,
         help="whether only train on responses",
     )
