@@ -407,6 +407,14 @@ class MultimodalSeqRecDataset(BaseDataset):
         ) as f:
             self.raw_inters = json.load(f)
 
+        total_inters = len(self.raw_inters)
+        print("original total inters:", total_inters)
+        ratio = self.args.ratio_dataset
+        target_size = int(ratio * total_inters)
+        sorted_items = sorted(self.raw_inters.items(), key=lambda x: int(x[0]))
+        self.raw_inters = dict(sorted_items[:target_size])
+        print("new total inters:", len(self.raw_inters))
+
         # 物品 token 索引：{iid: ["A","B",..]}
         with open(
             os.path.join(self.data_path, f"{self.dataset}{self.index_file}")
