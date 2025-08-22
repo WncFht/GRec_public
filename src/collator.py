@@ -145,6 +145,7 @@ class MultiModalCollator:
 
             # 构建用户消息内容，可以包含图像和文本
             user_content = []
+            labels_content = []
 
             # 检查是否有有效的图片路径，如果存在则添加到用户消息内容中
             for image_path in image_path_list:
@@ -157,9 +158,11 @@ class MultiModalCollator:
             # 构建用户消息
             user_message = [{"role": "user", "content": user_content}]
 
+            labels_content.append({"type": "text", "text": labels_data})
+
             # 完整对话
             full_messages = user_message + [
-                {"role": "assistant", "content": labels_data}
+                {"role": "assistant", "content": labels_content}
             ]
 
             user_messages_list.append(user_message)
