@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING
 import torch
 from qwen_vl_utils import process_vision_info
 
-from .type import Args, TrainingSample
-from .utils import get_tokenizer
+from src.type import Args, TrainingSample
+from src.utils import get_tokenizer
 
 if TYPE_CHECKING:
     from transformers import AutoTokenizer
@@ -245,9 +245,9 @@ class MultiModalCollator:
                     .item()
                 )
 
-                import pdb
+                # import pdb
 
-                pdb.set_trace()
+                # pdb.set_trace()
 
                 # 这里有大问题，因为labels是 batch_result["input_ids"]，所以labels[i, :user_len] = -100 会导致有剩下的没覆盖掉
                 # 掩码用户输入部分

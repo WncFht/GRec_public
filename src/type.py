@@ -1,7 +1,5 @@
 from dataclasses import dataclass, field
 
-from type import List
-
 
 @dataclass
 class TrainingSample:
@@ -18,7 +16,7 @@ class TrainingSample:
 
     # 多模态相关
     is_multimodal: bool = False
-    image_path: str | List[str] | None = None
+    image_path: str | list[str] | None = None
 
     # 可选元数据
     # 用于评估或调试，例如在 evaluate.py 中按item_id查找参考答案
