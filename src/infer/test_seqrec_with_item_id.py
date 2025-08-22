@@ -28,7 +28,7 @@ def main(args: argparse.Namespace):
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             ckpt_path, trust_remote_code=True
         )
-    elif model_type == "qwen_2_vl":
+    elif model_type == "qwen2_vl":
         model = Qwen2VLForConditionalGeneration.from_pretrained(
             ckpt_path, trust_remote_code=True
         )
