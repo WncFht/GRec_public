@@ -214,6 +214,12 @@ def parse_train_args(
         default="0,0,0,100000,0,0",
         help="the number of sampling prompts for each task",
     )
+    train_args.add_argument(
+        "--num_workers",
+        type=int,
+        default=4,
+        help="Number of workers for data loading",
+    )
 
     return parser
 

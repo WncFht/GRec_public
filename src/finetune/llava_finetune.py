@@ -100,7 +100,7 @@ def get_training_args(args: argparse.Namespace, ddp: bool) -> TrainingArguments:
         load_best_model_at_end=True,
         # deepspeed=train_args.deepspeed,
         ddp_find_unused_parameters=False if ddp else None,
-        dataloader_num_workers=0,
+        dataloader_num_workers=args.num_workers,
         remove_unused_columns=False,
         report_to="tensorboard",
         eval_delay=1 if args.save_and_eval_strategy == "epoch" else 2000,
@@ -167,7 +167,9 @@ def load_and_prepare_model_tokenizer(
     """
     config = AutoConfig.from_pretrained(args.base_model, trust_remote_code=True)
     processor = AutoProcessor.from_pretrained(
-        args.base_model, trust_remote_code=True
+        args.base_model,
+        trust_remote_code=True,
+        use_fase=True,
     )
     if args.model_type == "qwen2_vl":
         model_class = Qwen2VLForConditionalGeneration
