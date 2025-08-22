@@ -25,6 +25,7 @@ from .data import (
     ItemFeatDataset,
     ItemSearchDataset,
     MultimodalDataset,
+    MultimodalSeqRecDataset,
     PreferenceObtainDataset,
     SeqRecDataset,
     SeqRectWithoutItemIDDataset_1,
@@ -347,6 +348,13 @@ def load_datasets(args: argparse.Namespace):
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
             )
+        elif task.lower() == "mmseqrec":
+            dataset = MultimodalSeqRecDataset(
+                args,
+                mode="train",
+                prompt_sample_num=prompt_sample_num,
+                sample_num=data_sample_num,
+            )
         elif task.lower() == "seqrec_without_id":
             dataset = SeqRectWithoutItemIDDataset_1(
                 args,
@@ -419,6 +427,13 @@ def load_datasets(args: argparse.Namespace):
 
         if task.lower() == "seqrec":
             valid_dataset = SeqRecDataset(
+                args,
+                mode="valid",
+                prompt_sample_num=args.valid_prompt_sample_num,
+                sample_num=data_sample_num,
+            )
+        elif task.lower() == "mmseqrec":
+            valid_dataset = MultimodalSeqRecDataset(
                 args,
                 mode="valid",
                 prompt_sample_num=args.valid_prompt_sample_num,

@@ -1,5 +1,4 @@
 import argparse
-import copy
 import json
 import os
 import random
@@ -360,6 +359,162 @@ class SeqRecDataset(BaseDataset):
             input_text=input_text,
             label_text=label_text,
             is_multimodal=False,
+        )
+
+
+class MultimodalSeqRecDataset(BaseDataset):
+    """
+    image_path 是历史序列每张图的路径列表
+    target_image_path 是目标物品的图路径
+    """
+
+    def __init__(
+        self,
+        args: argparse.Namespace,
+        mode: str = "train",
+        prompt_sample_num: int = 1,
+        prompt_id: int = 0,
+        sample_num: int = -1,
+    ):
+        super().__init__(args)
+        self.mode = mode
+        self.prompt_sample_num = prompt_sample_num
+        self.prompt_id = prompt_id
+        self.sample_num = sample_num
+
+        # prompt
+        self.prompts = all_prompt["multimodal_seqrec"]
+
+        # 路径
+        self.image_root = os.path.join(self.data_path, args.image_path)
+        self.item2id_path = os.path.join(
+            self.data_path, f"{args.dataset}.item2id"
+        )
+
+        # 加载数据
+        self._load_data()
+        self._load_item2id()
+        self._split_data()
+        self._process_data()
+
+    # ------------------------------------------------------------------
+    # 数据加载
+    # ------------------------------------------------------------------
+    def _load_data(self):
+        # 交互序列：{uid: [iid1, iid2, ...]}
+        with open(
+            os.path.join(self.data_path, f"{self.dataset}.inter.json")
+        ) as f:
+            self.raw_inters = json.load(f)
+
+        # 物品 token 索引：{iid: ["A","B",..]}
+        with open(
+            os.path.join(self.data_path, f"{self.dataset}{self.index_file}")
+        ) as f:
+            self.indices = json.load(f)
+
+    def _load_item2id(self):
+        self.item2id = {}
+        self.id2item = {}
+        with open(self.item2id_path) as f:
+            for line in f:
+                item_id, num_id = line.strip().split("\t")
+                self.item2id[item_id] = num_id
+                self.id2item[num_id] = item_id
+
+    def _split_data(self):
+        """8:1:1 划分交互序列"""
+        uids = sorted(self.raw_inters.keys())
+        split_map = _split_item_ids(uids, self.args.seed)
+        self.uids = split_map[self.mode]
+
+    # ------------------------------------------------------------------
+    # 构造样本
+    # ------------------------------------------------------------------
+    def _process_data(self):
+        self.samples = []
+        for uid in self.uids:
+            seq = self.raw_inters[uid]
+            if len(seq) < 2:
+                continue  # 至少需要 1 个历史 + 1 个目标
+
+            # 根据模式选择目标位置
+            if self.mode == "train":
+                # 用 1~n-2 做目标，前面当历史
+                for i in range(1, len(seq) - 1):
+                    self.samples.append(self._make_sample(seq[:i], seq[i]))
+            elif self.mode == "valid":
+                # 倒数第二个做目标
+                self.samples.append(self._make_sample(seq[:-2], seq[-2]))
+            elif self.mode == "test":
+                # 最后一个做目标
+                self.samples.append(self._make_sample(seq[:-1], seq[-1]))
+
+        # 采样
+        if self.sample_num > 0:
+            self.samples = random.sample(self.samples, self.sample_num)
+
+    def _make_sample(self, hist_ids, tgt_id):
+        """把原始 id 转成 token + 图片路径"""
+        hist_tokens = ["".join(self.indices[str(iid)]) for iid in hist_ids]
+        tgt_token = "".join(self.indices[str(tgt_id)])
+
+        # 截断历史
+        if self.max_his_len > 0:
+            hist_ids = hist_ids[-self.max_his_len :]
+            hist_tokens = hist_tokens[-self.max_his_len :]
+
+        # 可选：给历史加前缀 1. 2. ...
+        if self.add_prefix:
+            hist_tokens = [f"{k + 1}. {t}" for k, t in enumerate(hist_tokens)]
+
+        hist_str = self.his_sep.join(hist_tokens)
+
+        # 图片路径
+        hist_img_paths = [self._img_path(iid) for iid in hist_ids]
+        tgt_img_path = self._img_path(tgt_id)
+
+        return {
+            "target_item": tgt_token,
+            "inters": hist_str,
+            "history_ids": hist_ids,
+            "target_id": tgt_id,
+            "hist_img_paths": hist_img_paths,
+            "tgt_img_path": tgt_img_path,
+        }
+
+    def _img_path(self, item_id: str) -> str:
+        num_id = self.item2id[str(item_id)]
+        return os.path.join(self.image_root, f"{num_id}.jpg")
+
+    # ------------------------------------------------------------------
+    # Dataset 接口
+    # ------------------------------------------------------------------
+    def __len__(self):
+        return len(self.samples) * self.prompt_sample_num
+
+    def __getitem__(self, index):
+        idx = index // self.prompt_sample_num
+        d = self.samples[idx]
+
+        # 随机/固定 prompt
+        if self.mode == "train":
+            pid = random.randint(0, len(self.prompts) - 1)
+        else:
+            pid = self.prompt_id
+        prompt = self.prompts[pid]
+
+        instruction = prompt["instruction"].format(**d)
+        response = prompt["response"].format(**d)
+        input_text = sft_prompt.format(instruction=instruction, response="")
+        label_text = response
+
+        return TrainingSample(
+            input_text=input_text,
+            label_text=label_text,
+            is_multimodal=True,
+            image_path=d["hist_img_paths"],  # list[str]
+            item_id=d["target_id"],
         )
 
 
@@ -1661,31 +1816,32 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser = parse_dataset_args(parser)
     args = parser.parse_args()
-    dataset = SeqRecDataset(args, mode="test")
+    dataset = MultimodalSeqRecDataset(args, mode="test")
     print(dataset[0])
 
-    from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
+    from transformers import AutoProcessor
 
-    from src.collator import Collator
+    from src.collator import MultiModalCollator
 
     processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-3B-Instruct")
 
     tokenizer = processor.tokenizer
-    collator = Collator(args, tokenizer=tokenizer)
+    collator = MultiModalCollator(args, processor_or_tokenizer=processor)
 
-    new_tokens = dataset.get_new_tokens()
-    tokenizer.add_tokens(new_tokens)
+    print(collator([dataset[0]]))
+    # new_tokens = dataset.get_new_tokens()
+    # tokenizer.add_tokens(new_tokens)
 
-    # collator = MultiModalCollator(args, processor_or_tokenizer=processor)
-    model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-        "Qwen/Qwen2.5-VL-3B-Instruct", trust_remote_code=True
-    )
-    model.eval()
-    model.to("cuda")
+    # # collator = MultiModalCollator(args, processor_or_tokenizer=processor)
+    # model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+    #     "Qwen/Qwen2.5-VL-3B-Instruct", trust_remote_code=True
+    # )
+    # model.eval()
+    # model.to("cuda")
 
-    inputs = collator([dataset[i] for i in range(4)])
-    print(inputs)
-    inputs = {k: v.to("cuda") for k, v in inputs.items()}
-    results = model.generate(**inputs)
+    # inputs = collator([dataset[i] for i in range(4)])
+    # print(inputs)
+    # inputs = {k: v.to("cuda") for k, v in inputs.items()}
+    # results = model.generate(**inputs)
 
-    print(tokenizer.decode(results[0], skip_special_tokens=True))
+    # print(tokenizer.decode(results[0], skip_special_tokens=True))

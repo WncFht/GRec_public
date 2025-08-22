@@ -1034,3 +1034,92 @@ prompt["response"] = (
 textenrich_without_id_prompt.append(prompt)
 
 all_prompt["text_enrich_without_id"] = textenrich_without_id_prompt
+
+# ====================
+# multimodal_seqrec
+# ====================
+
+multimodal_seqrec_prompt = []
+
+# ---------- 0 ----------
+p = {}
+p["instruction"] = (
+    "The user has sequentially interacted with the following items, each accompanied by its image: {inters}. Based on both the visual and textual cues, what is the token of the next item the user is likely to interact with?"
+)
+p["response"] = "{target_item}"
+multimodal_seqrec_prompt.append(p)
+
+# ---------- 1 ----------
+p = {}
+p["instruction"] = (
+    "Here are the user's historical interactions in order,where every item is represented by its token and an associated image: {inters}. Please predict the token of the subsequent item that best fits the user's preference."
+)
+p["response"] = "{target_item}"
+multimodal_seqrec_prompt.append(p)
+
+# ---------- 2 ----------
+p = {}
+p["instruction"] = (
+    "Given the user's chronological interaction history, with each item depicted by both its token and image: {inters}, determine the token of the next recommended item."
+)
+p["response"] = "{target_item}"
+multimodal_seqrec_prompt.append(p)
+
+# ---------- 3 ----------
+p = {}
+p["instruction"] = (
+    "The user has interacted with the following sequence of items, each shown as token + image: {inters}. Infer the token of the item the user is most likely to interact with next."
+)
+p["response"] = "{target_item}"
+multimodal_seqrec_prompt.append(p)
+
+# ---------- 4 ----------
+p = {}
+p["instruction"] = (
+    "Observe the user's ordered interaction records, where every entry is a token paired with its image: {inters}. Provide the token of the next probable item."
+)
+p["response"] = "{target_item}"
+multimodal_seqrec_prompt.append(p)
+
+# ---------- 5 ----------
+p = {}
+p["instruction"] = (
+    "You are given the user's historical item interactions, each consisting of a token and the corresponding image: {inters}. What token should be recommended as the next item?"
+)
+p["response"] = "{target_item}"
+multimodal_seqrec_prompt.append(p)
+
+# ---------- 6 ----------
+p = {}
+p["instruction"] = (
+    "Based on the user's past interaction sequence, where each item is represented by token and image: {inters}, predict the token of the next item the user will most likely choose."
+)
+p["response"] = "{target_item}"
+multimodal_seqrec_prompt.append(p)
+
+# ---------- 7 ----------
+p = {}
+p["instruction"] = (
+    "Here is the user's chronological interaction list: {inters}, with each item shown as token and image. Identify the token of the next item to recommend."
+)
+p["response"] = "{target_item}"
+multimodal_seqrec_prompt.append(p)
+
+# ---------- 8 ----------
+p = {}
+p["instruction"] = (
+    "The user has successively interacted with these items: {inters}, each displayed as token and image. What is the token of the next item that aligns with the user's preference?"
+)
+p["response"] = "{target_item}"
+multimodal_seqrec_prompt.append(p)
+
+# ---------- 9 ----------
+p = {}
+p["instruction"] = (
+    "After viewing the user's interaction sequence, where each item is given by its token and image: {inters}, forecast the token of the subsequent item."
+)
+p["response"] = "{target_item}"
+multimodal_seqrec_prompt.append(p)
+
+# 注册到 all_prompt
+all_prompt["multimodal_seqrec"] = multimodal_seqrec_prompt
