@@ -164,7 +164,7 @@ def load_and_prepare_model_tokenizer(
     config = AutoConfig.from_pretrained(args.base_model, trust_remote_code=True)
     processor = AutoProcessor.from_pretrained(
         args.base_model,
-        use_fase=True,
+        use_fast=True,
         trust_remote_code=True,
     )
     if args.model_type == "qwen2_vl":

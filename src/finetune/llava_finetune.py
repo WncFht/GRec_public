@@ -169,7 +169,7 @@ def load_and_prepare_model_tokenizer(
     processor = AutoProcessor.from_pretrained(
         args.base_model,
         trust_remote_code=True,
-        use_fase=True,
+        use_fast=True,
     )
     if args.model_type == "qwen2_vl":
         model_class = Qwen2VLForConditionalGeneration
