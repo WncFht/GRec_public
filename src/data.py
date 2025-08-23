@@ -397,6 +397,10 @@ class MultimodalSeqRecDataset(BaseDataset):
         self._split_data()
         self._process_data()
 
+    def set_prompt(self, prompt_id):
+        # 设置当前使用的prompt ID
+        self.prompt_id = prompt_id
+
     # ------------------------------------------------------------------
     # 数据加载
     # ------------------------------------------------------------------
