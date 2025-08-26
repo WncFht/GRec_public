@@ -1,3 +1,4 @@
+import argparse
 import json
 import logging
 import os
@@ -14,11 +15,10 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoProcessor, GenerationConfig
 
-# 导入项目内部模块
-from ..collator import UnifiedTestCollator
-from ..data import TextEnrichWihtoutItemIDDataset
-from ..type import Args
-from ..utils import get_tokenizer
+from src.collator import UnifiedTestCollator
+from src.data import TextEnrichDataset
+from src.parser import parse_dataset_args, parse_global_args, parse_test_args
+from src.utils import get_tokenizer
 
 
 class TextGenerationBenchmark:
@@ -147,7 +147,7 @@ class TextGenerationBenchmark:
         - 包含Precision, Recall, F1三个维度
         - 适合评估语义保真度和表达多样性
         """
-        P, R, F1 = bert_score(
+        p, r, f1 = bert_score(
             candidates,
             references,
             model_type="roberta-large",
@@ -156,9 +156,9 @@ class TextGenerationBenchmark:
         )
 
         return {
-            "bert_precision": P.mean().item(),
-            "bert_recall": R.mean().item(),
-            "bert_f1": F1.mean().item(),
+            "bert_precision": p.mean().item(),
+            "bert_recall": r.mean().item(),
+            "bert_f1": f1.mean().item(),
         }
 
     def calculate_semantic_similarity(
@@ -207,34 +207,29 @@ class TextGenerationBenchmark:
         model_name: str,
         model_type: str,
         processor: AutoProcessor,
-        dataset: TextEnrichWihtoutItemIDDataset,
-        args: Args,
+        dataset: TextEnrichDataset,
+        args: argparse.Namespace,
     ) -> dict[str, Any]:
         """
         对单个模型进行流式生成和评估。
         """
-        gen_args = args.text_generation_args
         tokenizer = get_tokenizer(processor)
 
         # 1. 创建 Test Collator 和 DataLoader
         test_collator = UnifiedTestCollator(
-            args=args.dataset_args,
+            args=args,
             processor_or_tokenizer=processor,
             model_type=model_type,
         )
         dataloader = DataLoader(
             dataset,
-            batch_size=args.test_args.test_batch_size,  # 使用测试的batch size
+            batch_size=args.test_batch_size,  # 使用测试的batch size
             collate_fn=test_collator,
             num_workers=4,  # 可以根据系统配置调整
         )
 
         # 2. 配置生成参数
         generation_config = GenerationConfig(
-            max_new_tokens=gen_args.max_new_tokens,
-            do_sample=gen_args.do_sample,
-            temperature=gen_args.temperature,
-            top_p=gen_args.top_p,
             pad_token_id=tokenizer.pad_token_id,
             eos_token_id=tokenizer.eos_token_id,
         )
@@ -372,9 +367,9 @@ class TextGenerationBenchmark:
 
         return avg_scores
 
-    def compare_models(self, args: Args) -> pd.DataFrame:
+    def evaluate_single_model(self, args: argparse.Namespace) -> pd.DataFrame:
         """
-        对比多个模型的生成质量
+        评估单个模型的生成质量
 
         Args:
         ----
@@ -382,67 +377,48 @@ class TextGenerationBenchmark:
 
         Returns:
         -------
-            包含所有模型评估结果的DataFrame
+            包含单个模型评估结果的DataFrame
 
         """
-        all_results = []
-
         from ..utils import load_model_for_inference
 
-        # 从 args.test_args.models 获取模型列表
-        for model_config in args.test_args.models:
-            if not model_config.enabled:
-                continue
+        # 从参数中获取单个模型配置
+        model_name = args.model_name
+        model_type = args.model_type
+        ckpt_path = args.ckpt_path
+        use_lora = args.lora
 
-            model_name = model_config.name
-            model_type = model_config.model_type
-            self.logger.info(f"--- Running benchmark for: {model_name} ---")
+        self.logger.info(f"--- Running benchmark for: {model_name} ---")
 
-            try:
-                # 1. 加载模型
-                self.logger.info(f"Loading model '{model_name}'...")
-                model, processor = load_model_for_inference(
-                    model_type=model_config.model_type,
-                    model_path=model_config.path,
-                    ckpt_path=model_config.ckpt_path,
-                    use_lora=model_config.lora,
-                )
+        try:
+            # 1. 加载模型
+            self.logger.info(f"Loading model '{model_name}'...")
+            model, processor = load_model_for_inference(
+                model_type=model_type,
+                ckpt_path=ckpt_path,
+                use_lora=use_lora,
+            )
 
-                # 2. 加载数据集
-                # 注意：数据集的加载仍然依赖于原始的、未修改的 args 对象
-                self.logger.info("Loading test dataset for text enrichment...")
-                dataset = TextEnrichWihtoutItemIDDataset(
-                    args=args,
-                    mode="test",  # 始终使用测试集进行评估
-                    # prompt_sample_num=args.text_generation_args.prompt_sample_num,
-                    sample_num=args.text_generation_args.sample_num,
-                )
+            # 2. 加载数据集
+            self.logger.info("Loading test dataset for text enrichment...")
+            dataset = TextEnrichDataset(
+                args=args,
+                mode="test",  # 始终使用测试集进行评估
+            )
 
-                # 3. 运行评估
-                # 注意：评估函数也需要完整的 args 对象来获取生成参数等
-                eval_results = self.evaluate_model_in_memory(
-                    model, model_name, model_type, processor, dataset, args
-                )
-                # 使用配置文件中更具描述性的名称
-                eval_results["model_name"] = model_name
-                all_results.append(eval_results)
-                self.logger.info(
-                    f"--- Finished benchmark for: {model_name} ---"
-                )
+            # 3. 运行评估
+            eval_results = self.evaluate_model_in_memory(
+                model, model_name, model_type, processor, dataset, args
+            )
+            eval_results["model_name"] = model_name
+            self.logger.info(f"--- Finished benchmark for: {model_name} ---")
 
-            except Exception as e:
-                self.logger.error(
-                    f"Error evaluating {model_name}: {e!s}", exc_info=True
-                )
-                continue
+        except Exception:
+            self.logger.exception("Error evaluating")
+            return pd.DataFrame()
 
-        # 转换为DataFrame并按BLEU分数排序
-        results_df = pd.DataFrame(all_results)
-        if not results_df.empty and "avg_bleu" in results_df.columns:
-            results_df = results_df.sort_values("avg_bleu", ascending=False)
-        elif not results_df.empty and "avg_rougeL" in results_df.columns:
-            results_df = results_df.sort_values("avg_rougeL", ascending=False)
-
+        # 转换为DataFrame
+        results_df = pd.DataFrame([eval_results])
         return results_df
 
     def print_results(self, results_df: pd.DataFrame):
@@ -523,8 +499,8 @@ class TextGenerationBenchmark:
                     f"结果文件 {file_path} 为空, 将直接写入新数据。"
                 )
                 final_df = results_df
-            except Exception as e:
-                self.logger.error(f"合并结果时出错: {e}。将覆盖旧文件。")
+            except Exception:
+                self.logger.exception("合并结果时出错，将覆盖旧文件。")
                 final_df = results_df
         else:
             # 文件不存在或为空，直接使用新数据
@@ -533,3 +509,40 @@ class TextGenerationBenchmark:
         # 保存最终的DataFrame
         final_df.to_csv(file_path, index=False)
         self.logger.info(f"结果已成功保存到: {file_path}")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser = parse_global_args(parser)
+    parser = parse_dataset_args(parser)
+    parser = parse_test_args(parser)
+
+    args = parser.parse_args()
+
+    # 创建评估器
+    evaluator = TextGenerationBenchmark(
+        reference_data_path=args.reference_data_path,
+        metrics=args.benchmark_metrics,
+        debug=getattr(args, "debug", False),
+    )
+
+    # 评估单个模型
+    results_df = evaluator.evaluate_single_model(args)
+
+    # 打印结果
+    if not results_df.empty:
+        evaluator.print_results(results_df)
+
+        # 保存结果
+        results_file = getattr(
+            args,
+            "results_file",
+            "./results/text_generation_results.csv",
+        )
+        evaluator.save_results(results_df, results_file)
+    else:
+        print("评估失败，没有生成结果。")
+
+
+if __name__ == "__main__":
+    main()

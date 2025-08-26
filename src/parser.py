@@ -97,7 +97,6 @@ def parse_dataset_args(
     dataset_args.add_argument(
         "--ratio_dataset",
         type=float,
-        required=True,
         default=1.0,
         help="the ratio of dataset",
     )
@@ -229,7 +228,15 @@ def parse_test_args(
 ) -> argparse.ArgumentParser:
     test_args = parser.add_argument_group("test_args")
     test_args.add_argument(
-        "--ckpt_path", type=str, default="", help="The checkpoint path"
+        "--model_name",
+        type=str,
+        default="default_model",
+    )
+    test_args.add_argument(
+        "--ckpt_path",
+        type=str,
+        default="",
+        help="The checkpoint path",
     )
     test_args.add_argument("--lora", action="store_true", default=False)
     test_args.add_argument(
@@ -293,6 +300,12 @@ def parse_test_args(
         "--print_freq",
         type=int,
         default=4,
+    )
+    test_args.add_argument(
+        "--reference_data_path",
+        type=str,
+        default="./data/Instruments/Instruments.item_enriched_v2.json",
+        help="参考数据(ground truth)的路径",
     )
 
     return parser

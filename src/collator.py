@@ -1,3 +1,4 @@
+import argparse
 import os
 from typing import TYPE_CHECKING
 
@@ -111,7 +112,7 @@ class TestCollator:
 class MultiModalCollator:
     """多模态数据整理器 - 优化版本，支持混合batch"""
 
-    def __init__(self, args: Args, processor_or_tokenizer):
+    def __init__(self, args: argparse, processor_or_tokenizer):
         self.args = args
 
         self.only_train_response = args.only_train_response
@@ -269,7 +270,10 @@ class UnifiedTestCollator:
     """统一的测试数据整理器 - 自动检测并处理单模态/多模态数据"""
 
     def __init__(
-        self, args: Args, processor_or_tokenizer, model_type: str | None = None
+        self,
+        args: argparse.Namespace,
+        processor_or_tokenizer,
+        model_type: str | None = None,
     ):
         self.args = args
         self.model_type = model_type

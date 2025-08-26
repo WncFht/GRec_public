@@ -13,6 +13,8 @@ lint.ignore = [
     "T10", # 调试器
     "TID", # flake8-tidy-imports
     "PTH",
+    "PLC0415",
+    "RET504",
     
     #### 特定规则
     "BLE001",

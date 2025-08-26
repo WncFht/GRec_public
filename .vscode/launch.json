@@ -2,6 +2,30 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "text_generation",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.text_generation.evaluate",
+            "args": [
+                "--ckpt_path",
+                "./ckpt/Instruments/Qwen2-VL-7B-Instruct-seqrec-item2index-1-qwen7B/checkpoint-84892",
+                "--model_type",
+                "qwen2_vl",
+                "--test_batch_size",
+                "8",
+                "--test_prompt_ids",
+                "0",
+                "--index_file",
+                ".index_qwen7B.json"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "2",
+                "PYTHONPATH": "${workspaceFolder}",
+            }, 
+        },
+        {
             "name": "test_without_id",
             "type": "debugpy",
             "request": "launch",

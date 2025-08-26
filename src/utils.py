@@ -16,7 +16,9 @@ from transformers import (
     InstructBlipForConditionalGeneration,
     LlamaForCausalLM,
     LlamaTokenizer,
+    LlavaOnevisionForConditionalGeneration,
     Qwen2_5_VLForConditionalGeneration,
+    Qwen2VLForConditionalGeneration,
     T5ForConditionalGeneration,
 )
 
@@ -35,8 +37,18 @@ from .data import (
 # ----------------- 模型和分词器加载工具 -----------------
 
 MODEL_CONFIG = {
-    "qwen_vl": {
+    "qwen2_5_vl": {
         "model_class": Qwen2_5_VLForConditionalGeneration,
+        "processor_class": AutoProcessor,
+        "from_pretrained_kwargs": {"trust_remote_code": True},
+    },
+    "qwen2_vl": {
+        "model_class": Qwen2VLForConditionalGeneration,
+        "processor_class": AutoProcessor,
+        "from_pretrained_kwargs": {"trust_remote_code": True},
+    },
+    "llava_onevision": {
+        "model_class": LlavaOnevisionForConditionalGeneration,
         "processor_class": AutoProcessor,
         "from_pretrained_kwargs": {"trust_remote_code": True},
     },
@@ -73,7 +85,10 @@ def get_tokenizer(
 
 
 def load_model_for_inference(
-    model_type: str, model_path: str, ckpt_path: str, use_lora: bool
+    model_type: str,
+    ckpt_path: str,
+    use_lora: bool,
+    model_path: str | None = None,
 ) -> tuple[Any, AutoProcessor | AutoTokenizer]:
     """
     为推理（测试/生成）加载模型和分词器。
@@ -112,7 +127,10 @@ def load_model_for_inference(
         ckpt_path = model_path
     print(f"从 '{ckpt_path}' 加载分词器...")
     processor = processor_class.from_pretrained(
-        ckpt_path, padding_side="left", **from_pretrained_kwargs
+        ckpt_path,
+        padding_side="left",
+        use_fast=True,
+        **from_pretrained_kwargs,
     )
     tokenizer = get_tokenizer(processor)
     print(f"词汇表大小: {len(tokenizer)}")
@@ -145,7 +163,8 @@ def load_model_for_inference(
         else:
             print("警告: 未找到 token_meta.json, 词汇表可能不匹配。")
         if not ckpt_path:
-            raise ValueError("使用LoRA时必须提供 'ckpt_path'。")
+            error_string = "使用LoRA时必须提供 'ckpt_path'。"
+            raise ValueError(error_string)
         print(f"加载并合并LoRA权重从: {ckpt_path}")
         model = PeftModel.from_pretrained(model, ckpt_path)
         model = model.merge_and_unload()
