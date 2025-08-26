@@ -27,7 +27,9 @@ def main():
     )
     if not reference_data_path.exists():
         print(f"错误: 找不到参考数据 {reference_data_path}")
-        print("请在配置文件中检查 'dataset_args.data_path' 和 'dataset_args.dataset' 是否正确。")
+        print(
+            "请在配置文件中检查 'dataset_args.data_path' 和 'dataset_args.dataset' 是否正确。"
+        )
         return
 
     # --- 运行评估 ---
@@ -41,10 +43,11 @@ def main():
     # 动态获取配置文件路径, 以便在日志中显示
     # (parse_args 目前没有将文件名存入args对象, 我们暂时从 sys.argv 解析)
     import sys
-    config_file_path = "config/text_generation_benchmark.yml" # 默认值
+
+    config_file_path = "config/text_generation_benchmark.yml"  # 默认值
     for i, arg in enumerate(sys.argv):
         if arg == "--config_file" and i + 1 < len(sys.argv):
-            config_file_path = sys.argv[i+1]
+            config_file_path = sys.argv[i + 1]
             break
 
     print(f"\n--- 使用配置文件 {config_file_path} 中的模型进行比较 ---")
