@@ -16,7 +16,7 @@ from transformers import AutoProcessor, GenerationConfig
 
 # 导入项目内部模块
 from ..collator import UnifiedTestCollator
-from ..data import TextEnrichDataset, TextEnrichWihtoutItemIDDataset
+from ..data import TextEnrichWihtoutItemIDDataset
 from ..type import Args
 from ..utils import get_tokenizer
 
@@ -69,7 +69,9 @@ class TextGenerationBenchmark:
             print(" -> SentenceTransformer (用于 semantic_similarity)")
             from sentence_transformers import SentenceTransformer
 
-            self.sentence_model = SentenceTransformer("./ckpt/sentence-transformers/all-MiniLM-L6-v2")
+            self.sentence_model = SentenceTransformer(
+                "./ckpt/sentence-transformers/all-MiniLM-L6-v2"
+            )
         if "bert_score" in self.metrics_to_run:
             print(" -> BERTScore (模型将在首次使用时按需加载)")
 
@@ -145,7 +147,13 @@ class TextGenerationBenchmark:
         - 包含Precision, Recall, F1三个维度
         - 适合评估语义保真度和表达多样性
         """
-        P, R, F1 = bert_score(candidates, references, model_type="roberta-large", lang="en", verbose=False)
+        P, R, F1 = bert_score(
+            candidates,
+            references,
+            model_type="roberta-large",
+            lang="en",
+            verbose=False,
+        )
 
         return {
             "bert_precision": P.mean().item(),
@@ -192,7 +200,6 @@ class TextGenerationBenchmark:
             text_parts.extend(item_data["characteristics"][:3])  # 取前3个特征
 
         return " ".join(text_parts)
-
 
     def evaluate_model_in_memory(
         self,
@@ -247,7 +254,9 @@ class TextGenerationBenchmark:
                 model_inputs, reference_texts, item_ids = batch
 
                 # 将输入移动到模型所在设备
-                model_inputs = {k: v.to(model.device) for k, v in model_inputs.items()}
+                model_inputs = {
+                    k: v.to(model.device) for k, v in model_inputs.items()
+                }
 
                 # 3. 生成文本
                 outputs = model.generate(
@@ -259,23 +268,35 @@ class TextGenerationBenchmark:
                 # outputs 包含了输入部分，需要跳过
                 start_index = model_inputs["input_ids"].shape[1]
                 generated_tokens = outputs[:, start_index:]
-                generated_texts = tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
-
+                generated_texts = tokenizer.batch_decode(
+                    generated_tokens, skip_special_tokens=True
+                )
 
                 # 【调试模式】如果开启，打印详细信息并只处理一个批次
                 if self.debug_mode:
                     # 仅打印第一个样本的信息
-                    print("\n" + "="*25 + " DEBUG MODE: FIRST SAMPLE OF BATCH " + "="*25)
+                    print(
+                        "\n"
+                        + "=" * 25
+                        + " DEBUG MODE: FIRST SAMPLE OF BATCH "
+                        + "=" * 25
+                    )
                     print(f"ITEM ID: {item_ids[0]}")
                     # 注意：input_text需要从dataloader外部获取，或者在collator中也返回
                     # 为了简化，我们直接打印解码后的输入
-                    decoded_input = tokenizer.decode(model_inputs["input_ids"][0], skip_special_tokens=True)
+                    decoded_input = tokenizer.decode(
+                        model_inputs["input_ids"][0], skip_special_tokens=True
+                    )
                     print("-" * 70)
                     print(f"✅ MODEL INPUT (Decoded):\n{decoded_input}")
                     print("-" * 70)
-                    print(f"✅ MODEL OUTPUT (Generated Text):\n{generated_texts[0]}")
+                    print(
+                        f"✅ MODEL OUTPUT (Generated Text):\n{generated_texts[0]}"
+                    )
                     print("-" * 70)
-                    print(f"✅ GROUND TRUTH (Reference Text):\n{reference_texts[0]}")
+                    print(
+                        f"✅ GROUND TRUTH (Reference Text):\n{reference_texts[0]}"
+                    )
                     print("=" * 70)
 
                 # 5. 计算评估指标
@@ -284,7 +305,9 @@ class TextGenerationBenchmark:
                     ref_embeddings = self.sentence_model.encode(reference_texts)
                     gen_embeddings = self.sentence_model.encode(generated_texts)
                     # 计算每对向量的余弦相似度
-                    dot_products = np.sum(ref_embeddings * gen_embeddings, axis=1)
+                    dot_products = np.sum(
+                        ref_embeddings * gen_embeddings, axis=1
+                    )
                     ref_norms = np.linalg.norm(ref_embeddings, axis=1)
                     gen_norms = np.linalg.norm(gen_embeddings, axis=1)
                     # 防止除以零
@@ -403,7 +426,9 @@ class TextGenerationBenchmark:
                 # 使用配置文件中更具描述性的名称
                 eval_results["model_name"] = model_name
                 all_results.append(eval_results)
-                self.logger.info(f"--- Finished benchmark for: {model_name} ---")
+                self.logger.info(
+                    f"--- Finished benchmark for: {model_name} ---"
+                )
 
             except Exception as e:
                 self.logger.error(
@@ -467,7 +492,9 @@ class TextGenerationBenchmark:
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
         if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-            self.logger.info(f"发现已存在的结果文件: {file_path}。正在合并结果...")
+            self.logger.info(
+                f"发现已存在的结果文件: {file_path}。正在合并结果..."
+            )
             try:
                 # 1. 加载旧数据
                 existing_df = pd.read_csv(file_path)
@@ -483,9 +510,10 @@ class TextGenerationBenchmark:
                 combined_df.update(results_df)
 
                 # 将新模型的结果（未在combined_df中更新的）追加进去
-                new_models_df = results_df[~results_df.index.isin(existing_df.index)]
+                new_models_df = results_df[
+                    ~results_df.index.isin(existing_df.index)
+                ]
                 final_df = pd.concat([combined_df, new_models_df])
-
 
                 # 4. 恢复索引
                 final_df.reset_index(inplace=True)
