@@ -101,10 +101,10 @@ def load_model_for_inference(
 
     Args:
     ----
-        model_type (str): 模型类型，例如 "qwen_vl"。
-        model_path (str): 基础或完整模型的路径。
-        ckpt_path (str): LoRA 检查点的路径 (如果 use_lora 为 True)。
+        model_type (str): 模型类型，例如 "qwen2_vl"。
+        ckpt_path (str): 检查点路径（全量微调模型或LoRA适配器）。
         use_lora (bool): 是否加载和合并 LoRA 权重。
+        model_path (str): 基础模型路径（仅在use_lora=True时需要）。
 
     Returns:
     -------
@@ -122,10 +122,9 @@ def load_model_for_inference(
     from_pretrained_kwargs = config.get("from_pretrained_kwargs", {})
 
     # 1. 加载 Processor / Tokenizer
-    # 分词器/处理器应该始终从主模型路径加载。
-    if ckpt_path == "":
-        ckpt_path = model_path
-    print(f"从 '{ckpt_path}' 加载分词器...")
+    # 对于LoRA模型，从ckpt_path加载（包含扩展的词表）
+    # 对于全量微调，也从ckpt_path加载
+    print(f"从 '{ckpt_path}' 加载处理器/分词器...")
     processor = processor_class.from_pretrained(
         ckpt_path,
         padding_side="left",
@@ -134,7 +133,12 @@ def load_model_for_inference(
     )
     tokenizer = get_tokenizer(processor)
     print(f"词汇表大小: {len(tokenizer)}")
+    
     if use_lora:
+        if not model_path:
+            error_string = "使用LoRA时必须提供 'model_path'（基础模型路径）。"
+            raise ValueError(error_string)
+            
         # 2. 加载基础模型
         print(f"从 '{model_path}' 加载基础模型...")
         model = model_class.from_pretrained(
@@ -145,30 +149,36 @@ def load_model_for_inference(
             **from_pretrained_kwargs,
         )
         print("基础模型加载完成。")
-        # 3. 处理词汇表扩展
-        # 对于推理，我们从保存的元数据中恢复词汇表大小
-        # 如果是LoRA模型，则元数据在ckpt_path中；如果不是，则元数据应在模型路径本身
-        token_meta_path_dir = ckpt_path
-        token_meta_path = os.path.join(token_meta_path_dir, "token_meta.json")
-        if os.path.exists(token_meta_path):
-            with open(token_meta_path) as f:
-                token_meta = json.load(f)
-            new_vocab_size = token_meta["new_vocab_size"]
-            old_vocab_size = token_meta["original_vocab_size"]
-            print(
-                f"从元数据中发现新词汇表大小: {new_vocab_size}, 旧词汇表大小: {old_vocab_size}"
-            )
-            model.resize_token_embeddings(new_vocab_size)
-            model.config.vocab_size = new_vocab_size
-        else:
-            print("警告: 未找到 token_meta.json, 词汇表可能不匹配。")
-        if not ckpt_path:
-            error_string = "使用LoRA时必须提供 'ckpt_path'。"
-            raise ValueError(error_string)
-        print(f"加载并合并LoRA权重从: {ckpt_path}")
-        model = PeftModel.from_pretrained(model, ckpt_path)
+        
+        # 3. 调整词汇表大小以匹配训练时的扩展
+        # LoRA训练时会扩展词汇表，我们需要恢复这个扩展
+        # 检查adapter_config.json中的信息
+        adapter_config_path = os.path.join(ckpt_path, "adapter_config.json")
+        if os.path.exists(adapter_config_path):
+            with open(adapter_config_path) as f:
+                adapter_config = json.load(f)
+            # PEFT会在modules_to_save中保存修改过的embedding层信息
+            if "modules_to_save" in adapter_config and adapter_config["modules_to_save"]:
+                print(f"检测到保存的模块: {adapter_config['modules_to_save']}")
+                # 词汇表大小应该已经在tokenizer中正确设置了
+                new_vocab_size = len(tokenizer)
+                print(f"调整模型词汇表大小为: {new_vocab_size}")
+                model.resize_token_embeddings(new_vocab_size)
+                model.config.vocab_size = new_vocab_size
+        
+        # 4. 加载并合并LoRA权重
+        print(f"加载LoRA权重从: {ckpt_path}")
+        model = PeftModel.from_pretrained(
+            model, 
+            ckpt_path,
+            is_trainable=False  # 推理模式
+        )
+        print("LoRA权重加载完成。")
+        
+        # 5. 合并权重以提高推理速度（可选）
+        print("合并LoRA权重到基础模型...")
         model = model.merge_and_unload()
-        print("LoRA 权重合并完成。")
+        print("LoRA权重合并完成。")
     else:
         # 2. 直接加载完整模型
         print(f"从 '{ckpt_path}' 加载完整模型...")
@@ -181,10 +191,11 @@ def load_model_for_inference(
         )
         print("完整模型加载完成。")
 
+    # 验证词汇表大小匹配
     final_vocab_size = model.get_input_embeddings().weight.shape[0]
     if len(tokenizer) != final_vocab_size:
         print(
-            f"Tokenizer size {len(tokenizer)} != model vocab size {final_vocab_size}"
+            f"警告: Tokenizer大小 {len(tokenizer)} != 模型词汇表大小 {final_vocab_size}"
         )
 
     model.eval()

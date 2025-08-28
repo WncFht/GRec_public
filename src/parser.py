@@ -233,6 +233,17 @@ def parse_test_args(
         default="default_model",
     )
     test_args.add_argument(
+        "--base_model",
+        type=str,
+        default="./ckpt/base_model/Qwen2-VL-2B-Instruct",
+        help="基础模型路径（仅在使用LoRA时需要）",
+    )
+    test_args.add_argument(
+        "--lora",
+        action="store_true",
+        default=False
+    )
+    test_args.add_argument(
         "--ckpt_path",
         type=str,
         default="",
