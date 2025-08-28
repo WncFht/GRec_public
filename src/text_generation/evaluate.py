@@ -13,12 +13,11 @@ from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
 from rouge_score import rouge_scorer
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import AutoProcessor, GenerationConfig
+from transformers import AutoProcessor
 
 from src.collator import UnifiedTestCollator
 from src.data import TextEnrichDataset
 from src.parser import parse_dataset_args, parse_global_args, parse_test_args
-from src.utils import get_tokenizer
 
 
 class TextGenerationBenchmark:
@@ -213,7 +212,8 @@ class TextGenerationBenchmark:
         """
         对单个模型进行流式生成和评估。
         """
-        tokenizer = get_tokenizer(processor)
+        tokenizer = processor.tokenizer
+        tokenizer.padding_side = "left"
 
         # 1. 创建 Test Collator 和 DataLoader
         test_collator = UnifiedTestCollator(
@@ -225,13 +225,7 @@ class TextGenerationBenchmark:
             dataset,
             batch_size=args.test_batch_size,  # 使用测试的batch size
             collate_fn=test_collator,
-            num_workers=4,  # 可以根据系统配置调整
-        )
-
-        # 2. 配置生成参数
-        generation_config = GenerationConfig(
-            pad_token_id=tokenizer.pad_token_id,
-            eos_token_id=tokenizer.eos_token_id,
+            num_workers=8,  # 可以根据系统配置调整
         )
 
         scores = {
@@ -246,22 +240,25 @@ class TextGenerationBenchmark:
 
         with torch.no_grad():
             for batch in tqdm(dataloader, desc=f"Evaluating {model_name}"):
-                model_inputs, reference_texts, item_ids = batch
+                inputs, reference_texts, item_ids = batch
 
-                # 将输入移动到模型所在设备
-                model_inputs = {
-                    k: v.to(model.device) for k, v in model_inputs.items()
-                }
+                inputs = {k: v.to(model.device) for k, v in inputs.items()}
 
                 # 3. 生成文本
                 outputs = model.generate(
-                    **model_inputs,
-                    generation_config=generation_config,
+                    input_ids=inputs["input_ids"],
+                    attention_mask=inputs["attention_mask"],
+                    max_new_tokens=2048,
+                    do_sample=True,
+                    temperature=0.7,
+                    top_p=0.9,
+                    pad_token_id=tokenizer.pad_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
                 )
 
                 # 4. 解码生成的文本
                 # outputs 包含了输入部分，需要跳过
-                start_index = model_inputs["input_ids"].shape[1]
+                start_index = inputs["input_ids"].shape[1]
                 generated_tokens = outputs[:, start_index:]
                 generated_texts = tokenizer.batch_decode(
                     generated_tokens, skip_special_tokens=True
@@ -280,7 +277,7 @@ class TextGenerationBenchmark:
                     # 注意：input_text需要从dataloader外部获取，或者在collator中也返回
                     # 为了简化，我们直接打印解码后的输入
                     decoded_input = tokenizer.decode(
-                        model_inputs["input_ids"][0], skip_special_tokens=True
+                        inputs["input_ids"][0], skip_special_tokens=True
                     )
                     print("-" * 70)
                     print(f"✅ MODEL INPUT (Decoded):\n{decoded_input}")
@@ -399,11 +396,33 @@ class TextGenerationBenchmark:
                 use_lora=use_lora,
             )
 
+            # from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2VLForConditionalGeneration, LlavaOnevisionForConditionalGeneration
+            # processor = AutoProcessor.from_pretrained(ckpt_path)
+            # tokenizer = processor.tokenizer
+            # tokenizer.padding_side = "left"
+            # if tokenizer.pad_token is None:
+            #     tokenizer.pad_token = tokenizer.eos_token
+            # if model_type == "qwen2_5_vl":
+            #     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+            #         ckpt_path,
+            #         torch_dtype=torch.bfloat16,
+            #     )
+            # elif model_type == "qwen2_vl":
+            #     model = Qwen2VLForConditionalGeneration.from_pretrained(
+            #         ckpt_path,
+            #         torch_dtype=torch.bfloat16,
+            #     )
+            # elif model_type == "llava_onevision":
+            #     model = LlavaOnevisionForConditionalGeneration.from_pretrained(
+            #         ckpt_path,
+            #         torch_dtype=torch.bfloat16,
+            #     )
+
             # 2. 加载数据集
             self.logger.info("Loading test dataset for text enrichment...")
             dataset = TextEnrichDataset(
                 args=args,
-                mode="test",  # 始终使用测试集进行评估
+                mode="test",  # 始终使用测试集进行评估c
             )
 
             # 3. 运行评估
