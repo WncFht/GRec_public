@@ -330,6 +330,7 @@ def load_embeddings_from_model(
     layer_name: str = "model.embed_tokens.weight",
     sample_original_tokens: int = 1000,
     analyze_languages: bool = True,
+    filter_languages: list[str] = None,
     seed: int = 42,
 ) -> EmbeddingInfo:
     """Load embeddings from model with language analysis."""
@@ -379,19 +380,58 @@ def load_embeddings_from_model(
     else:
         print(f"Found {len(new_token_ids)} new tokens (all categories)")
 
-    # Sample original tokens
+    # Sample original tokens with optional language filtering
     original_token_ids = list(range(min(vocab_size, embeddings.shape[0])))
     original_token_ids = [
         tid for tid in original_token_ids if tid not in new_token_ids
     ]
 
+    # Apply language filter if specified
+    if filter_languages and analyze_languages:
+        print(
+            f"Filtering original tokens for languages: {', '.join(filter_languages)}"
+        )
+        filtered_token_ids = []
+
+        for tid in tqdm(
+            original_token_ids, desc="Filtering tokens by language"
+        ):
+            try:
+                if tid in readable_vocab:
+                    token_text = readable_vocab[tid]
+                else:
+                    token_text = tokenizer.decode(tid)
+
+                # Remove special prefixes for language detection
+                clean_text = (
+                    token_text.replace("ADDED_TOKEN:", "")
+                    .replace("INVALID UTF-8:", "")
+                    .strip()
+                )
+
+                # Detect language
+                lang = detect_token_language(clean_text)
+
+                # Check if token matches any of the filter languages
+                if lang in filter_languages:
+                    filtered_token_ids.append(tid)
+
+            except Exception:
+                continue
+
+        original_token_ids = filtered_token_ids
+        print(
+            f"Found {len(original_token_ids)} tokens matching filter languages"
+        )
+
     random.seed(seed)
     num_samples = min(sample_original_tokens, len(original_token_ids))
-    sampled_original_ids = (
-        random.sample(original_token_ids, num_samples)
-        if num_samples > 0
-        else []
-    )
+    if num_samples > 0 and len(original_token_ids) > 0:
+        sampled_original_ids = random.sample(original_token_ids, num_samples)
+    else:
+        sampled_original_ids = (
+            original_token_ids[:num_samples] if original_token_ids else []
+        )
 
     print(f"Sampled {len(sampled_original_ids)} original tokens")
 
@@ -800,6 +840,31 @@ def main():
         help="Number of original tokens to sample (default: 1000)",
     )
     parser.add_argument(
+        "--filter_languages",
+        type=str,
+        nargs="+",
+        default=None,
+        choices=[
+            "Chinese",
+            "English",
+            "Japanese",
+            "Korean",
+            "Russian",
+            "Arabic",
+            "French",
+            "German",
+            "Spanish",
+            "Italian",
+            "Portuguese",
+            "Thai",
+            "Vietnamese",
+            "Hindi",
+            "Code",
+            "Numeric",
+        ],
+        help="Filter original tokens to only include specified languages (e.g., --filter_languages Chinese English)",
+    )
+    parser.add_argument(
         "--max_tokens",
         type=int,
         default=None,
@@ -923,6 +988,7 @@ def main():
         args.layer_name,
         args.sample_original,
         not args.skip_analysis,
+        args.filter_languages,
         args.seed,
     )
 
