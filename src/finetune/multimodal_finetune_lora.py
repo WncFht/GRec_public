@@ -3,11 +3,11 @@ import sys
 
 import torch
 from transformers import (
+    AutoConfig,
     AutoProcessor,
     AutoTokenizer,
     Trainer,
     TrainingArguments,
-    AutoConfig
 )
 
 from ..collator import MultiModalCollator
@@ -107,9 +107,7 @@ def get_train_args(args: Args, ddp: bool) -> TrainingArguments:
         dataloader_num_workers=0,
         remove_unused_columns=False,
         report_to="wandb",
-        eval_delay=1
-        if train_args.save_and_eval_strategy == "epoch"
-        else 2000,
+        eval_delay=1 if train_args.save_and_eval_strategy == "epoch" else 2000,
     )
 
 
@@ -146,7 +144,9 @@ def train(args: Args) -> None:
         )
         print("embedding size: ", model.get_input_embeddings().weight.shape)
         tokenizer_or_processor.save_pretrained(args.global_args.output_dir)
-        config = AutoConfig.from_pretrained(args.global_args.base_model, trust_remote_code=True)
+        config = AutoConfig.from_pretrained(
+            args.global_args.base_model, trust_remote_code=True
+        )
         config.save_pretrained(args.global_args.output_dir)
 
     # 3. 准备 Collator 和 Trainer

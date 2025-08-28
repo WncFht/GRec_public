@@ -32,13 +32,15 @@ def test(args: argparse.Namespace):
         use_lora=args.lora,
         model_path=args.base_model if args.lora else None,
     )
-    
+
     # 确保模型在正确的设备上
     if not hasattr(model, "device"):
         model.to(device)
-    
+
     # 设置tokenizer
-    tokenizer = processor.tokenizer if hasattr(processor, "tokenizer") else processor
+    tokenizer = (
+        processor.tokenizer if hasattr(processor, "tokenizer") else processor
+    )
     tokenizer.padding_side = "left"
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -72,7 +74,7 @@ def test(args: argparse.Namespace):
     # 解析评估指标
     metrics = args.metrics.split(",")
     all_prompt_results = []
-    
+
     with torch.no_grad():
         for prompt_id in prompt_ids:
             print(f"\n评估Prompt {prompt_id}...")
@@ -80,7 +82,9 @@ def test(args: argparse.Namespace):
             metrics_results = {}
             total = 0
 
-            for step, batch in enumerate(tqdm(test_loader, desc=f"Prompt {prompt_id}")):
+            for step, batch in enumerate(
+                tqdm(test_loader, desc=f"Prompt {prompt_id}")
+            ):
                 inputs = batch[0]
                 targets = batch[1]
                 total += len(targets)
@@ -137,7 +141,8 @@ def test(args: argparse.Namespace):
                 # 打印进度
                 if (step + 1) % args.print_freq == 0:
                     partial_results = {
-                        m: metrics_results[m] / ((step + 1) * args.test_batch_size) 
+                        m: metrics_results[m]
+                        / ((step + 1) * args.test_batch_size)
                         for m in metrics
                     }
                     print(f"Step {step + 1}: {partial_results}")
@@ -147,7 +152,7 @@ def test(args: argparse.Namespace):
                 metrics_results[metric] = metrics_results[metric] / total
 
             print(f"Prompt {prompt_id} 结果: {metrics_results}")
-            
+
             prompt_result = {
                 "prompt_id": prompt_id,
                 "prompt": all_prompt["seqrec"][prompt_id]["user"],
@@ -160,17 +165,17 @@ def test(args: argparse.Namespace):
     print("\n" + "=" * 80)
     print("最终结果:")
     print("=" * 80)
-    
+
     avg_metrics = {}
     for metric in metrics:
         avg_metrics[metric] = sum(
             r["metrics"][metric] for r in all_prompt_results
         ) / len(all_prompt_results)
-    
+
     print("\n各Prompt结果:")
     for result in all_prompt_results:
         print(f"  Prompt {result['prompt_id']}: {result['metrics']}")
-    
+
     print(f"\n平均结果: {avg_metrics}")
 
     # 保存结果
@@ -191,19 +196,19 @@ def test(args: argparse.Namespace):
 
     # 确保结果目录存在
     os.makedirs(os.path.dirname(args.results_file), exist_ok=True)
-    
+
     # 为LoRA结果添加特殊标记
     if args.lora:
         base_name, ext = os.path.splitext(args.results_file)
         results_file = f"{base_name}_lora{ext}"
     else:
         results_file = args.results_file
-    
+
     with open(results_file, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
-    
+
     print(f"\n结果已保存到: {results_file}")
-    
+
     return avg_metrics
 
 

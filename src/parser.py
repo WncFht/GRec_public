@@ -238,18 +238,13 @@ def parse_test_args(
         default="./ckpt/base_model/Qwen2-VL-2B-Instruct",
         help="基础模型路径（仅在使用LoRA时需要）",
     )
-    test_args.add_argument(
-        "--lora",
-        action="store_true",
-        default=False
-    )
+    test_args.add_argument("--lora", action="store_true", default=False)
     test_args.add_argument(
         "--ckpt_path",
         type=str,
         default="",
         help="The checkpoint path",
     )
-    test_args.add_argument("--lora", action="store_true", default=False)
     test_args.add_argument(
         "--filter_items",
         action="store_true",
