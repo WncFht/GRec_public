@@ -184,7 +184,16 @@ def parse_token_category(token_name: str) -> str:
     return language
 
 
-def get_language_colors() -> dict[str, str]:
+def hex_to_rgba(hex_color: str, alpha: float = 1.0) -> str:
+    """Convert hex color to rgba format."""
+    hex_color = hex_color.lstrip("#")
+    r = int(hex_color[0:2], 16)
+    g = int(hex_color[2:4], 16)
+    b = int(hex_color[4:6], 16)
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+def get_language_colors(use_rgba: bool = False) -> dict[str, str]:
     """Get color mapping for different languages/categories."""
     colors = {
         # Priority colors for custom categories (bright, distinct colors)
@@ -244,11 +253,21 @@ def get_language_colors() -> dict[str, str]:
         "German",
         "Spanish",
         "Italian",
+        "Vietnamese",
+        "Thai",
+        "Hindi",
+        "Bengali",
+        "Tamil",
     ]
+
     for lang in original_languages:
         if lang in colors:
-            # Create a slightly faded version for original tokens
-            colors[f"Original-{lang}"] = colors[lang] + "99"  # Add transparency
+            if use_rgba:
+                # Create rgba version with transparency for Plotly
+                colors[f"Original-{lang}"] = hex_to_rgba(colors[lang], 0.6)
+            else:
+                # Keep hex for matplotlib
+                colors[f"Original-{lang}"] = colors[lang] + "99"
 
     # Fallback for any Original-* not explicitly defined
     colors["Original-Other"] = "#90A4AE"
@@ -476,8 +495,8 @@ def create_static_visualization(
     """Create static matplotlib visualization with combined category/language coloring."""
     plt.figure(figsize=(args.fig_width, args.fig_height))
 
-    # Get colors based on combined category/language detection
-    color_map = get_language_colors()
+    # Get colors based on combined category/language detection (matplotlib supports hex with alpha)
+    color_map = get_language_colors(use_rgba=False)
 
     # Always use parse_token_category which handles both custom tokens and languages
     categories = [parse_token_category(name) for name in token_names]
@@ -595,8 +614,8 @@ def create_interactive_visualization(
 
     fig = go.Figure()
 
-    # Get colors
-    color_map = get_language_colors()
+    # Get colors (use rgba for Plotly compatibility)
+    color_map = get_language_colors(use_rgba=True)
 
     # Always use parse_token_category which handles both custom tokens and languages
     categories = [parse_token_category(name) for name in token_names]
