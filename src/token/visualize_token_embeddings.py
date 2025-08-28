@@ -1,14 +1,15 @@
 import argparse
+import json
 import os
-import pickle
 import random
+import re
 
 import matplotlib.pyplot as plt
 import numpy as np
-import seaborn as sns
 import torch
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+from tqdm import tqdm
 from transformers import AutoTokenizer
 
 # Optional plotly support for interactive visualizations
@@ -22,23 +23,145 @@ except ImportError:
 
 
 class EmbeddingInfo:
-    """Container for embedding information."""
+    """Container for embedding information with language detection."""
 
     def __init__(
         self,
         embeddings: np.ndarray,
         token_names: list[str],
         token_ids: list[int],
+        token_languages: list[str] = None,
     ):
         self.embeddings = embeddings
         self.token_names = token_names
         self.token_ids = token_ids
+        self.token_languages = token_languages if token_languages else []
+
+
+def bytes_to_unicode() -> dict[int, str]:
+    """
+    Returns mapping between utf-8 bytes and unicode strings.
+    Avoids mapping to whitespace/control characters.
+    """
+    bs = (
+        list(range(ord("!"), ord("~") + 1))
+        + list(range(ord("¡"), ord("¬") + 1))
+        + list(range(ord("®"), ord("ÿ") + 1))
+    )
+    cs = bs[:]
+    n = 0
+    for b in range(2**8):
+        if b not in bs:
+            bs.append(b)
+            cs.append(2**8 + n)
+            n += 1
+    cs = [chr(n) for n in cs]
+    return dict(zip(bs, cs, strict=False))
+
+
+def unicode_to_bytes() -> dict[str, bytes]:
+    """Returns reverse mapping from unicode strings to utf-8 bytes."""
+    return {v: bytes([k]) for k, v in bytes_to_unicode().items()}
+
+
+def convert_to_readable_vocab(
+    tokenizer, verbose: bool = False
+) -> dict[int, str]:
+    """Convert tokenizer vocabulary to human-readable format."""
+    reversed_vocab = {v: k for k, v in tokenizer.vocab.items()}
+    added_tokens = tokenizer.added_tokens_encoder
+    uni2bytes_mapper = unicode_to_bytes()
+    uni2bytes = lambda c: b"".join([uni2bytes_mapper[ch] for ch in c])
+
+    readable = {}
+    items = sorted(reversed_vocab.items(), key=lambda x: x[0])
+
+    for k, v in tqdm(
+        items, desc="Converting to readable vocab", disable=not verbose
+    ):
+        try:
+            if v in added_tokens:
+                readable[k] = f"ADDED_TOKEN: {v}"
+            else:
+                readable[k] = uni2bytes(v).decode("utf-8")
+        except:
+            readable[k] = f"INVALID UTF-8: {uni2bytes(v)}"
+
+    return readable
+
+
+def detect_token_language(token: str) -> str:
+    """Detect the language/category of a token."""
+    token_stripped = token.strip()
+
+    # Special token patterns
+    if token.startswith("ADDED_TOKEN"):
+        return "Added Token"
+    if token.startswith("INVALID UTF-8"):
+        return "Invalid UTF-8"
+    if token_stripped == "":
+        return "Whitespace"
+
+    # Language patterns (ordered by specificity)
+    language_patterns = {
+        # Asian languages
+        "Chinese": r"^[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF\U00020000-\U0002EBEF\U00030000-\U0003134F]+$",
+        "Japanese": r"^[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\u3005\u303B\u309D\u30FD]+$",
+        "Korean": r"^[\uAC00-\uD7A3]+$",
+        "Thai": r"^[\u0E00-\u0E7F]+$",
+        "Vietnamese": r"^[A-Za-zàáảãạăắằẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]+$",
+        # Indian languages
+        "Hindi": r"^[\u0900-\u097F]+$",
+        "Bengali": r"^[\u0980-\u09FF]+$",
+        "Tamil": r"^[\u0B80-\u0BFF]+$",
+        "Indian": r"^[\u0900-\u0DFF]+$",
+        # Middle Eastern
+        "Arabic": r"^[\u0600-\u06FF]+$",
+        "Hebrew": r"^[\u0590-\u05FF]+$",
+        # European languages
+        "Russian": r"^[\u0400-\u04FF]+$",
+        "Greek": r"^[\u0370-\u03FF\u1F00-\u1FFF]+$",
+        "Armenian": r"^[\u0530-\u058F]+$",
+        # Code and technical
+        "Code": r"^[=.#@*&^_/\(\)\[\]\{\}\|\?\%\$<>+-:;,][A-Za-z0-9_]*$",
+        "LaTeX": r"^\\[A-Za-z]+$",
+        # Symbols and numbers
+        "Numeric": r"^[0-9]+$",
+        "Mathematical": r"^[\u2200-\u22FF\U0001D400-\U0001D7FF]+$",
+        "Punctuation": r"^[\s\u0021-\u002F\u003A-\u0040\u005B-\u0060\u007B-\u007E\u00A1-\u00BF\u2000-\u206F\u2E00-\u2E7F\u3000-\u303F\uFF00-\uFFEF\u2190-\u21FF]+$",
+        "Emoji": r"^[\U0001F300-\U0001FAFF\u2600-\u26FF]+$",
+        # Latin-based languages (check last)
+        "English": r'^[—–""' "'\"-]?[A-Za-z]+$",
+        "French": r"^[A-Za-zàâäéèêëïîôùûüÿç]+$",
+        "German": r"^[A-Za-zäöüßÄÖÜ]+$",
+        "Spanish": r"^[A-Za-záéíóúñÑ]+$",
+        "Portuguese": r"^[A-Za-zãõçéíóúâêîôû]+$",
+        "Italian": r"^[A-Za-zàèéìíîòóùú]+$",
+    }
+
+    for lang, pattern in language_patterns.items():
+        if re.match(pattern, token_stripped):
+            return lang
+
+    # Check for mixed content or other patterns
+    if re.search(r"[A-Za-z]", token_stripped) and re.search(
+        r"[0-9]", token_stripped
+    ):
+        return "Alphanumeric"
+
+    return "Other"
 
 
 def parse_token_category(token_name: str) -> str:
-    """Parse token name and return its category."""
+    """Parse token category - prioritizes custom tokens, then uses language detection."""
     token_name = token_name.strip()
 
+    # Remove [ORIG] marker but still process the token
+    is_original = token_name.startswith("[ORIG]")
+    if is_original:
+        token_name = token_name.replace("[ORIG]", "").strip()
+
+    # Priority 1: Check for custom category tokens <a_*>, <b_*>, <c_*>, <d_*>
     if token_name.startswith("<") and token_name.endswith(">"):
         inner = token_name[1:-1].strip()
 
@@ -51,73 +174,106 @@ def parse_token_category(token_name: str) -> str:
         if any(keyword in inner.lower() for keyword in ["end", "start", "pad"]):
             return "Special Token"
 
-        return "Other Format"
+    # Priority 2: Use language detection for all other tokens
+    language = detect_token_language(token_name)
 
-    return "Unknown"
+    # Mark original tokens with a prefix for special handling if needed
+    if is_original and language != "Other":
+        return f"Original-{language}"
+
+    return language
 
 
-def sort_tokens_by_category(
-    token_names: list[str],
-) -> tuple[list[str], list[int]]:
-    """Sort tokens by their category."""
-    category_priority = {
-        "Category A": 1,
-        "Category B": 2,
-        "Category C": 3,
-        "Category D": 4,
-        "Special Token": 5,
-        "Other Format": 6,
-        "Unknown": 7,
+def get_language_colors() -> dict[str, str]:
+    """Get color mapping for different languages/categories."""
+    colors = {
+        # Priority colors for custom categories (bright, distinct colors)
+        "Category A": "#FF0000",  # Bright Red
+        "Category B": "#00FF00",  # Bright Green
+        "Category C": "#0080FF",  # Bright Blue
+        "Category D": "#FFD700",  # Gold
+        # Asian languages
+        "Chinese": "#FF6B6B",
+        "Japanese": "#4ECDC4",
+        "Korean": "#45B7D1",
+        "Thai": "#96CEB4",
+        "Vietnamese": "#FD79A8",
+        # Indian languages
+        "Hindi": "#FDCB6E",
+        "Bengali": "#6C5CE7",
+        "Tamil": "#A29BFE",
+        "Indian": "#FF7675",
+        # Middle Eastern
+        "Arabic": "#74B9FF",
+        "Hebrew": "#A0E7E5",
+        # European languages
+        "English": "#81C784",
+        "Russian": "#64B5F6",
+        "Greek": "#BA68C8",
+        "French": "#FFB74D",
+        "German": "#FF8A65",
+        "Spanish": "#F06292",
+        "Portuguese": "#9575CD",
+        "Italian": "#4FC3F7",
+        # Technical
+        "Code": "#455A64",
+        "LaTeX": "#8D6E63",
+        "Numeric": "#78909C",
+        "Mathematical": "#5C6BC0",
+        # Special tokens
+        "Special Token": "#BA68C8",
+        "Added Token": "#F48FB1",
+        # Others
+        "Punctuation": "#B0BEC5",
+        "Emoji": "#FFD54F",
+        "Whitespace": "#ECEFF1",
+        "Other": "#9E9E9E",
+        "Invalid UTF-8": "#D32F2F",
+        "Alphanumeric": "#7E57C2",
     }
 
-    def get_sort_key(token_name):
-        category = parse_token_category(token_name)
-        priority = category_priority.get(category, 999)
+    # Add colors for original tokens (slightly faded versions)
+    original_languages = [
+        "Chinese",
+        "Japanese",
+        "Korean",
+        "English",
+        "Russian",
+        "Arabic",
+        "French",
+        "German",
+        "Spanish",
+        "Italian",
+    ]
+    for lang in original_languages:
+        if lang in colors:
+            # Create a slightly faded version for original tokens
+            colors[f"Original-{lang}"] = colors[lang] + "99"  # Add transparency
 
-        if category.startswith("Category "):
-            try:
-                inner = token_name[1:-1].strip()
-                if "_" in inner:
-                    num_part = inner.split("_")[1]
-                    num = int(num_part)
-                    return (priority, num)
-            except (ValueError, IndexError):
-                pass
+    # Fallback for any Original-* not explicitly defined
+    colors["Original-Other"] = "#90A4AE"
 
-        return (priority, 0)
-
-    token_with_indices = [(name, i) for i, name in enumerate(token_names)]
-    sorted_tokens_with_indices = sorted(
-        token_with_indices, key=lambda x: get_sort_key(x[0])
-    )
-
-    sorted_token_names = [item[0] for item in sorted_tokens_with_indices]
-    sorted_indices = [item[1] for item in sorted_tokens_with_indices]
-
-    return sorted_token_names, sorted_indices
+    return colors
 
 
-def get_token_colors(
-    token_names: list[str],
-) -> tuple[list[str], dict[str, str]]:
-    """Generate color mapping for token categories."""
-    category_colors = {
-        "Category A": "#FF6B6B",  # Red
-        "Category B": "#4ECDC4",  # Cyan
-        "Category C": "#45B7D1",  # Blue
-        "Category D": "#96CEB4",  # Green
-        "Special Token": "#FFEAA7",  # Yellow
-        "Other Format": "#DDA0DD",  # Purple
-        "Unknown": "#A8A8A8",  # Gray
+def analyze_tokenizer_stats(tokenizer, model_path: str) -> dict:
+    """Analyze tokenizer statistics."""
+    stats = {
+        "vocab_size": tokenizer.vocab_size,
+        "added_tokens": len(tokenizer.added_tokens_encoder),
+        "special_tokens": tokenizer.special_tokens_map,
+        "vocab_length": len(tokenizer.vocab),
+        "model_path": model_path,
     }
 
-    colors = []
-    for token_name in token_names:
-        category = parse_token_category(token_name)
-        color = category_colors.get(category, "#808080")
-        colors.append(color)
+    print("\n=== Tokenizer Statistics ===")
+    print(f"Model: {model_path}")
+    print(f"Vocabulary size: {stats['vocab_size']:,}")
+    print(f"Added tokens: {stats['added_tokens']:,}")
+    print(f"Special tokens: {stats['special_tokens']}")
+    print(f"Total vocab length: {stats['vocab_length']:,}")
 
-    return colors, category_colors
+    return stats
 
 
 def load_safetensor_embeddings(
@@ -139,9 +295,10 @@ def load_embeddings_from_model(
     model_path: str,
     layer_name: str = "model.embed_tokens.weight",
     sample_original_tokens: int = 1000,
+    analyze_languages: bool = True,
     seed: int = 42,
 ) -> EmbeddingInfo:
-    """Load embeddings from model, including new tokens and sampled original tokens."""
+    """Load embeddings from model with language analysis."""
     # Check for safetensor file
     safetensor_path = os.path.join(model_path, "model.safetensors")
     if not os.path.exists(safetensor_path):
@@ -162,10 +319,19 @@ def load_embeddings_from_model(
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     vocab_size = len(tokenizer)
 
+    # Analyze tokenizer
+    stats = analyze_tokenizer_stats(tokenizer, model_path)
+
+    # Get readable vocabulary if analyzing languages
+    readable_vocab = {}
+    if analyze_languages:
+        print("\nConverting vocabulary to readable format...")
+        readable_vocab = convert_to_readable_vocab(tokenizer, verbose=True)
+
     # Get new tokens (added tokens)
     new_token_ids = list(tokenizer.added_tokens_decoder.keys())
 
-    # Filter for specific categories if needed
+    # Filter for specific categories if they exist
     filtered_new_tokens = [
         token_id
         for token_id in new_token_ids
@@ -198,33 +364,52 @@ def load_embeddings_from_model(
     # Combine token IDs
     all_token_ids = new_token_ids + sampled_original_ids
 
-    # Get token names
+    # Get token names and detect languages
     token_names = []
-    for token_id in all_token_ids:
+    token_languages = []
+
+    for token_id in tqdm(all_token_ids, desc="Processing tokens"):
         try:
-            name = tokenizer.decode(token_id)
+            if token_id in readable_vocab:
+                name = readable_vocab[token_id]
+            else:
+                name = tokenizer.decode(token_id)
+
             # Mark original tokens
             if token_id in sampled_original_ids:
                 name = f"[ORIG] {name}"
+
             token_names.append(name)
+
+            # Detect language
+            if analyze_languages:
+                lang = detect_token_language(name.replace("[ORIG] ", ""))
+                token_languages.append(lang)
+
         except Exception:
             token_names.append(f"<token_{token_id}>")
+            token_languages.append("Other")
+
+    # Print language distribution
+    if analyze_languages:
+        print("\n=== Language Distribution ===")
+        lang_counts = {}
+        for lang in token_languages:
+            lang_counts[lang] = lang_counts.get(lang, 0) + 1
+
+        sorted_langs = sorted(
+            lang_counts.items(), key=lambda x: x[1], reverse=True
+        )
+        for lang, count in sorted_langs[:20]:  # Show top 20
+            print(
+                f"{lang}: {count} tokens ({count / len(token_languages) * 100:.1f}%)"
+            )
 
     # Extract embeddings
     selected_embeddings = embeddings[all_token_ids, :].numpy()
 
-    return EmbeddingInfo(selected_embeddings, token_names, all_token_ids)
-
-
-def load_embeddings_from_pkl(pkl_path: str) -> EmbeddingInfo:
-    """Load embeddings from a pickle file."""
-    with open(pkl_path, "rb") as f:
-        data = pickle.load(f)
-
     return EmbeddingInfo(
-        embeddings=data["embeddings"],
-        token_names=data["token_names"],
-        token_ids=data.get("token_ids", list(range(len(data["token_names"])))),
+        selected_embeddings, token_names, all_token_ids, token_languages
     )
 
 
@@ -253,6 +438,8 @@ def perform_dimension_reduction(
                 n_components=2,
                 random_state=42,
                 perplexity=min(args.perplexity, len(embeddings_pca) - 1),
+                n_iter=args.tsne_iterations,
+                metric="cosine" if args.use_cosine else "euclidean",
                 method="barnes_hut"
                 if embeddings_pca.shape[0] > 5000
                 else "exact",
@@ -264,6 +451,8 @@ def perform_dimension_reduction(
                 n_components=2,
                 random_state=42,
                 perplexity=min(args.perplexity, len(embeddings) - 1),
+                n_iter=args.tsne_iterations,
+                metric="cosine" if args.use_cosine else "euclidean",
             )
             embeddings_2d = tsne.fit_transform(embeddings)
             title = "t-SNE Visualization"
@@ -279,23 +468,29 @@ def perform_dimension_reduction(
 def create_static_visualization(
     embeddings_2d: np.ndarray,
     token_names: list[str],
+    token_languages: list[str],
     title: str,
     output_path: str,
     args: argparse.Namespace,
 ):
-    """Create static matplotlib visualization."""
+    """Create static matplotlib visualization with combined category/language coloring."""
     plt.figure(figsize=(args.fig_width, args.fig_height))
 
-    # Get colors
-    token_colors, category_colors = get_token_colors(token_names)
+    # Get colors based on combined category/language detection
+    color_map = get_language_colors()
+
+    # Always use parse_token_category which handles both custom tokens and languages
+    categories = [parse_token_category(name) for name in token_names]
+
+    colors = [color_map.get(cat, "#808080") for cat in categories]
 
     # Create scatter plot
-    plt.scatter(
+    scatter = plt.scatter(
         embeddings_2d[:, 0],
         embeddings_2d[:, 1],
         alpha=args.point_alpha,
         s=args.point_size,
-        c=token_colors,
+        c=colors,
     )
 
     # Add labels for a subset of points
@@ -324,23 +519,59 @@ def create_static_visualization(
     plt.xlabel("Dimension 1", fontsize=12)
     plt.ylabel("Dimension 2", fontsize=12)
 
-    # Create legend
-    legend_elements = [
-        plt.Line2D(
-            [0],
-            [0],
-            marker="o",
-            color="w",
-            markerfacecolor=color,
-            markersize=10,
-            label=category,
-        )
-        for category, color in category_colors.items()
-        if any(parse_token_category(name) == category for name in token_names)
+    # Create legend (prioritize Category A-D, then languages)
+    unique_categories = list(set(categories))
+
+    # Separate custom categories from languages
+    custom_categories = ["Category A", "Category B", "Category C", "Category D"]
+    existing_custom = [
+        cat for cat in custom_categories if cat in unique_categories
+    ]
+    other_categories = [
+        cat for cat in unique_categories if cat not in custom_categories
     ]
 
+    # Build legend elements with custom categories first
+    legend_elements = []
+
+    # Add custom categories first (they'll appear at top of legend)
+    for category in existing_custom:
+        legend_elements.append(
+            plt.Line2D(
+                [0],
+                [0],
+                marker="o",
+                color="w",
+                markerfacecolor=color_map[category],
+                markersize=12,
+                label=category,
+                markeredgewidth=2,
+                markeredgecolor="black",
+            )  # Add edge for emphasis
+        )
+
+    # Add other categories (languages) sorted alphabetically
+    for category in sorted(other_categories)[:16]:  # Limit total to ~20
+        if category in color_map:
+            legend_elements.append(
+                plt.Line2D(
+                    [0],
+                    [0],
+                    marker="o",
+                    color="w",
+                    markerfacecolor=color_map[category],
+                    markersize=10,
+                    label=category,
+                )
+            )
+
     if legend_elements:
-        plt.legend(handles=legend_elements, loc="upper right", fontsize=10)
+        plt.legend(
+            handles=legend_elements,
+            loc="upper right",
+            fontsize=8,
+            ncol=2 if len(legend_elements) > 10 else 1,
+        )
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=args.dpi, bbox_inches="tight")
@@ -352,11 +583,12 @@ def create_static_visualization(
 def create_interactive_visualization(
     embeddings_2d: np.ndarray,
     token_names: list[str],
+    token_languages: list[str],
     title: str,
     output_path: str,
     args: argparse.Namespace,
 ):
-    """Create interactive plotly visualization."""
+    """Create interactive plotly visualization with combined category/language coloring."""
     if not PLOTLY_AVAILABLE:
         print("Plotly not available, skipping interactive visualization")
         return
@@ -364,19 +596,21 @@ def create_interactive_visualization(
     fig = go.Figure()
 
     # Get colors
-    _, category_colors = get_token_colors(token_names)
+    color_map = get_language_colors()
+
+    # Always use parse_token_category which handles both custom tokens and languages
+    categories = [parse_token_category(name) for name in token_names]
 
     # Group tokens by category
-    categories = {}
-    for i, name in enumerate(token_names):
-        category = parse_token_category(name)
-        if category not in categories:
-            categories[category] = []
-        categories[category].append(i)
+    category_groups = {}
+    for i, (name, cat) in enumerate(zip(token_names, categories, strict=False)):
+        if cat not in category_groups:
+            category_groups[cat] = []
+        category_groups[cat].append(i)
 
     # Add traces for each category
-    for category, indices in categories.items():
-        color = category_colors.get(category, "#808080")
+    for category, indices in sorted(category_groups.items()):
+        color = color_map.get(category, "#808080")
 
         fig.add_trace(
             go.Scatter(
@@ -384,7 +618,7 @@ def create_interactive_visualization(
                 y=[embeddings_2d[i, 1] for i in indices],
                 mode="markers",
                 name=category,
-                marker=dict(size=10, color=color, opacity=0.7),
+                marker=dict(size=8, color=color, opacity=0.7),
                 text=[token_names[i] for i in indices],
                 hovertemplate="<b>%{text}</b><br>X: %{x:.3f}<br>Y: %{y:.3f}<extra></extra>",
             )
@@ -397,122 +631,84 @@ def create_interactive_visualization(
         width=args.interactive_width,
         height=args.interactive_height,
         showlegend=True,
+        legend=dict(yanchor="top", y=1, xanchor="left", x=1.02),
     )
 
     fig.write_html(output_path)
     print(f"Saved interactive visualization to: {output_path}")
 
 
-def analyze_embeddings(
-    embeddings: np.ndarray,
-    token_names: list[str],
+def compute_token_similarities(
+    embeddings: np.ndarray, token_ids: list[int], tokenizer, top_k: int = 10
+) -> dict:
+    """Compute and return top-k similar tokens for each token."""
+    print(f"\nComputing top-{top_k} similar tokens...")
+
+    # Normalize embeddings
+    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+    norms[norms == 0] = 1e-8
+    normalized = embeddings / norms
+
+    # Compute similarity matrix
+    similarity_matrix = np.dot(normalized, normalized.T)
+
+    similarities = {}
+    for i, token_id in enumerate(token_ids[:100]):  # Limit to first 100 tokens
+        # Get top-k similar tokens (excluding self)
+        sim_scores = similarity_matrix[i]
+        sim_scores[i] = -1  # Exclude self
+
+        top_indices = np.argsort(sim_scores)[-top_k:][::-1]
+        top_scores = sim_scores[top_indices]
+
+        similar_tokens = []
+        for idx, score in zip(top_indices, top_scores, strict=False):
+            try:
+                similar_token = tokenizer.decode(token_ids[idx])
+            except:
+                similar_token = f"<token_{token_ids[idx]}>"
+            similar_tokens.append((similar_token, float(score)))
+
+        try:
+            token_name = tokenizer.decode(token_id)
+        except:
+            token_name = f"<token_{token_id}>"
+
+        similarities[token_name] = similar_tokens
+
+    return similarities
+
+
+def save_analysis_results(
     output_dir: str,
-    args: argparse.Namespace,
+    tokenizer_stats: dict,
+    language_distribution: dict,
+    token_similarities: dict = None,
 ):
-    """Analyze embedding statistics and create similarity matrix."""
-    print("\n=== Embedding Statistics ===")
-    print(f"Shape: {embeddings.shape}")
-    print(f"Mean: {embeddings.mean():.6f}")
-    print(f"Std: {embeddings.std():.6f}")
-    print(f"Min: {embeddings.min():.6f}")
-    print(f"Max: {embeddings.max():.6f}")
+    """Save analysis results to JSON files."""
+    # Save tokenizer statistics
+    stats_path = os.path.join(output_dir, "tokenizer_stats.json")
+    with open(stats_path, "w", encoding="utf-8") as f:
+        json.dump(tokenizer_stats, f, indent=2, ensure_ascii=False)
+    print(f"Saved tokenizer statistics to: {stats_path}")
 
-    if not args.skip_similarity:
-        print("\nComputing similarity matrix...")
+    # Save language distribution
+    lang_path = os.path.join(output_dir, "language_distribution.json")
+    with open(lang_path, "w", encoding="utf-8") as f:
+        json.dump(language_distribution, f, indent=2, ensure_ascii=False)
+    print(f"Saved language distribution to: {lang_path}")
 
-        # Normalize embeddings
-        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
-        norms[norms == 0] = 1e-8
-        normalized = embeddings / norms
-
-        similarity_matrix = np.dot(normalized, normalized.T)
-        similarity_matrix = np.nan_to_num(
-            similarity_matrix, nan=0.0, posinf=1.0, neginf=-1.0
-        )
-
-        # Sort by category
-        sorted_names, sorted_indices = sort_tokens_by_category(token_names)
-        sorted_similarity = similarity_matrix[sorted_indices][:, sorted_indices]
-
-        # Create heatmap
-        plt.figure(figsize=(args.heatmap_size, args.heatmap_size))
-
-        # Determine tick labels
-        if len(sorted_names) > 50:
-            tick_labels = False  # Don't show labels if too many
-        else:
-            tick_labels = [
-                name[:15] + "..." if len(name) > 15 else name
-                for name in sorted_names
-            ]
-
-        sns.heatmap(
-            sorted_similarity,
-            xticklabels=tick_labels,
-            yticklabels=tick_labels,
-            cmap="coolwarm",
-            center=0,
-            square=True,
-            cbar_kws={"label": "Cosine Similarity"},
-        )
-
-        plt.title(
-            "Token Embedding Similarity Matrix", fontsize=16, fontweight="bold"
-        )
-        plt.tight_layout()
-
-        output_path = os.path.join(output_dir, "similarity_matrix.png")
-        plt.savefig(output_path, dpi=args.dpi, bbox_inches="tight")
-        plt.close()
-
-        print(f"Saved similarity matrix to: {output_path}")
-
-        # Find most/least similar pairs
-        np.fill_diagonal(sorted_similarity, -1)
-        max_idx = np.unravel_index(
-            sorted_similarity.argmax(), sorted_similarity.shape
-        )
-        min_idx = np.unravel_index(
-            sorted_similarity.argmin(), sorted_similarity.shape
-        )
-
-        print(
-            f"\nMost similar pair: {sorted_names[max_idx[0]]} - {sorted_names[max_idx[1]]} "
-            f"(similarity: {sorted_similarity[max_idx]:.4f})"
-        )
-        print(
-            f"Least similar pair: {sorted_names[min_idx[0]]} - {sorted_names[min_idx[1]]} "
-            f"(similarity: {sorted_similarity[min_idx]:.4f})"
-        )
-
-
-def print_category_stats(token_names: list[str]):
-    """Print token category statistics."""
-    print("\n=== Token Category Statistics ===")
-
-    category_counts = {}
-    for name in token_names:
-        # Handle original token markers
-        if name.startswith("[ORIG]"):
-            category = "Original Tokens"
-        else:
-            category = parse_token_category(name)
-        category_counts[category] = category_counts.get(category, 0) + 1
-
-    # Sort by count
-    sorted_categories = sorted(
-        category_counts.items(), key=lambda x: x[1], reverse=True
-    )
-
-    for category, count in sorted_categories:
-        print(f"{category}: {count} tokens")
-
-    print(f"Total: {len(token_names)} tokens")
+    # Save token similarities if computed
+    if token_similarities:
+        sim_path = os.path.join(output_dir, "token_similarities.json")
+        with open(sim_path, "w", encoding="utf-8") as f:
+            json.dump(token_similarities, f, indent=2, ensure_ascii=False)
+        print(f"Saved token similarities to: {sim_path}")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Visualize token embeddings with t-SNE/PCA"
+        description="Enhanced token embedding visualization with language analysis"
     )
 
     # Input/Output arguments
@@ -582,21 +778,32 @@ def main():
         default=10000,
         help="Sample count threshold for PCA pre-reduction",
     )
+    parser.add_argument(
+        "--tsne_iterations",
+        type=int,
+        default=400,
+        help="Number of t-SNE iterations",
+    )
+    parser.add_argument(
+        "--use_cosine",
+        action="store_true",
+        help="Use cosine distance for t-SNE",
+    )
 
     # Visualization appearance arguments
     parser.add_argument(
-        "--fig_width", type=int, default=15, help="Figure width in inches"
+        "--fig_width", type=int, default=20, help="Figure width in inches"
     )
     parser.add_argument(
-        "--fig_height", type=int, default=12, help="Figure height in inches"
+        "--fig_height", type=int, default=16, help="Figure height in inches"
     )
     parser.add_argument(
-        "--point_size", type=int, default=100, help="Scatter plot point size"
+        "--point_size", type=int, default=50, help="Scatter plot point size"
     )
     parser.add_argument(
         "--point_alpha",
         type=float,
-        default=0.7,
+        default=0.6,
         help="Scatter plot point transparency",
     )
     parser.add_argument("--dpi", type=int, default=300, help="Output image DPI")
@@ -614,30 +821,30 @@ def main():
     parser.add_argument(
         "--interactive_width",
         type=int,
-        default=1200,
+        default=1400,
         help="Interactive plot width in pixels",
     )
     parser.add_argument(
         "--interactive_height",
         type=int,
-        default=800,
+        default=900,
         help="Interactive plot height in pixels",
     )
 
     # Analysis arguments
     parser.add_argument(
-        "--skip_analysis", action="store_true", help="Skip statistical analysis"
+        "--skip_analysis", action="store_true", help="Skip language analysis"
     )
     parser.add_argument(
-        "--skip_similarity",
+        "--compute_similarities",
         action="store_true",
-        help="Skip similarity matrix computation",
+        help="Compute token similarities",
     )
     parser.add_argument(
-        "--heatmap_size",
+        "--top_k_similar",
         type=int,
-        default=14,
-        help="Similarity heatmap size in inches",
+        default=10,
+        help="Number of similar tokens to compute",
     )
 
     args = parser.parse_args()
@@ -647,18 +854,21 @@ def main():
         args.output_dir = args.model_path
     os.makedirs(args.output_dir, exist_ok=True)
 
-    # Load embeddings
+    # Load embeddings with language analysis
     print(f"Loading embeddings from: {args.model_path}")
 
-    if args.model_path.endswith(".pkl"):
-        embedding_info = load_embeddings_from_pkl(args.model_path)
-    else:
-        embedding_info = load_embeddings_from_model(
-            args.model_path, args.layer_name, args.sample_original, args.seed
-        )
+    embedding_info = load_embeddings_from_model(
+        args.model_path,
+        args.layer_name,
+        args.sample_original,
+        not args.skip_analysis,
+        args.seed,
+    )
 
     embeddings = embedding_info.embeddings
     token_names = embedding_info.token_names
+    token_ids = embedding_info.token_ids
+    token_languages = embedding_info.token_languages
 
     # Apply max_tokens limit if specified
     if args.max_tokens and len(token_names) > args.max_tokens:
@@ -667,10 +877,35 @@ def main():
         indices = random.sample(range(len(token_names)), args.max_tokens)
         embeddings = embeddings[indices]
         token_names = [token_names[i] for i in indices]
+        token_ids = [token_ids[i] for i in indices]
+        if token_languages:
+            token_languages = [token_languages[i] for i in indices]
 
     print(
         f"Processing {len(token_names)} tokens with {embeddings.shape[1]}-dimensional embeddings"
     )
+
+    # Compute language distribution
+    language_distribution = {}
+    if token_languages:
+        for lang in token_languages:
+            language_distribution[lang] = language_distribution.get(lang, 0) + 1
+
+    # Compute token similarities if requested
+    token_similarities = None
+    if args.compute_similarities:
+        tokenizer = AutoTokenizer.from_pretrained(args.model_path)
+        token_similarities = compute_token_similarities(
+            embeddings, token_ids, tokenizer, args.top_k_similar
+        )
+
+    # Save analysis results
+    if not args.skip_analysis:
+        tokenizer = AutoTokenizer.from_pretrained(args.model_path)
+        stats = analyze_tokenizer_stats(tokenizer, args.model_path)
+        save_analysis_results(
+            args.output_dir, stats, language_distribution, token_similarities
+        )
 
     # Generate visualizations
     methods = ["tsne", "pca"] if args.method == "both" else [args.method]
@@ -683,10 +918,18 @@ def main():
             embeddings, method, args
         )
 
+        # Add color mode to title
+        title += " (Categories A-D + Languages)"
+
         # Create static visualization
         output_path = os.path.join(args.output_dir, f"embeddings_{method}.png")
         create_static_visualization(
-            embeddings_2d, token_names, title, output_path, args
+            embeddings_2d,
+            token_names,
+            token_languages,
+            title,
+            output_path,
+            args,
         )
 
         # Create interactive visualization if requested
@@ -695,14 +938,13 @@ def main():
                 args.output_dir, f"embeddings_{method}_interactive.html"
             )
             create_interactive_visualization(
-                embeddings_2d, token_names, title, interactive_path, args
+                embeddings_2d,
+                token_names,
+                token_languages,
+                title,
+                interactive_path,
+                args,
             )
-
-    # Perform analysis if requested
-    if not args.skip_analysis:
-        print("\n=== Analysis ===")
-        analyze_embeddings(embeddings, token_names, args.output_dir, args)
-        print_category_stats(token_names)
 
     print(f"\n✓ All outputs saved to: {args.output_dir}")
 
