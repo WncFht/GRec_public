@@ -325,6 +325,8 @@ def load_safetensor_embeddings(
             possible_names = [
                 "model.embed_tokens.weight",
                 "model.language_model.embed_tokens.weight",
+                "language_model.model.embed_tokens.weight",
+                "model.model.language_model.embed_tokens.weight",
                 "language_model.embed_tokens.weight",
                 "embed_tokens.weight",
                 "model.model.embed_tokens.weight",
@@ -332,6 +334,9 @@ def load_safetensor_embeddings(
                 "transformer.embed_tokens.weight",
                 "embeddings.weight",
                 "shared.weight",
+                "lm_head.weight",  # Sometimes embeddings are tied with lm_head
+                "model.embed_tokens",  # Without .weight suffix
+                "embed_tokens",
             ]
 
             # Also check for keys containing 'embed' or 'token'
@@ -873,6 +878,41 @@ def save_analysis_results(
         print(f"Saved token similarities to: {sim_path}")
 
 
+def list_model_layers(model_path: str):
+    """List all available layers in the model."""
+    safetensor_files = sorted(
+        [f for f in os.listdir(model_path) if f.endswith(".safetensors")]
+    )
+
+    if not safetensor_files:
+        print("No safetensor files found")
+        return
+
+    from safetensors.torch import safe_open
+
+    all_keys = set()
+    for file in safetensor_files:
+        safetensor_path = os.path.join(model_path, file)
+        with safe_open(safetensor_path, framework="pt") as f:
+            keys = list(f.keys())
+            all_keys.update(keys)
+            print(f"\n{file}: {len(keys)} layers")
+
+    # Filter for potential embedding layers
+    embed_keys = sorted([k for k in all_keys if "embed" in k.lower()])
+
+    print("\n=== Potential Embedding Layers ===")
+    for key in embed_keys:
+        print(f"  {key}")
+
+    print("\n=== All Layers (first 50) ===")
+    for i, key in enumerate(sorted(all_keys)[:50]):
+        print(f"  {key}")
+
+    if len(all_keys) > 50:
+        print(f"  ... and {len(all_keys) - 50} more layers")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Enhanced token embedding visualization with language analysis"
@@ -894,8 +934,13 @@ def main():
     parser.add_argument(
         "--layer_name",
         type=str,
-        default="model.embed_tokens.weight",
-        help="Layer name for safetensor loading",
+        default="auto",
+        help="Layer name for safetensor loading (use 'auto' for automatic detection)",
+    )
+    parser.add_argument(
+        "--list_layers",
+        action="store_true",
+        help="List all available layers in the model and exit",
     )
 
     # Sampling arguments
@@ -1041,6 +1086,11 @@ def main():
 
     args = parser.parse_args()
 
+    # List layers if requested
+    if args.list_layers:
+        list_model_layers(args.model_path)
+        return
+
     # Set output directory
     if args.output_dir is None:
         args.output_dir = args.model_path
@@ -1049,9 +1099,12 @@ def main():
     # Load embeddings with language analysis
     print(f"Loading embeddings from: {args.model_path}")
 
+    # Use automatic detection if layer_name is 'auto'
+    layer_name = None if args.layer_name == "auto" else args.layer_name
+
     embedding_info = load_embeddings_from_model(
         args.model_path,
-        args.layer_name,
+        layer_name if layer_name else "model.embed_tokens.weight",
         args.sample_original,
         not args.skip_analysis,
         args.filter_languages,
