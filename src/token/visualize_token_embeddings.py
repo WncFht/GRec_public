@@ -317,9 +317,50 @@ def load_safetensor_embeddings(
     from safetensors.torch import safe_open
 
     with safe_open(safetensor_path, framework="pt") as f:
+        # Check available keys in the file
+        available_keys = list(f.keys())
+
+        if layer_name not in available_keys:
+            # Try to find embedding layer automatically
+            possible_names = [
+                "model.embed_tokens.weight",
+                "model.language_model.embed_tokens.weight",
+                "language_model.embed_tokens.weight",
+                "embed_tokens.weight",
+                "model.model.embed_tokens.weight",
+                "transformer.wte.weight",
+                "transformer.embed_tokens.weight",
+                "embeddings.weight",
+                "shared.weight",
+            ]
+
+            # Also check for keys containing 'embed' or 'token'
+            embed_keys = [
+                k
+                for k in available_keys
+                if "embed" in k.lower() and "weight" in k.lower()
+            ]
+
+            found_key = None
+            for possible_name in possible_names:
+                if possible_name in available_keys:
+                    found_key = possible_name
+                    print(f"Found embedding layer at: {found_key}")
+                    break
+
+            if not found_key and embed_keys:
+                found_key = embed_keys[0]
+                print(f"Using first embedding-like layer found: {found_key}")
+
+            if not found_key:
+                print(f"Available keys in this file: {available_keys[:10]}...")
+                return None
+
+            layer_name = found_key
+
         embeddings = f.get_tensor(layer_name)
 
-    if embeddings.dtype == torch.bfloat16:
+    if embeddings is not None and embeddings.dtype == torch.bfloat16:
         embeddings = embeddings.to(torch.float32)
 
     return embeddings
@@ -334,21 +375,46 @@ def load_embeddings_from_model(
     seed: int = 42,
 ) -> EmbeddingInfo:
     """Load embeddings from model with language analysis."""
-    # Check for safetensor file
-    safetensor_path = os.path.join(model_path, "model.safetensors")
-    if not os.path.exists(safetensor_path):
-        safetensor_files = [
-            f for f in os.listdir(model_path) if f.endswith(".safetensors")
-        ]
-        if safetensor_files:
-            safetensor_path = os.path.join(model_path, safetensor_files[0])
-        else:
-            raise FileNotFoundError(
-                f"No safetensor files found in {model_path}"
-            )
+    embeddings = None
 
-    print(f"Loading embeddings from: {safetensor_path}")
-    embeddings = load_safetensor_embeddings(safetensor_path, layer_name)
+    # Check for safetensor files
+    safetensor_files = sorted(
+        [f for f in os.listdir(model_path) if f.endswith(".safetensors")]
+    )
+
+    if not safetensor_files:
+        raise FileNotFoundError(f"No safetensor files found in {model_path}")
+
+    if len(safetensor_files) == 1:
+        # Single file case
+        safetensor_path = os.path.join(model_path, safetensor_files[0])
+        print(f"Loading embeddings from: {safetensor_path}")
+        embeddings = load_safetensor_embeddings(safetensor_path, layer_name)
+    else:
+        # Multiple files case - try each file until we find the embeddings
+        print("Found multiple safetensor files:")
+        print(safetensor_files)
+
+        for file in safetensor_files:
+            safetensor_path = os.path.join(model_path, file)
+            print(f"Loading embeddings from: {safetensor_path}")
+            try:
+                embeddings = load_safetensor_embeddings(
+                    safetensor_path, layer_name
+                )
+                if embeddings is not None:
+                    print(f"Successfully loaded embeddings from {file}")
+                    break
+                print("Failed")
+            except Exception as e:
+                print(f"Failed: {str(e)[:100]}")
+                continue
+
+    if embeddings is None:
+        raise RuntimeError(
+            f"Could not load embedding layer '{layer_name}' from any safetensor file. "
+            f"Try specifying a different layer name with --layer_name"
+        )
 
     # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_path)
