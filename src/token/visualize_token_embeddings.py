@@ -95,7 +95,9 @@ def detect_token_language(token: str) -> str:
     token_stripped = token.strip()
 
     # Special token patterns
+    # Note: "ADDED_TOKEN:" prefix is now handled in parse_token_category
     if token.startswith("ADDED_TOKEN"):
+        # This should only be reached if parse_token_category didn't handle it
         return "Added Token"
     if token.startswith("INVALID UTF-8"):
         return "Invalid UTF-8"
@@ -161,6 +163,11 @@ def parse_token_category(token_name: str) -> str:
     if is_original:
         token_name = token_name.replace("[ORIG]", "").strip()
 
+    # Handle "ADDED_TOKEN: <token>" format from readable vocab
+    if token_name.startswith("ADDED_TOKEN:"):
+        # Extract the actual token name
+        token_name = token_name.replace("ADDED_TOKEN:", "").strip()
+
     # Priority 1: Check for custom category tokens <a_*>, <b_*>, <c_*>, <d_*>
     if token_name.startswith("<") and token_name.endswith(">"):
         inner = token_name[1:-1].strip()
@@ -174,8 +181,16 @@ def parse_token_category(token_name: str) -> str:
         if any(keyword in inner.lower() for keyword in ["end", "start", "pad"]):
             return "Special Token"
 
+        # Other angle bracket tokens
+        return "Special Token"
+
     # Priority 2: Use language detection for all other tokens
     language = detect_token_language(token_name)
+
+    # If it was detected as "Added Token" but we couldn't categorize it further,
+    # keep it as Added Token
+    if language == "Added Token":
+        return "Added Token"
 
     # Mark original tokens with a prefix for special handling if needed
     if is_original and language != "Other":
@@ -400,28 +415,55 @@ def load_embeddings_from_model(
 
             token_names.append(name)
 
-            # Detect language
+            # Detect language/category using parse_token_category
             if analyze_languages:
-                lang = detect_token_language(name.replace("[ORIG] ", ""))
-                token_languages.append(lang)
+                # Use parse_token_category instead of detect_token_language
+                # to properly handle custom categories
+                category = parse_token_category(name)
+                token_languages.append(category)
 
         except Exception:
             token_names.append(f"<token_{token_id}>")
             token_languages.append("Other")
 
-    # Print language distribution
+    # Print language/category distribution
     if analyze_languages:
-        print("\n=== Language Distribution ===")
+        print("\n=== Token Category & Language Distribution ===")
         lang_counts = {}
         for lang in token_languages:
             lang_counts[lang] = lang_counts.get(lang, 0) + 1
 
+        # Separate custom categories from languages
+        custom_categories = [
+            "Category A",
+            "Category B",
+            "Category C",
+            "Category D",
+        ]
+
+        # Print custom categories first
+        print("\nCustom Categories:")
+        for cat in custom_categories:
+            if cat in lang_counts:
+                count = lang_counts[cat]
+                print(
+                    f"  {cat}: {count} tokens ({count / len(token_languages) * 100:.1f}%)"
+                )
+
+        # Print other categories
+        print("\nLanguages & Other Categories:")
         sorted_langs = sorted(
-            lang_counts.items(), key=lambda x: x[1], reverse=True
+            [
+                (lang, count)
+                for lang, count in lang_counts.items()
+                if lang not in custom_categories
+            ],
+            key=lambda x: x[1],
+            reverse=True,
         )
         for lang, count in sorted_langs[:20]:  # Show top 20
             print(
-                f"{lang}: {count} tokens ({count / len(token_languages) * 100:.1f}%)"
+                f"  {lang}: {count} tokens ({count / len(token_languages) * 100:.1f}%)"
             )
 
     # Extract embeddings
