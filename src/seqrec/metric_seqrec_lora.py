@@ -105,115 +105,79 @@ def test(args: argparse.Namespace):
                 )
 
                 output_ids = output["sequences"]
-                scores = output["sequences_scores"].cpu().numpy()
+                scores = output["sequences_scores"]
 
-                # 批量解码输出
-                output_texts = tokenizer.batch_decode(
+                output = tokenizer.batch_decode(
                     output_ids, skip_special_tokens=True
                 )
-
-                # 提取响应部分
-                all_outputs = []
-                for i in range(0, len(output_texts), args.num_beams):
-                    beam_outputs = []
-                    for j in range(args.num_beams):
-                        text = output_texts[i + j]
-                        response = text.split("Response:")[-1].strip()
-                        beam_outputs.append(response)
-                    all_outputs.append(beam_outputs)
-
-                # 获取top-k结果
-                topk_results = get_topk_results(
-                    all_outputs,
+                # print(output)
+                # print(scores)
+                topk_res = get_topk_results(
+                    output,
+                    scores,
                     targets,
-                    scores.reshape(-1, args.num_beams),
-                    all_items,
-                    filter_items=args.filter_items,
+                    args.num_beams,
+                    all_items=all_items if args.filter_items else None,
                 )
 
-                # 更新评估指标
-                batch_metrics = get_metrics_results(topk_results, metrics)
-                for metric in metrics:
-                    if metric not in metrics_results:
-                        metrics_results[metric] = 0
-                    metrics_results[metric] += batch_metrics[metric]
+                batch_metrics_res = get_metrics_results(topk_res, metrics)
+                # print(batch_metrics_res)
 
-                # 打印进度
-                if (step + 1) % args.print_freq == 0:
-                    partial_results = {
-                        m: metrics_results[m]
-                        / ((step + 1) * args.test_batch_size)
-                        for m in metrics
-                    }
-                    print(f"Step {step + 1}: {partial_results}")
+                for m, res in batch_metrics_res.items():
+                    if m not in metrics_results:
+                        metrics_results[m] = res
+                    else:
+                        metrics_results[m] += res
 
-            # 计算最终指标
-            for metric in metrics:
-                metrics_results[metric] = metrics_results[metric] / total
+                if (step + 1) % 10 == 0:
+                    temp = {}
+                    for m in metrics_results:
+                        temp[m] = metrics_results[m] / total
+                    print(temp)
 
-            print(f"Prompt {prompt_id} 结果: {metrics_results}")
+            for m in metrics_results:
+                metrics_results[m] = metrics_results[m] / total
 
-            prompt_result = {
-                "prompt_id": prompt_id,
-                "prompt": all_prompt["seqrec"][prompt_id]["user"],
-                "metrics": metrics_results,
-                "total_samples": total,
-            }
-            all_prompt_results.append(prompt_result)
+            all_prompt_results.append(metrics_results)
+            print("======================================================")
+            print(f"Prompt {prompt_id} results: ", metrics_results)
+            print("======================================================")
+            print()
 
-    # 计算平均结果
-    print("\n" + "=" * 80)
-    print("最终结果:")
-    print("=" * 80)
+    mean_results = {}
+    min_results = {}
+    max_results = {}
 
-    avg_metrics = {}
-    for metric in metrics:
-        avg_metrics[metric] = sum(
-            r["metrics"][metric] for r in all_prompt_results
-        ) / len(all_prompt_results)
+    for m in metrics:
+        all_res = [_[m] for _ in all_prompt_results]
+        mean_results[m] = sum(all_res) / len(all_res)
+        min_results[m] = min(all_res)
+        max_results[m] = max(all_res)
 
-    print("\n各Prompt结果:")
-    for result in all_prompt_results:
-        print(f"  Prompt {result['prompt_id']}: {result['metrics']}")
+    print("======================================================")
+    print("Mean results: ", mean_results)
+    print("Min results: ", min_results)
+    print("Max results: ", max_results)
+    print("======================================================")
 
-    print(f"\n平均结果: {avg_metrics}")
-
-    # 保存结果
-    results = {
-        "model_type": args.model_type,
-        "checkpoint": args.ckpt_path,
-        "is_lora": args.lora,
-        "base_model": args.base_model if args.lora else None,
-        "dataset": args.dataset,
-        "prompt_results": all_prompt_results,
-        "average_metrics": avg_metrics,
-        "test_config": {
-            "num_beams": args.num_beams,
-            "batch_size": args.test_batch_size,
-            "filter_items": args.filter_items,
-        },
-    }
+    save_data = {}
+    save_data["test_prompt_ids"] = args.test_prompt_ids
+    save_data["mean_results"] = mean_results
+    save_data["min_results"] = min_results
+    save_data["max_results"] = max_results
+    save_data["all_prompt_results"] = all_prompt_results
+    save_data["is_lora"] = args.lora
+    save_data["base_model"] = args.base_model if args.lora else None
 
     # 确保结果目录存在
     os.makedirs(os.path.dirname(args.results_file), exist_ok=True)
-
-    # 为LoRA结果添加特殊标记
-    if args.lora:
-        base_name, ext = os.path.splitext(args.results_file)
-        results_file = f"{base_name}_lora{ext}"
-    else:
-        results_file = args.results_file
-
-    with open(results_file, "w", encoding="utf-8") as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
-
-    print(f"\n结果已保存到: {results_file}")
-
-    return avg_metrics
+    
+    with open(args.results_file, "w") as f:
+        json.dump(save_data, f, indent=4)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="LoRA模型评估测试")
+    parser = argparse.ArgumentParser()
     parser = parse_global_args(parser)
     parser = parse_dataset_args(parser)
     parser = parse_test_args(parser)
