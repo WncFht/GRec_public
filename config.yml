@@ -68,3 +68,5 @@ test_args:
   test_prompt_ids: "0" # 测试时使用的prompt ID, 可用逗号分隔, "all"表示全部
   metrics: "hit@1,hit@5,hit@10,ndcg@5,ndcg@10" # 评估指标, 用逗号分隔
   test_task: "SeqRec" # 要执行的测试任务名称 
+  
+  
