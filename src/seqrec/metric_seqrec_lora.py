@@ -171,7 +171,7 @@ def test(args: argparse.Namespace):
 
     # 确保结果目录存在
     os.makedirs(os.path.dirname(args.results_file), exist_ok=True)
-    
+
     with open(args.results_file, "w") as f:
         json.dump(save_data, f, indent=4)
 

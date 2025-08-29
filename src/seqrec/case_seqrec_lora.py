@@ -75,12 +75,16 @@ def main(args: argparse.Namespace):
         for j, (text, score) in enumerate(
             zip(output_texts, scores, strict=False)
         ):
-            response = text.split("Response:")[-1].strip()
-            print(f"  {j + 1}. {response} | 分数: {float(score):.4f}")
+            response = text.split("assistant")[-1].strip()
+            print(
+                f"  {j + 1}. {response} | ",
+                target_text[0],
+                f"分数: {float(score):.4f}",
+            )
 
         # 检查是否命中
         responses = [
-            text.split("Response:")[-1].strip() for text in output_texts
+            text.split("assistant")[-1].strip() for text in output_texts
         ]
         if target_text in responses:
             print(f"✓ 命中! 排名: {responses.index(target_text) + 1}")

@@ -216,7 +216,7 @@ def parse_train_args(
     train_args.add_argument(
         "--num_workers",
         type=int,
-        default=4,
+        default=12,
         help="Number of workers for data loading",
     )
 
@@ -227,6 +227,11 @@ def parse_test_args(
     parser: argparse.ArgumentParser,
 ) -> argparse.ArgumentParser:
     test_args = parser.add_argument_group("test_args")
+    test_args.add_argument(
+        "--debug",
+        action="store_true",
+        default=False,
+    )
     test_args.add_argument(
         "--model_name",
         type=str,
