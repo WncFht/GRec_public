@@ -212,7 +212,11 @@ class TextGenerationBenchmark:
         """
         对单个模型进行流式生成和评估。
         """
-        tokenizer = processor.tokenizer if hasattr(processor, "tokenizer") else processor
+        tokenizer = (
+            processor.tokenizer
+            if hasattr(processor, "tokenizer")
+            else processor
+        )
         tokenizer.padding_side = "left"
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
@@ -401,7 +405,9 @@ class TextGenerationBenchmark:
             )
 
             # 确保模型在正确的设备上
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            device = torch.device(
+                "cuda" if torch.cuda.is_available() else "cpu"
+            )
             if not hasattr(model, "device"):
                 model.to(device)
 
@@ -479,13 +485,13 @@ class TextGenerationBenchmark:
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
         # 添加LoRA相关信息到结果中
-        results_json = results_df.to_dict('records')[0]
-        
+        results_json = results_df.to_dict("records")[0]
+
         # 保存为JSON格式以保持与seqrec的一致性
-        json_path = file_path.replace('.csv', '.json')
-        with open(json_path, 'w') as f:
+        json_path = file_path.replace(".csv", ".json")
+        with open(json_path, "w") as f:
             json.dump(results_json, f, indent=4)
-        
+
         self.logger.info(f"结果已成功保存到: {json_path}")
 
         # 也保存CSV格式
@@ -540,10 +546,10 @@ def main():
     parser = parse_test_args(parser)
 
     args = parser.parse_args()
-    
+
     # 设置随机种子
     set_seed(args.seed)
-    
+
     print("=" * 80)
     print("LoRA模型文本生成评估测试")
     print("=" * 80)

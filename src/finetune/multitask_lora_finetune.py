@@ -11,7 +11,9 @@ from peft import LoraConfig, TaskType, get_peft_model, set_peft_model_state_dict
 from torch.utils.data import ConcatDataset, Dataset
 from transformers import (
     AutoConfig,
+    AutoModelForCausalLM,
     AutoProcessor,
+    AutoTokenizer,
     LlavaOnevisionForConditionalGeneration,
     Qwen2_5_VLForConditionalGeneration,
     Qwen2VLForConditionalGeneration,
@@ -167,17 +169,29 @@ def load_and_prepare_model_tokenizer(
 
     """
     config = AutoConfig.from_pretrained(args.base_model, trust_remote_code=True)
-    processor = AutoProcessor.from_pretrained(
-        args.base_model,
-        use_fast=True,
-        trust_remote_code=True,
-    )
+    if args.model_type in ["qwen2", "qwen2_5", "llama"]:
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.base_model,
+            use_fast=True,
+            trust_remote_code=True,
+        )
+        processor = tokenizer
+    else:
+        processor = AutoProcessor.from_pretrained(
+            args.base_model,
+            use_fast=True,
+            trust_remote_code=True,
+        )
+        tokenizer = processor.tokenizer
+
     if args.model_type == "qwen2_vl":
         model_class = Qwen2VLForConditionalGeneration
     elif args.model_type == "qwen2_5_vl":
         model_class = Qwen2_5_VLForConditionalGeneration
     elif args.model_type == "llava_onevision":
         model_class = LlavaOnevisionForConditionalGeneration
+    elif args.model_type in ["qwen2", "qwen2_5", "llama"]:
+        model_class = AutoModelForCausalLM
 
     model = model_class.from_pretrained(
         args.base_model,
@@ -188,8 +202,6 @@ def load_and_prepare_model_tokenizer(
 
     train_data, valid_data = load_datasets(args)
     new_tokens = train_data.datasets[0].get_new_tokens()
-
-    tokenizer = processor.tokenizer
 
     original_vocab_size = len(tokenizer)
     add_num = tokenizer.add_tokens(new_tokens)

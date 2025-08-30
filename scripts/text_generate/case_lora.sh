@@ -1,16 +1,12 @@
-#!/bin/bash
-
-# LoRA模型案例测试脚本
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=3
 
 # LoRA配置
-LORA_PATH=./ckpt/Instruments/lora_text_generation/checkpoint-1000
-BASE_MODEL=./ckpt/Qwen2-VL-7B-Instruct  # 基础模型路径
+LORA_PATH=./ckpt/Instruments/Qwen2-VL-2B-Instruct-seqrec-mmitemenrich-lora-1-qwen7B/checkpoint-44948
+BASE_MODEL=./ckpt/base_model/Qwen2-VL-2B-Instruct  # 基础模型路径
 MODEL_TYPE=qwen2_vl
 
 # 数据集配置
 DATASET=Instruments
-DATA_DIR=./data/$DATASET
 
 python -m src.text_generation.case_lora \
     --ckpt_path $LORA_PATH \
@@ -20,5 +16,4 @@ python -m src.text_generation.case_lora \
     --test_batch_size 1 \
     --test_prompt_ids 0 \
     --index_file .index_qwen7B.json \
-    --data_dir $DATA_DIR \
     --seed 42

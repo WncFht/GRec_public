@@ -27,10 +27,12 @@ class Collator:
         if hasattr(self.tokenizer, "padding_side"):
             # 对于decoder-only模型，使用left padding保持因果性
             if args.model_type in [
-                "qwen_vl",
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen2",
+                "qwen2_5",
                 "llama",
-                "qwen",
-                "llama_onevision",
+                "llava_onevision",
             ]:
                 if self.tokenizer.padding_side != "left":
                     print(
@@ -127,10 +129,12 @@ class MultiModalCollator:
         if hasattr(self.tokenizer, "padding_side"):
             # 对于decoder-only模型，使用left padding保持因果性
             if args.model_type in [
-                "qwen_vl",
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen2",
+                "qwen2_5",
                 "llama",
-                "qwen",
-                "llama_onevision",
+                "llava_onevision",
             ]:
                 if self.tokenizer.padding_side != "left":
                     print(
@@ -295,10 +299,12 @@ class UnifiedTestCollator:
         # 确保 decoder-only 模型使用正确的 padding_side
         if hasattr(self.tokenizer, "padding_side"):
             # 对于decoder-only模型，使用left padding保持因果性
-            if self.model_type in [
-                "qwen_vl",
+            if args.model_type in [
+                "qwen2_vl",
+                "qwen2_5_vl",
+                "qwen2",
+                "qwen2_5",
                 "llama",
-                "qwen",
                 "llava_onevision",
             ]:
                 if self.tokenizer.padding_side != "left":
