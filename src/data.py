@@ -930,6 +930,7 @@ class MultimodalDataset(BaseDataset):
         self.task = task.lower()
         self.prompt_sample_num = prompt_sample_num
         self.sample_num = sample_num
+        self.args = args
         self.image_path = os.path.join(self.data_path, args.image_path)
         self.item_meta_path = os.path.join(
             self.data_path, f"{args.dataset}.item.json"
@@ -969,13 +970,18 @@ class MultimodalDataset(BaseDataset):
 
     def _process_data(self):
         """处理多模态数据"""
+        # 根据 8:1:1 规则获取当前模式下的物品ID列表
+        all_item_ids = list(self.indices.keys())
+        split_map = _split_item_ids(all_item_ids, self.args.seed)
+        item_ids_for_mode = split_map[self.mode]
+        
         self.multimodal_data = []
 
-        for item_id, token_list in self.indices.items():
-            have_image = True
+        for item_id in item_ids_for_mode:
             if item_id not in self.item_metadata:
                 continue
 
+            token_list = self.indices[item_id]
             metadata = self.item_metadata[item_id]
             image_file = f"{self.id2item[item_id]}.jpg"  # 假设图片文件命名格式
             image_path = os.path.join(self.image_path, image_file)
@@ -1006,9 +1012,9 @@ class MultimodalDataset(BaseDataset):
                 # 'have_image': have_image
             }
             self.multimodal_data.append(one_data)
-        print("len(self.multimodal_data):", len(self.multimodal_data))
+        print(f"Mode: {self.mode}, Task: {self.task}, len(self.multimodal_data): {len(self.multimodal_data)}")
 
-        # 数据采样
+        # 数据采样（用于调试）
         if self.sample_num > 0 and len(self.multimodal_data) > self.sample_num:
             sampled_indices = np.random.choice(
                 len(self.multimodal_data), self.sample_num, replace=False

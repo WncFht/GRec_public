@@ -416,11 +416,19 @@ def load_datasets(args: argparse.Namespace):
         elif task.lower() in ["mmitem2index", "mmindex2item"]:
             dataset = MultimodalDataset(
                 args,
+                mode="train",
                 task=task.lower(),
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
             )
-            print("Prepare MultimodalDataset num:", len(dataset))
+            valid_dataset = MultimodalDataset(
+                args,
+                mode="valid",
+                task=task.lower(),
+                prompt_sample_num=prompt_sample_num,
+                sample_num=data_sample_num,
+            )
+            print(f"Prepare MultimodalDataset for {task} - Train: {len(dataset)}, Valid: {len(valid_dataset)}")
 
         elif task.lower() == "mmitemenrich":
             dataset = TextEnrichDataset(
