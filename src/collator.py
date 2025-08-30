@@ -396,15 +396,24 @@ class UnifiedTestCollator:
             for messages in messages_list
         ]
 
-        # 批量处理用户输入，包括文本、图像、视频
-        inputs = self.processor(
-            text=input_texts,
-            images=user_image_inputs,
-            videos=user_video_inputs,
-            return_tensors="pt",  # 返回PyTorch tensors
-            padding=True,  # 填充以确保批处理中所有序列长度一致
-            truncation=True,  # 截断过长的序列
-            max_length=self.tokenizer.model_max_length,  # 使用模型定义的最大长度
-        )
+        if user_image_inputs or user_video_inputs:
+            # 批量处理用户输入，包括文本、图像、视频
+            inputs = self.processor(
+                text=input_texts,
+                images=user_image_inputs,
+                videos=user_video_inputs,
+                return_tensors="pt",  # 返回PyTorch tensors
+                padding=True,  # 填充以确保批处理中所有序列长度一致
+                truncation=True,  # 截断过长的序列
+                max_length=self.tokenizer.model_max_length,  # 使用模型定义的最大长度
+            )
+        else:
+            inputs = self.processor(
+                text=input_texts,
+                return_tensors="pt",  # 返回PyTorch tensors
+                padding=True,  # 填充以确保批处理中所有序列长度一致
+                truncation=True,  # 截断过长的序列
+                max_length=self.tokenizer.model_max_length,  # 使用模型定义的最大长度
+            )
 
         return (inputs, targets, item_ids)
