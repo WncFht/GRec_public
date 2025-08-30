@@ -133,12 +133,12 @@ def load_model_for_inference(
     )
     tokenizer = get_tokenizer(processor)
     print(f"词汇表大小: {len(tokenizer)}")
-    
+
     if use_lora:
         if not model_path:
             error_string = "使用LoRA时必须提供 'model_path'（基础模型路径）。"
             raise ValueError(error_string)
-            
+
         # 2. 加载基础模型
         print(f"从 '{model_path}' 加载基础模型...")
         model = model_class.from_pretrained(
@@ -149,7 +149,7 @@ def load_model_for_inference(
             **from_pretrained_kwargs,
         )
         print("基础模型加载完成。")
-        
+
         # 3. 调整词汇表大小以匹配训练时的扩展
         # LoRA训练时会扩展词汇表，我们需要恢复这个扩展
         # 检查adapter_config.json中的信息
@@ -158,23 +158,23 @@ def load_model_for_inference(
             with open(adapter_config_path) as f:
                 adapter_config = json.load(f)
             # PEFT会在modules_to_save中保存修改过的embedding层信息
-            if "modules_to_save" in adapter_config and adapter_config["modules_to_save"]:
+            if adapter_config.get("modules_to_save"):
                 print(f"检测到保存的模块: {adapter_config['modules_to_save']}")
                 # 词汇表大小应该已经在tokenizer中正确设置了
                 new_vocab_size = len(tokenizer)
                 print(f"调整模型词汇表大小为: {new_vocab_size}")
                 model.resize_token_embeddings(new_vocab_size)
                 model.config.vocab_size = new_vocab_size
-        
+
         # 4. 加载并合并LoRA权重
         print(f"加载LoRA权重从: {ckpt_path}")
         model = PeftModel.from_pretrained(
-            model, 
+            model,
             ckpt_path,
-            is_trainable=False  # 推理模式
+            is_trainable=False,  # 推理模式
         )
         print("LoRA权重加载完成。")
-        
+
         # 5. 合并权重以提高推理速度（可选）
         print("合并LoRA权重到基础模型...")
         model = model.merge_and_unload()
@@ -428,7 +428,9 @@ def load_datasets(args: argparse.Namespace):
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
             )
-            print(f"Prepare MultimodalDataset for {task} - Train: {len(dataset)}, Valid: {len(valid_dataset)}")
+            print(
+                f"Prepare MultimodalDataset for {task} - Train: {len(dataset)}, Valid: {len(valid_dataset)}"
+            )
 
         elif task.lower() == "mmitemenrich":
             dataset = TextEnrichDataset(
@@ -436,6 +438,15 @@ def load_datasets(args: argparse.Namespace):
                 mode="train",
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
+            )
+            valid_dataset = TextEnrichDataset(
+                args,
+                mode="valid",
+                prompt_sample_num=prompt_sample_num,
+                sample_num=data_sample_num,
+            )
+            print(
+                f"Prepare TextEnrichDataset for {task} - Train: {len(dataset)}, Valid: {len(valid_dataset)}"
             )
 
         elif task.lower() == "mmitemenrichwithoutid":

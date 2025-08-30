@@ -974,7 +974,7 @@ class MultimodalDataset(BaseDataset):
         all_item_ids = list(self.indices.keys())
         split_map = _split_item_ids(all_item_ids, self.args.seed)
         item_ids_for_mode = split_map[self.mode]
-        
+
         self.multimodal_data = []
 
         for item_id in item_ids_for_mode:
@@ -1012,7 +1012,9 @@ class MultimodalDataset(BaseDataset):
                 # 'have_image': have_image
             }
             self.multimodal_data.append(one_data)
-        print(f"Mode: {self.mode}, Task: {self.task}, len(self.multimodal_data): {len(self.multimodal_data)}")
+        print(
+            f"Mode: {self.mode}, Task: {self.task}, len(self.multimodal_data): {len(self.multimodal_data)}"
+        )
 
         # 数据采样（用于调试）
         if self.sample_num > 0 and len(self.multimodal_data) > self.sample_num:
