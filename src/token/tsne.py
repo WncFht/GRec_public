@@ -553,37 +553,55 @@ def load_embeddings_from_model(
     tokenizer_path = lora_checkpoint if lora_checkpoint else model_path
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
     vocab_size = len(tokenizer)
-    
+
     # Check if we need to resize embeddings for new tokens
     if embeddings.shape[0] < vocab_size:
-        print(f"\nResizing embeddings from {embeddings.shape[0]} to {vocab_size} tokens")
+        print(
+            f"\nResizing embeddings from {embeddings.shape[0]} to {vocab_size} tokens"
+        )
         # Create new embedding matrix with space for new tokens
-        new_embeddings = torch.zeros((vocab_size, embeddings.shape[1]), dtype=embeddings.dtype)
+        new_embeddings = torch.zeros(
+            (vocab_size, embeddings.shape[1]), dtype=embeddings.dtype
+        )
         # Copy existing embeddings
-        new_embeddings[:embeddings.shape[0]] = embeddings
-        
+        new_embeddings[: embeddings.shape[0]] = embeddings
+
         # If LoRA checkpoint exists, load new token embeddings from it
         if lora_checkpoint:
             # Try to load new token embeddings from checkpoint
-            embed_tokens_path = os.path.join(lora_checkpoint, "adapter_model.safetensors")
+            embed_tokens_path = os.path.join(
+                lora_checkpoint, "adapter_model.safetensors"
+            )
             if not os.path.exists(embed_tokens_path):
-                embed_tokens_path = os.path.join(lora_checkpoint, "adapter_model.bin")
-            
+                embed_tokens_path = os.path.join(
+                    lora_checkpoint, "adapter_model.bin"
+                )
+
             if os.path.exists(embed_tokens_path):
                 if embed_tokens_path.endswith(".safetensors"):
                     from safetensors.torch import safe_open
+
                     with safe_open(embed_tokens_path, framework="pt") as f:
                         # Look for new token embeddings (usually stored as base_model.model.embed_tokens.modules_to_save.default.weight)
                         for key in f.keys():
-                            if "embed_tokens" in key and "modules_to_save" in key:
-                                print(f"Loading new token embeddings from {key}")
+                            if (
+                                "embed_tokens" in key
+                                and "modules_to_save" in key
+                            ):
+                                print(
+                                    f"Loading new token embeddings from {key}"
+                                )
                                 saved_embeddings = f.get_tensor(key)
                                 if saved_embeddings.dtype == torch.bfloat16:
-                                    saved_embeddings = saved_embeddings.to(torch.float32)
+                                    saved_embeddings = saved_embeddings.to(
+                                        torch.float32
+                                    )
                                 # Copy the new token embeddings
                                 if saved_embeddings.shape[0] == vocab_size:
                                     new_embeddings = saved_embeddings
-                                    print(f"Loaded complete embedding matrix with new tokens")
+                                    print(
+                                        "Loaded complete embedding matrix with new tokens"
+                                    )
                                 break
                 else:
                     adapters = torch.load(embed_tokens_path, map_location="cpu")
@@ -592,15 +610,19 @@ def load_embeddings_from_model(
                             print(f"Loading new token embeddings from {key}")
                             saved_embeddings = adapters[key]
                             if saved_embeddings.dtype == torch.bfloat16:
-                                saved_embeddings = saved_embeddings.to(torch.float32)
+                                saved_embeddings = saved_embeddings.to(
+                                    torch.float32
+                                )
                             # Copy the new token embeddings
                             if saved_embeddings.shape[0] == vocab_size:
                                 new_embeddings = saved_embeddings
-                                print(f"Loaded complete embedding matrix with new tokens")
+                                print(
+                                    "Loaded complete embedding matrix with new tokens"
+                                )
                             break
-        
+
         embeddings = new_embeddings
-    
+
     # Merge LoRA weights if checkpoint provided
     if lora_checkpoint:
         print(f"\nMerging LoRA checkpoint from: {lora_checkpoint}")
@@ -759,16 +781,24 @@ def load_embeddings_from_model(
             )
 
     # Extract embeddings (filter out invalid token IDs)
-    valid_token_ids = [tid for tid in all_token_ids if tid < embeddings.shape[0]]
+    valid_token_ids = [
+        tid for tid in all_token_ids if tid < embeddings.shape[0]
+    ]
     if len(valid_token_ids) < len(all_token_ids):
-        print(f"Warning: Filtered out {len(all_token_ids) - len(valid_token_ids)} invalid token IDs")
+        print(
+            f"Warning: Filtered out {len(all_token_ids) - len(valid_token_ids)} invalid token IDs"
+        )
         # Update token names and languages accordingly
-        valid_indices = [i for i, tid in enumerate(all_token_ids) if tid < embeddings.shape[0]]
+        valid_indices = [
+            i
+            for i, tid in enumerate(all_token_ids)
+            if tid < embeddings.shape[0]
+        ]
         token_names = [token_names[i] for i in valid_indices]
         if token_languages:
             token_languages = [token_languages[i] for i in valid_indices]
         all_token_ids = valid_token_ids
-    
+
     selected_embeddings = embeddings[all_token_ids, :].numpy()
 
     return EmbeddingInfo(
