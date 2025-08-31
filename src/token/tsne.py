@@ -379,103 +379,110 @@ def merge_lora_embeddings(
 ) -> torch.Tensor:
     """Merge LoRA adapter weights with base embeddings if present."""
     import json
-    
+
     # Check for adapter_config.json to get LoRA parameters
     adapter_config_path = os.path.join(lora_checkpoint, "adapter_config.json")
     if os.path.exists(adapter_config_path):
-        with open(adapter_config_path, "r") as f:
+        with open(adapter_config_path) as f:
             adapter_config = json.load(f)
             if lora_alpha is None:
                 lora_alpha = adapter_config.get("lora_alpha", 16)
             if lora_r is None:
                 lora_r = adapter_config.get("r", 8)
             print(f"Found LoRA config: alpha={lora_alpha}, r={lora_r}")
-    
+
     # Check for adapter weights
     adapter_path = os.path.join(lora_checkpoint, "adapter_model.safetensors")
     if not os.path.exists(adapter_path):
         adapter_path = os.path.join(lora_checkpoint, "adapter_model.bin")
-    
+
     if os.path.exists(adapter_path):
         print(f"Found LoRA adapter weights at: {adapter_path}")
-        
+
         if adapter_path.endswith(".safetensors"):
             from safetensors.torch import safe_open
+
             with safe_open(adapter_path, framework="pt") as f:
                 adapter_keys = list(f.keys())
-                
+
                 # Look for embed_tokens LoRA weights
                 lora_A_key = None
                 lora_B_key = None
-                
+
                 for key in adapter_keys:
                     if "embed_tokens" in key and "lora_A" in key:
                         lora_A_key = key
                     elif "embed_tokens" in key and "lora_B" in key:
                         lora_B_key = key
-                
+
                 if lora_A_key and lora_B_key:
-                    print(f"Merging LoRA weights from {lora_A_key} and {lora_B_key}")
+                    print(
+                        f"Merging LoRA weights from {lora_A_key} and {lora_B_key}"
+                    )
                     lora_A = f.get_tensor(lora_A_key)
                     lora_B = f.get_tensor(lora_B_key)
-                    
+
                     # Convert to float32 if needed
                     if lora_A.dtype == torch.bfloat16:
                         lora_A = lora_A.to(torch.float32)
                     if lora_B.dtype == torch.bfloat16:
                         lora_B = lora_B.to(torch.float32)
-                    
+
                     # Merge: W' = W + (B @ A) * (alpha / r)
                     scaling = lora_alpha / lora_r if lora_r != 0 else 1.0
                     lora_weights = (lora_B @ lora_A) * scaling
-                    
+
                     # Add to base embeddings
                     merged_embeddings = base_embeddings.clone()
                     merged_embeddings += lora_weights.T  # Transpose because LoRA is (hidden_dim, r) @ (r, vocab_size)
-                    
-                    print(f"Successfully merged LoRA adapters (scaling={scaling:.2f})")
+
+                    print(
+                        f"Successfully merged LoRA adapters (scaling={scaling:.2f})"
+                    )
                     return merged_embeddings
-                else:
-                    print("No embed_tokens LoRA weights found in adapter")
+                print("No embed_tokens LoRA weights found in adapter")
         else:
             # Handle .bin format
             adapters = torch.load(adapter_path, map_location="cpu")
-            
+
             lora_A_key = None
             lora_B_key = None
-            
+
             for key in adapters.keys():
                 if "embed_tokens" in key and "lora_A" in key:
                     lora_A_key = key
                 elif "embed_tokens" in key and "lora_B" in key:
                     lora_B_key = key
-            
+
             if lora_A_key and lora_B_key:
-                print(f"Merging LoRA weights from {lora_A_key} and {lora_B_key}")
+                print(
+                    f"Merging LoRA weights from {lora_A_key} and {lora_B_key}"
+                )
                 lora_A = adapters[lora_A_key]
                 lora_B = adapters[lora_B_key]
-                
+
                 # Convert to float32 if needed
                 if lora_A.dtype == torch.bfloat16:
                     lora_A = lora_A.to(torch.float32)
                 if lora_B.dtype == torch.bfloat16:
                     lora_B = lora_B.to(torch.float32)
-                
+
                 # Merge: W' = W + (B @ A) * (alpha / r)
                 scaling = lora_alpha / lora_r if lora_r != 0 else 1.0
                 lora_weights = (lora_B @ lora_A) * scaling
-                
+
                 # Add to base embeddings
                 merged_embeddings = base_embeddings.clone()
                 merged_embeddings += lora_weights.T
-                
-                print(f"Successfully merged LoRA adapters (scaling={scaling:.2f})")
+
+                print(
+                    f"Successfully merged LoRA adapters (scaling={scaling:.2f})"
+                )
                 return merged_embeddings
-            else:
-                print("No embed_tokens LoRA weights found in adapter")
+            print("No embed_tokens LoRA weights found in adapter")
     else:
         print("No LoRA adapter files found, using base embeddings")
-    
+
     return base_embeddings
 
 
@@ -488,8 +495,9 @@ def load_embeddings_from_model(
     seed: int = 42,
     lora_checkpoint: str = None,
 ) -> EmbeddingInfo:
-    """Load embeddings from model with language analysis.
-    
+    """
+    Load embeddings from model with language analysis.
+
     Args:
         model_path: Path to base model
         layer_name: Name of the embedding layer
@@ -498,6 +506,7 @@ def load_embeddings_from_model(
         filter_languages: Languages to filter for
         seed: Random seed
         lora_checkpoint: Path to LoRA checkpoint (if using LoRA)
+
     """
     embeddings = None
 
