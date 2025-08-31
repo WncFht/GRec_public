@@ -373,7 +373,7 @@ def load_safetensor_embeddings(
 
 def merge_lora_embeddings(
     base_embeddings: torch.Tensor,
-    model_path: str,
+    lora_checkpoint: str,
     lora_alpha: float = None,
     lora_r: int = None,
 ) -> torch.Tensor:
@@ -381,7 +381,7 @@ def merge_lora_embeddings(
     import json
     
     # Check for adapter_config.json to get LoRA parameters
-    adapter_config_path = os.path.join(model_path, "adapter_config.json")
+    adapter_config_path = os.path.join(lora_checkpoint, "adapter_config.json")
     if os.path.exists(adapter_config_path):
         with open(adapter_config_path, "r") as f:
             adapter_config = json.load(f)
@@ -392,9 +392,9 @@ def merge_lora_embeddings(
             print(f"Found LoRA config: alpha={lora_alpha}, r={lora_r}")
     
     # Check for adapter weights
-    adapter_path = os.path.join(model_path, "adapter_model.safetensors")
+    adapter_path = os.path.join(lora_checkpoint, "adapter_model.safetensors")
     if not os.path.exists(adapter_path):
-        adapter_path = os.path.join(model_path, "adapter_model.bin")
+        adapter_path = os.path.join(lora_checkpoint, "adapter_model.bin")
     
     if os.path.exists(adapter_path):
         print(f"Found LoRA adapter weights at: {adapter_path}")
@@ -486,9 +486,19 @@ def load_embeddings_from_model(
     analyze_languages: bool = True,
     filter_languages: list[str] = None,
     seed: int = 42,
-    merge_lora: bool = True,
+    lora_checkpoint: str = None,
 ) -> EmbeddingInfo:
-    """Load embeddings from model with language analysis."""
+    """Load embeddings from model with language analysis.
+    
+    Args:
+        model_path: Path to base model
+        layer_name: Name of the embedding layer
+        sample_original_tokens: Number of original tokens to sample
+        analyze_languages: Whether to analyze token languages
+        filter_languages: Languages to filter for
+        seed: Random seed
+        lora_checkpoint: Path to LoRA checkpoint (if using LoRA)
+    """
     embeddings = None
 
     # Check for safetensor files
@@ -530,12 +540,14 @@ def load_embeddings_from_model(
             f"Try specifying a different layer name with --layer_name"
         )
 
-    # Merge LoRA weights if present and requested
-    if merge_lora:
-        embeddings = merge_lora_embeddings(embeddings, model_path)
+    # Merge LoRA weights if checkpoint provided
+    if lora_checkpoint:
+        print(f"\nMerging LoRA checkpoint from: {lora_checkpoint}")
+        embeddings = merge_lora_embeddings(embeddings, lora_checkpoint)
 
-    # Load tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    # Load tokenizer (from LoRA checkpoint if provided, otherwise from base model)
+    tokenizer_path = lora_checkpoint if lora_checkpoint else model_path
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
     vocab_size = len(tokenizer)
 
     # Analyze tokenizer
@@ -1036,12 +1048,13 @@ def main():
         "--model_path",
         type=str,
         required=True,
-        help="Model path or embedding file (.pkl)",
+        help="Base model path (for LoRA) or full model path (for non-LoRA)",
     )
     parser.add_argument(
-        "--no_merge_lora",
-        action="store_true",
-        help="Do not merge LoRA adapter weights even if present",
+        "--lora_checkpoint",
+        type=str,
+        default=None,
+        help="Path to LoRA checkpoint directory containing adapter weights and tokenizer",
     )
     parser.add_argument(
         "--output_dir",
@@ -1227,7 +1240,7 @@ def main():
         not args.skip_analysis,
         args.filter_languages,
         args.seed,
-        merge_lora=not args.no_merge_lora,
+        lora_checkpoint=args.lora_checkpoint,
     )
 
     embeddings = embedding_info.embeddings
