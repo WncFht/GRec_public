@@ -250,7 +250,10 @@ def load_model_for_training(
 
     # 1. 加载配置
     from transformers import AutoConfig
-    config_obj = AutoConfig.from_pretrained(base_model_path, trust_remote_code=True)
+
+    config_obj = AutoConfig.from_pretrained(
+        base_model_path, trust_remote_code=True
+    )
 
     # 2. 加载 Processor / Tokenizer
     if local_rank == 0:
@@ -279,20 +282,20 @@ def load_model_for_training(
     # 3. 加载基础模型
     if local_rank == 0:
         log_func(f"从 '{base_model_path}' 加载基础模型...")
-    
+
     # 构建模型加载参数
     model_kwargs = {
         "config": config_obj,
         "trust_remote_code": True,
         **from_pretrained_kwargs,
     }
-    
+
     # 根据训练参数设置数据类型
-    if hasattr(args, 'bf16') and args.bf16:
+    if hasattr(args, "bf16") and args.bf16:
         model_kwargs["torch_dtype"] = torch.bfloat16
-    elif hasattr(args, 'fp16') and args.fp16:
+    elif hasattr(args, "fp16") and args.fp16:
         model_kwargs["torch_dtype"] = torch.float16
-    
+
     # 对于多模态模型，添加attention实现
     if model_type in ["qwen2_vl", "qwen2_5_vl", "llava_onevision"]:
         model_kwargs["attn_implementation"] = "flash_attention_2"
@@ -306,12 +309,14 @@ def load_model_for_training(
         new_tokens = train_data.datasets[0].get_new_tokens()
 
     if local_rank == 0:
-        log_func(f"从数据集中获取到 {len(new_tokens)} 个新 token 用于扩展词汇表。")
-    
+        log_func(
+            f"从数据集中获取到 {len(new_tokens)} 个新 token 用于扩展词汇表。"
+        )
+
     tokenizer.add_tokens(new_tokens, special_tokens=True)
     new_vocab_size = len(tokenizer)
     model.resize_token_embeddings(new_vocab_size)
-    
+
     # 更新配置中的词汇表大小
     if model_type != "llava_onevision":
         config_obj.vocab_size = new_vocab_size
@@ -336,8 +341,13 @@ def load_model_for_training(
 
     # 6. 配置LoRA（如果启用）
     embedding_hooks = []
-    if hasattr(args, 'use_lora') and args.use_lora:
-        from peft import LoraConfig, TaskType, get_peft_model, set_peft_model_state_dict
+    if hasattr(args, "use_lora") and args.use_lora:
+        from peft import (
+            LoraConfig,
+            TaskType,
+            get_peft_model,
+            set_peft_model_state_dict,
+        )
 
         if local_rank == 0:
             log_func("启用LoRA训练...")
@@ -346,7 +356,8 @@ def load_model_for_training(
         target_modules = args.lora_target_modules.split(",")
         modules_to_save = (
             args.lora_modules_to_save.split(",")
-            if hasattr(args, 'lora_modules_to_save') and args.lora_modules_to_save
+            if hasattr(args, "lora_modules_to_save")
+            and args.lora_modules_to_save
             else ["embed_tokens", "lm_head"]
         )
 
@@ -363,7 +374,10 @@ def load_model_for_training(
         model = get_peft_model(model, peft_config)
 
         # 如果有checkpoint，加载LoRA权重
-        if hasattr(args, 'resume_from_checkpoint') and args.resume_from_checkpoint:
+        if (
+            hasattr(args, "resume_from_checkpoint")
+            and args.resume_from_checkpoint
+        ):
             checkpoint_name = os.path.join(
                 args.resume_from_checkpoint, "adapter_model.safetensors"
             )
@@ -375,7 +389,9 @@ def load_model_for_training(
             if os.path.exists(checkpoint_name):
                 if local_rank == 0:
                     log_func(f"从检查点加载LoRA权重: {checkpoint_name}")
-                adapters_weights = torch.load(checkpoint_name, map_location="cpu")
+                adapters_weights = torch.load(
+                    checkpoint_name, map_location="cpu"
+                )
                 model = set_peft_model_state_dict(model, adapters_weights)
             elif local_rank == 0:
                 log_func(f"未找到检查点: {checkpoint_name}")
@@ -384,7 +400,7 @@ def load_model_for_training(
             model.print_trainable_parameters()
 
     # 7. 处理参数冻结
-    if hasattr(args, 'freeze'):
+    if hasattr(args, "freeze"):
         # 冻结视觉模型参数
         if args.freeze in ["visual", "all"]:
             if hasattr(model, "visual"):
@@ -409,7 +425,14 @@ def load_model_for_training(
     if local_rank == 0:
         log_func("模型加载完成并已设置为训练模式。")
 
-    return model, processor, original_vocab_size, new_vocab_size, new_tokens, embedding_hooks
+    return (
+        model,
+        processor,
+        original_vocab_size,
+        new_vocab_size,
+        new_tokens,
+        embedding_hooks,
+    )
 
 
 def get_local_time():
@@ -598,7 +621,9 @@ def load_test_dataset(args: argparse.Namespace):
         )
     elif args.test_task.lower() == "fusionseqrec":
         test_data = FusionSeqRecDataset(
-            args, mode="test", sample_num=args.sample_num,
+            args,
+            mode="test",
+            sample_num=args.sample_num,
         )
     else:
         raise NotImplementedError

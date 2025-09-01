@@ -10,7 +10,7 @@ from src.collator import UnifiedTestCollator
 from src.evaluate import get_metrics_results, get_topk_results
 from src.parser import parse_dataset_args, parse_global_args, parse_test_args
 from src.prompt import all_prompt
-from src.utils import load_model_for_inference, set_seed, load_test_dataset
+from src.utils import load_model_for_inference, load_test_dataset, set_seed
 
 
 def test(args: argparse.Namespace):
