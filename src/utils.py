@@ -206,8 +206,10 @@ def load_model_for_inference(
 
 def load_model_for_training(
     args: argparse.Namespace,
-    new_tokens: list[str],
-) -> tuple[Any, AutoProcessor | AutoTokenizer]:
+    new_tokens: list[str] | None = None,
+    local_rank: int = 0,
+    logger=None,
+) -> tuple[Any, AutoProcessor | AutoTokenizer, int, int, list[str], list]:
     """
     为训练加载模型、分词器，并进行必要的设置。
 
@@ -215,90 +217,138 @@ def load_model_for_training(
     1. 根据模型类型加载基础模型和对应的分词器/处理器。
     2. 根据传入的 new_tokens 扩展词汇表。
     3. 调整模型嵌入层的大小以适应新词汇表。
-    4. 冻结原始词汇表的嵌入，以便只训练新添加的token。
+    4. 根据freeze配置选择性冻结参数。
     5. 如果启用了LoRA，则应用PeftConfig来包装模型。
     6. 保存词汇表元数据，供后续推理使用。
 
-    Attributes
-    ----------
-        args (Args): 包含所有配置的统一对象。
-        new_tokens (list[str]): 从数据集中提取的、需要添加到词汇表的新token列表。
+    Args:
+    ----
+        args (argparse.Namespace): 包含所有配置的统一对象。
+        new_tokens (list[str], optional): 需要添加到词汇表的新token列表。如果为None，从数据集获取。
+        local_rank (int): 当前进程的rank，用于分布式训练。
+        logger: 日志记录器，如果为None则使用print。
 
-    Returns
+    Returns:
     -------
-        tuple[Any, Union[AutoProcessor, AutoTokenizer]]: (加载和配置好的模型, 对应的处理器或分词器).
+        tuple: (model, processor, original_vocab_size, new_vocab_size, new_tokens, embedding_hooks)
 
     """
     model_type = args.model_type
     base_model_path = args.base_model
+    log_func = logger.info if logger else print
 
     if model_type not in MODEL_CONFIG:
         raise ValueError(f"不支持的模型类型: {model_type}")
 
-    print(f"为训练加载 {model_type.upper()} 模型...")
+    if local_rank == 0:
+        log_func(f"为训练加载 {model_type.upper()} 模型...")
 
     config = MODEL_CONFIG[model_type]
     model_class = config["model_class"]
     processor_class = config["processor_class"]
     from_pretrained_kwargs = config.get("from_pretrained_kwargs", {})
 
-    # 1. 加载 Processor / Tokenizer
-    print(f"从 '{base_model_path}' 加载分词器...")
+    # 1. 加载配置
+    from transformers import AutoConfig
+    config_obj = AutoConfig.from_pretrained(base_model_path, trust_remote_code=True)
 
-    # 根据模型类型设置正确的 padding_side
-    if model_type in ["qwen_vl", "llama", "qwen"]:
-        # Decoder-only 模型需要 left padding 以保持因果性
-        from_pretrained_kwargs["padding_side"] = "left"
-    elif model_type in ["t5", "instructblip"]:
-        # Encoder-decoder 模型可以使用 right padding
-        from_pretrained_kwargs["padding_side"] = "right"
+    # 2. 加载 Processor / Tokenizer
+    if local_rank == 0:
+        log_func(f"从 '{base_model_path}' 加载处理器/分词器...")
 
-    processor = processor_class.from_pretrained(
-        base_model_path, **from_pretrained_kwargs
-    )
-    tokenizer = get_tokenizer(processor)
+    # 特殊处理文本模型
+    if model_type in ["qwen2", "qwen2_5", "llama"]:
+        tokenizer = AutoTokenizer.from_pretrained(
+            base_model_path,
+            use_fast=True,
+            trust_remote_code=True,
+        )
+        processor = tokenizer
+    else:
+        processor = processor_class.from_pretrained(
+            base_model_path,
+            use_fast=True,
+            **from_pretrained_kwargs,
+        )
+        tokenizer = processor.tokenizer
+
     original_vocab_size = len(tokenizer)
-    print(f"原始词汇表大小: {original_vocab_size}")
+    if local_rank == 0:
+        log_func(f"原始词汇表大小: {original_vocab_size}")
 
-    # 2. 加载基础模型
-    print(f"从 '{base_model_path}' 加载基础模型...")
-    model = model_class.from_pretrained(
-        base_model_path,
-        torch_dtype=torch.bfloat16,
-        low_cpu_mem_usage=True,
+    # 3. 加载基础模型
+    if local_rank == 0:
+        log_func(f"从 '{base_model_path}' 加载基础模型...")
+    
+    # 构建模型加载参数
+    model_kwargs = {
+        "config": config_obj,
+        "trust_remote_code": True,
         **from_pretrained_kwargs,
-    )
+    }
+    
+    # 根据训练参数设置数据类型
+    if hasattr(args, 'bf16') and args.bf16:
+        model_kwargs["torch_dtype"] = torch.bfloat16
+    elif hasattr(args, 'fp16') and args.fp16:
+        model_kwargs["torch_dtype"] = torch.float16
+    
+    # 对于多模态模型，添加attention实现
+    if model_type in ["qwen2_vl", "qwen2_5_vl", "llava_onevision"]:
+        model_kwargs["attn_implementation"] = "flash_attention_2"
 
-    # 3. 扩展词汇表
-    print(f"从数据集中获取到 {len(new_tokens)} 个新 token 用于扩展词汇表。")
+    model = model_class.from_pretrained(base_model_path, **model_kwargs)
+
+    # 4. 获取并扩展词汇表
+    if new_tokens is None:
+        # 从数据集获取新tokens
+        train_data, _ = load_datasets(args)
+        new_tokens = train_data.datasets[0].get_new_tokens()
+
+    if local_rank == 0:
+        log_func(f"从数据集中获取到 {len(new_tokens)} 个新 token 用于扩展词汇表。")
+    
     tokenizer.add_tokens(new_tokens, special_tokens=True)
     new_vocab_size = len(tokenizer)
-    print(f"扩展后新词汇表大小: {new_vocab_size}")
-
-    # 调整模型嵌入层大小
     model.resize_token_embeddings(new_vocab_size)
-    model.config.vocab_size = new_vocab_size
+    
+    # 更新配置中的词汇表大小
+    if model_type != "llava_onevision":
+        config_obj.vocab_size = new_vocab_size
+        model.config.vocab_size = new_vocab_size
 
-    # 验证并保存词汇表元数据
+    if local_rank == 0:
+        log_func(f"扩展后新词汇表大小: {new_vocab_size}")
+
+    # 5. 保存词汇表元数据
     ensure_dir(args.output_dir)
-    with open(os.path.join(args.output_dir, "token_meta.json"), "w") as f:
-        json.dump(
-            {
-                "original_vocab_size": original_vocab_size,
-                "new_vocab_size": new_vocab_size,
-                "added_tokens": len(new_tokens),
-            },
-            f,
-            indent=2,
+    if local_rank == 0:
+        with open(os.path.join(args.output_dir, "token_meta.json"), "w") as f:
+            json.dump(
+                {
+                    "original_vocab_size": original_vocab_size,
+                    "new_vocab_size": new_vocab_size,
+                    "added_tokens": len(new_tokens),
+                },
+                f,
+                indent=2,
+            )
+
+    # 6. 配置LoRA（如果启用）
+    embedding_hooks = []
+    if hasattr(args, 'use_lora') and args.use_lora:
+        from peft import LoraConfig, TaskType, get_peft_model, set_peft_model_state_dict
+
+        if local_rank == 0:
+            log_func("启用LoRA训练...")
+
+        # 解析target_modules和modules_to_save
+        target_modules = args.lora_target_modules.split(",")
+        modules_to_save = (
+            args.lora_modules_to_save.split(",")
+            if hasattr(args, 'lora_modules_to_save') and args.lora_modules_to_save
+            else ["embed_tokens", "lm_head"]
         )
-
-    # 4. 根据LoRA配置包装模型
-    if args.use_lora:
-        from peft import LoraConfig, TaskType, get_peft_model
-
-        print("启用LoRA训练...")
-        # 冻结原始embedding
-        # freeze_original_embeddings_simple(model, original_vocab_size)
 
         peft_config = LoraConfig(
             task_type=TaskType.CAUSAL_LM,
@@ -306,18 +356,60 @@ def load_model_for_training(
             r=args.lora_r,
             lora_alpha=args.lora_alpha,
             lora_dropout=args.lora_dropout,
-            target_modules=args.lora_target_modules.split(","),
-            modules_to_save=["embed_tokens", "lm_head"],
+            target_modules=target_modules,
+            modules_to_save=modules_to_save,
+            bias="none",
         )
         model = get_peft_model(model, peft_config)
-        model.print_trainable_parameters()
 
-    # 将模型移动到设备
-    model.to(args.device)
+        # 如果有checkpoint，加载LoRA权重
+        if hasattr(args, 'resume_from_checkpoint') and args.resume_from_checkpoint:
+            checkpoint_name = os.path.join(
+                args.resume_from_checkpoint, "adapter_model.safetensors"
+            )
+            if not os.path.exists(checkpoint_name):
+                checkpoint_name = os.path.join(
+                    args.resume_from_checkpoint, "adapter_model.bin"
+                )
+
+            if os.path.exists(checkpoint_name):
+                if local_rank == 0:
+                    log_func(f"从检查点加载LoRA权重: {checkpoint_name}")
+                adapters_weights = torch.load(checkpoint_name, map_location="cpu")
+                model = set_peft_model_state_dict(model, adapters_weights)
+            elif local_rank == 0:
+                log_func(f"未找到检查点: {checkpoint_name}")
+
+        if local_rank == 0:
+            model.print_trainable_parameters()
+
+    # 7. 处理参数冻结
+    if hasattr(args, 'freeze'):
+        # 冻结视觉模型参数
+        if args.freeze in ["visual", "all"]:
+            if hasattr(model, "visual"):
+                for name, param in model.visual.named_parameters():
+                    param.requires_grad = False
+                if local_rank == 0:
+                    log_func("冻结视觉模型参数")
+            if hasattr(model, "visual") and hasattr(model.visual, "merger"):
+                for name, param in model.visual.merger.named_parameters():
+                    param.requires_grad = False
+                if local_rank == 0:
+                    log_func("冻结视觉模型融合层参数")
+
+        # 冻结原始embedding参数
+        if args.freeze in ["embeddings", "all"]:
+            embedding_hooks = freeze_original_embeddings_with_hook(
+                model, original_vocab_size, logger
+            )
+
+    # 8. 设置训练模式
     model.train()
-    print("模型加载完成并已设置为训练模式。")
+    if local_rank == 0:
+        log_func("模型加载完成并已设置为训练模式。")
 
-    return model, processor
+    return model, processor, original_vocab_size, new_vocab_size, new_tokens, embedding_hooks
 
 
 def get_local_time():
@@ -498,9 +590,15 @@ def load_test_dataset(args: argparse.Namespace):
             mode="test",
             sample_num=args.sample_num,
         )
+    elif args.test_task.lower() == "mmseqrec":
+        test_data = MultimodalSeqRecDataset(
+            args,
+            mode="test",
+            sample_num=args.sample_num,
+        )
     elif args.test_task.lower() == "fusionseqrec":
         test_data = FusionSeqRecDataset(
-            args, mode="test", sample_num=args.sample_num
+            args, mode="test", sample_num=args.sample_num,
         )
     else:
         raise NotImplementedError

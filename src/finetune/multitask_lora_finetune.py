@@ -7,22 +7,16 @@ import pickle
 
 import torch
 import transformers
-from peft import LoraConfig, TaskType, get_peft_model, set_peft_model_state_dict
 from torch.utils.data import ConcatDataset, Dataset
 from transformers import (
-    AutoConfig,
-    AutoModelForCausalLM,
     AutoProcessor,
-    AutoTokenizer,
-    LlavaOnevisionForConditionalGeneration,
-    Qwen2_5_VLForConditionalGeneration,
     Qwen2VLForConditionalGeneration,
     TrainingArguments,
 )
 
 from ..collator import MultiModalCollator
 from ..parser import parse_dataset_args, parse_global_args, parse_train_args
-from ..utils import ensure_dir, load_datasets, set_seed
+from ..utils import ensure_dir, load_datasets, load_model_for_training, set_seed
 
 
 def setup_environment(args: argparse.Namespace) -> tuple[int, bool]:
@@ -168,134 +162,25 @@ def load_and_prepare_model_tokenizer(
                 original_vocab_size, new_vocab_size, new_tokens)
 
     """
-    config = AutoConfig.from_pretrained(args.base_model, trust_remote_code=True)
-    if args.model_type in ["qwen2", "qwen2_5", "llama"]:
-        tokenizer = AutoTokenizer.from_pretrained(
-            args.base_model,
-            use_fast=True,
-            trust_remote_code=True,
-        )
-        processor = tokenizer
-    else:
-        processor = AutoProcessor.from_pretrained(
-            args.base_model,
-            use_fast=True,
-            trust_remote_code=True,
-        )
-        tokenizer = processor.tokenizer
-
-    if args.model_type == "qwen2_vl":
-        model_class = Qwen2VLForConditionalGeneration
-    elif args.model_type == "qwen2_5_vl":
-        model_class = Qwen2_5_VLForConditionalGeneration
-    elif args.model_type == "llava_onevision":
-        model_class = LlavaOnevisionForConditionalGeneration
-    elif args.model_type in ["qwen2", "qwen2_5", "llama"]:
-        model_class = AutoModelForCausalLM
-
-    model = model_class.from_pretrained(
-        args.base_model,
-        config=config,
-        trust_remote_code=True,
-        torch_dtype=torch.bfloat16 if args.bf16 else None,
+    # 确保LoRA模式
+    args.use_lora = True
+    
+    # 使用统一的load_model_for_training函数
+    model, processor, original_vocab_size, new_vocab_size, new_tokens, embedding_hooks = load_model_for_training(
+        args, new_tokens=None, local_rank=local_rank, logger=None
     )
 
+    # 加载数据集
     train_data, valid_data = load_datasets(args)
-    new_tokens = train_data.datasets[0].get_new_tokens()
-
-    original_vocab_size = len(tokenizer)
-    add_num = tokenizer.add_tokens(new_tokens)
-    new_vocab_size = len(tokenizer)
-    model.resize_token_embeddings(new_vocab_size)
-    if args.model_type != "llava_onevision":
-        config.vocab_size = new_vocab_size
-        model.config.vocab_size = new_vocab_size
-
-    # 配置LoRA - 使用parser.py中已定义的参数
-    # 解析target_modules和modules_to_save（它们在args中是逗号分隔的字符串）
-    target_modules = args.lora_target_modules.split(",")
-    modules_to_save = (
-        args.lora_modules_to_save.split(",")
-        if args.lora_modules_to_save
-        else []
-    )
-
-    lora_config = LoraConfig(
-        r=args.lora_r,
-        lora_alpha=args.lora_alpha,
-        target_modules=target_modules,
-        lora_dropout=args.lora_dropout,
-        bias="none",
-        inference_mode=False,
-        task_type=TaskType.CAUSAL_LM,
-        modules_to_save=modules_to_save,  # 默认包含embed_tokens和lm_head
-    )
-
-    model = get_peft_model(model, lora_config)
-
-    # 如果有checkpoint，加载LoRA权重
-    if args.resume_from_checkpoint:
-        checkpoint_name = os.path.join(
-            args.resume_from_checkpoint, "adapter_model.safetensors"
-        )
-        if not os.path.exists(checkpoint_name):
-            checkpoint_name = os.path.join(
-                args.resume_from_checkpoint, "adapter_model.bin"
-            )
-
-        if os.path.exists(checkpoint_name):
-            if local_rank == 0:
-                print(f"从检查点加载LoRA权重: {checkpoint_name}")
-            adapters_weights = torch.load(checkpoint_name, map_location="cpu")
-            model = set_peft_model_state_dict(model, adapters_weights)
-        elif local_rank == 0:
-            print(f"未找到检查点: {checkpoint_name}")
-
-    # 根据args.freeze参数决定是否冻结原始token的embeddings
-    embedding_hooks = []
-
-    if args.freeze in ["embeddings", "all"]:
-        # 冻结原始token的embeddings
-        base_model = model.get_base_model()
-        if hasattr(base_model, "get_input_embeddings"):
-            embed_layer = base_model.get_input_embeddings()
-
-            def selective_embedding_hook(grad):
-                """选择性地将原始token的梯度置零"""
-                if grad is not None:
-                    new_grad = grad.clone()
-                    new_grad[:original_vocab_size] = 0.0
-                    return new_grad
-                return grad
-
-            if embed_layer.weight.requires_grad:
-                hook = embed_layer.weight.register_hook(
-                    selective_embedding_hook
-                )
-                embedding_hooks.append(hook)
-                if local_rank == 0:
-                    print(
-                        f"冻结原始词汇表embeddings（前{original_vocab_size}个token）"
-                    )
-
-    # 处理视觉模型冻结
-    if args.freeze in ["visual", "all"]:
-        if hasattr(model, "visual"):
-            for name, param in model.visual.named_parameters():
-                param.requires_grad = False
-            print("冻结视觉模型参数")
-        if hasattr(model, "visual") and hasattr(model.visual, "merger"):
-            for name, param in model.visual.merger.named_parameters():
-                param.requires_grad = False
-            print("冻结视觉模型融合层参数")
 
     if local_rank == 0:
         print(
             f"LoRA配置: r={args.lora_r}, alpha={args.lora_alpha}, dropout={args.lora_dropout}"
         )
-        print(f"目标模块: {target_modules}")
-        print(f"保存模块: {modules_to_save}")
-        print(f"添加了 {add_num} 个新token")
+        print(f"目标模块: {args.lora_target_modules}")
+        if hasattr(args, 'lora_modules_to_save') and args.lora_modules_to_save:
+            print(f"保存模块: {args.lora_modules_to_save}")
+        print(f"添加了 {new_vocab_size - original_vocab_size} 个新token")
         print(f"原始词汇表大小: {original_vocab_size}")
         print(f"新词汇表大小: {new_vocab_size}")
         print(f"数据量: {len(train_data)}")
@@ -303,7 +188,7 @@ def load_and_prepare_model_tokenizer(
         # 打印可训练参数统计
         model.print_trainable_parameters()
 
-        if args.use_gradient_checkpointing:
+        if hasattr(args, 'use_gradient_checkpointing') and args.use_gradient_checkpointing:
             effective_batch_size = (
                 args.per_device_batch_size
                 * args.gradient_accumulation_steps
@@ -317,6 +202,9 @@ def load_and_prepare_model_tokenizer(
         print(f"1 epoch steps: {len(train_data) / args.per_device_batch_size}")
 
         processor.save_pretrained(args.output_dir)
+        from transformers import AutoConfig
+        config = AutoConfig.from_pretrained(args.base_model, trust_remote_code=True)
+        config.vocab_size = new_vocab_size
         config.save_pretrained(args.output_dir)
 
     return (

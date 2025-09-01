@@ -3,14 +3,12 @@ import argparse
 import torch
 
 from src.collator import UnifiedTestCollator
-from src.data import SeqRecDataset
 from src.parser import parse_dataset_args, parse_global_args, parse_test_args
-from src.utils import load_model_for_inference
+from src.utils import load_model_for_inference, load_test_dataset
 
 
 def main(args: argparse.Namespace):
-    """使用LoRA模型进行案例测试"""
-    dataset = SeqRecDataset(args, mode="test")
+    dataset = load_test_dataset(args)
     print(f"测试数据集大小: {len(dataset)}")
     print("样例数据:", dataset[0])
 
@@ -94,7 +92,7 @@ def main(args: argparse.Namespace):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="LoRA模型案例测试")
+    parser = argparse.ArgumentParser()
     parser = parse_global_args(parser)
     parser = parse_dataset_args(parser)
     parser = parse_test_args(parser)

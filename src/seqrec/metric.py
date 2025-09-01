@@ -6,20 +6,15 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from ..collator import UnifiedTestCollator
-from ..data import SeqRecDataset
-from ..evaluate import get_metrics_results, get_topk_results
-from ..parser import parse_dataset_args, parse_global_args, parse_test_args
-from ..prompt import all_prompt
-from ..utils import load_model_for_inference, set_seed
+from src.collator import UnifiedTestCollator
+from src.evaluate import get_metrics_results, get_topk_results
+from src.parser import parse_dataset_args, parse_global_args, parse_test_args
+from src.prompt import all_prompt
+from src.utils import load_model_for_inference, set_seed, load_test_dataset
 
 
 def test(args: argparse.Namespace):
-    """使用LoRA模型进行完整的评估测试"""
     set_seed(args.seed)
-    print("=" * 80)
-    print("LoRA模型评估测试")
-    print("=" * 80)
     print(vars(args))
 
     device = torch.device("cuda", args.gpu_id)
@@ -52,7 +47,7 @@ def test(args: argparse.Namespace):
         prompt_ids = [int(_) for _ in args.test_prompt_ids.split(",")]
 
     # 准备数据集和数据加载器
-    test_data = SeqRecDataset(args, mode="test")
+    test_data = load_test_dataset(args)
     collator = UnifiedTestCollator(args, processor_or_tokenizer=processor)
     all_items = test_data.get_all_items()
 

@@ -19,7 +19,7 @@ for arg in "$@"; do
 done
 
 # 构建基础命令
-CMD="python -m src.finetune.multitask_finetune \
+CMD="python -m src.finetune.unified_multitask_train \
     --seed 42 \
     --base_model $BASE_MODEL \
     --model_type $MODEL_TYPE \

@@ -1,16 +1,13 @@
 import argparse
 import os
 import sys
+from typing import Any
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import torch
 import transformers
 from torch.utils.data import ConcatDataset, Dataset
 from transformers import (
-    AutoConfig,
-    AutoProcessor,
-    Qwen2_5_VLForConditionalGeneration,
-    Qwen2VLForConditionalGeneration,
     TrainingArguments,
 )
 
@@ -27,8 +24,8 @@ from ..parser import (
 )
 from ..utils import (
     ensure_dir,
-    freeze_original_embeddings_with_hook,
     load_datasets,
+    load_model_for_training,
     make_run_name,
     set_seed,
 )
@@ -120,7 +117,7 @@ def get_training_args(
 
 
 def save_new_token_embeddings(
-    model: Qwen2VLForConditionalGeneration,
+    model: Any,  # 可以是任何模型类型
     original_vocab_size: int,
     new_vocab_size: int,
     new_tokens: list[str],
@@ -154,10 +151,13 @@ def save_new_token_embeddings(
 def load_and_prepare_model_tokenizer(
     args: argparse.Namespace, local_rank: int, logger
 ) -> tuple[
-    Qwen2VLForConditionalGeneration,
-    AutoProcessor,
+    Any,  # Model - 可以是各种模型类型
+    Any,  # Processor/Tokenizer
     ConcatDataset,
     Dataset | None,
+    list,
+    int,
+    int,
     list,
 ]:
     """
@@ -165,67 +165,29 @@ def load_and_prepare_model_tokenizer(
 
     Args:
     ----
-        args_terminal (argparse.Namespace): 包含命令行参数的参数。
         args (argparse.Namespace): 包含配置的参数。
         local_rank (int): 当前进程的rank。
+        logger: 日志记录器
 
     Returns:
     -------
-        tuple: (model, processor, train_data, valid_data)
+        tuple: (model, processor, train_data, valid_data, embedding_hooks,
+                original_vocab_size, new_vocab_size, new_tokens)
 
     """
-    config = AutoConfig.from_pretrained(args.base_model, trust_remote_code=True)
-    processor = AutoProcessor.from_pretrained(
-        args.base_model,
-        use_fast=True,
-        trust_remote_code=True,
-    )
-    if args.model_type == "qwen2_vl":
-        model_class = Qwen2VLForConditionalGeneration
-    elif args.model_type == "qwen2_5_vl":
-        model_class = Qwen2_5_VLForConditionalGeneration
-
-    model = model_class.from_pretrained(
-        args.base_model,
-        config=config,
-        trust_remote_code=True,
-        torch_dtype=torch.bfloat16 if args.bf16 else None,
-        attn_implementation="flash_attention_2",
+    # 使用统一的load_model_for_training函数
+    model, processor, original_vocab_size, new_vocab_size, new_tokens, embedding_hooks = load_model_for_training(
+        args, new_tokens=None, local_rank=local_rank, logger=logger
     )
 
+    # 加载数据集
     train_data, valid_data = load_datasets(args)
-    new_tokens = train_data.datasets[0].get_new_tokens()
-
-    tokenizer = processor.tokenizer
-
-    original_vocab_size = len(tokenizer)
-    add_num = tokenizer.add_tokens(new_tokens)
-    new_vocab_size = len(tokenizer)
-    model.resize_token_embeddings(new_vocab_size)
-    # verify_token_ordering(tokenizer, original_vocab_size, new_tokens)
-    config.vocab_size = new_vocab_size
-    model.config.vocab_size = new_vocab_size
-
-    embedding_hooks = []
-    if args.freeze in ["visual", "all"]:
-        if hasattr(model, "visual"):
-            for name, param in model.visual.named_parameters():
-                param.requires_grad = False
-            logger.info("冻结视觉模型参数")
-        if hasattr(model, "visual") and hasattr(model.visual, "merger"):
-            for name, param in model.visual.merger.named_parameters():
-                param.requires_grad = False
-            logger.info("冻结视觉模型融合层参数")
-    if args.freeze in ["embeddings", "all"]:
-        embedding_hooks = freeze_original_embeddings_with_hook(
-            model, original_vocab_size, logger
-        )
 
     if local_rank == 0:
-        logger.info(f"添加了 {add_num} 个新token")
+        logger.info(f"添加了 {new_vocab_size - original_vocab_size} 个新token")
         logger.info(f"新词汇表大小: {new_vocab_size}")
         logger.info(f"数据量: {len(train_data)}")
-        if args.use_gradient_checkpointing:
+        if hasattr(args, 'use_gradient_checkpointing') and args.use_gradient_checkpointing:
             logger.info(
                 f"有效batch size: {args.per_device_batch_size * args.gradient_accumulation_steps * int(os.environ.get('WORLD_SIZE', 1))}"
             )
@@ -237,6 +199,9 @@ def load_and_prepare_model_tokenizer(
             f"1 epoch step: {len(train_data) / args.per_device_batch_size:.2f}"
         )
         processor.save_pretrained(args.output_dir)
+        from transformers import AutoConfig
+        config = AutoConfig.from_pretrained(args.base_model, trust_remote_code=True)
+        config.vocab_size = new_vocab_size
         config.save_pretrained(args.output_dir)
 
     return (
