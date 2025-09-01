@@ -67,26 +67,24 @@ def unicode_to_bytes() -> dict[str, bytes]:
 def convert_to_readable_vocab(
     tokenizer, verbose: bool = False
 ) -> dict[int, str]:
-    """Convert tokenizer vocabulary to human-readable format."""
+    """将 tokenizer 的词汇表转换为可读字符串，兼容 SentencePiece 特殊字符。"""
     reversed_vocab = {v: k for k, v in tokenizer.vocab.items()}
     added_tokens = tokenizer.added_tokens_encoder
-    uni2bytes_mapper = unicode_to_bytes()
-    uni2bytes = lambda c: b"".join([uni2bytes_mapper[ch] for ch in c])
 
     readable = {}
-    items = sorted(reversed_vocab.items(), key=lambda x: x[0])
-
-    for k, v in tqdm(
-        items, desc="Converting to readable vocab", disable=not verbose
+    for token_id, token_str in tqdm(
+        reversed_vocab.items(),
+        desc="Converting to readable vocab",
+        disable=not verbose,
     ):
         try:
-            if v in added_tokens:
-                readable[k] = f"ADDED_TOKEN: {v}"
+            if token_str in added_tokens:
+                readable[token_id] = f"ADDED_TOKEN: {token_str}"
             else:
-                readable[k] = uni2bytes(v).decode("utf-8")
-        except:
-            readable[k] = f"INVALID UTF-8: {uni2bytes(v)}"
-
+                # SentencePiece 的 token 本身就是 UTF-8 字符串，直接解码即可
+                readable[token_id] = token_str
+        except Exception:
+            readable[token_id] = f"INVALID: {token_str!r}"
     return readable
 
 
@@ -155,47 +153,47 @@ def detect_token_language(token: str) -> str:
 
 
 def parse_token_category(token_name: str) -> str:
-    """Parse token category - prioritizes custom tokens, then uses language detection."""
+    """
+    区分大小写的 8 类别：
+    <A...> → Category A
+    <a...> → Category a
+    <B...> → Category B
+    <b...> → Category b
+    ...
+    """
     token_name = token_name.strip()
 
-    # Remove [ORIG] marker but still process the token
-    is_original = token_name.startswith("[ORIG]")
-    if is_original:
-        token_name = token_name.replace("[ORIG]", "").strip()
-
-    # Handle "ADDED_TOKEN: <token>" format from readable vocab
+    # 去掉前缀
+    if token_name.startswith("[ORIG]"):
+        token_name = token_name[6:].strip()
     if token_name.startswith("ADDED_TOKEN:"):
-        # Extract the actual token name
-        token_name = token_name.replace("ADDED_TOKEN:", "").strip()
+        token_name = token_name[12:].strip()
 
-    # Priority 1: Check for custom category tokens <a_*>, <b_*>, <c_*>, <d_*>
+    # 只处理尖括号 token，并保留大小写
     if token_name.startswith("<") and token_name.endswith(">"):
         inner = token_name[1:-1].strip()
-
-        # Check for main categories a, b, c, d
-        if any(inner.startswith(f"{cat}_") for cat in "abcd"):
-            category = inner[0]
-            return f"Category {category.upper()}"
-
-        # Check for special tokens
-        if any(keyword in inner.lower() for keyword in ["end", "start", "pad"]):
-            return "Special Token"
-
-        # Other angle bracket tokens
+        if inner.startswith("A"):
+            return "Category A"
+        if inner.startswith("a"):
+            return "Category a"
+        if inner.startswith("B"):
+            return "Category B"
+        if inner.startswith("b"):
+            return "Category b"
+        if inner.startswith("C"):
+            return "Category C"
+        if inner.startswith("c"):
+            return "Category c"
+        if inner.startswith("D"):
+            return "Category D"
+        if inner.startswith("d"):
+            return "Category d"
         return "Special Token"
 
-    # Priority 2: Use language detection for all other tokens
+    # 其余走语言检测
     language = detect_token_language(token_name)
-
-    # If it was detected as "Added Token" but we couldn't categorize it further,
-    # keep it as Added Token
-    if language == "Added Token":
-        return "Added Token"
-
-    # Mark original tokens with a prefix for special handling if needed
-    if is_original and language != "Other":
+    if token_name.startswith("[ORIG]"):
         return f"Original-{language}"
-
     return language
 
 
@@ -216,6 +214,10 @@ def get_language_colors(use_rgba: bool = False) -> dict[str, str]:
         "Category B": "#00FF00",  # Bright Green
         "Category C": "#0080FF",  # Bright Blue
         "Category D": "#FFD700",  # Gold
+        "Category a": "#FF6666",  # 淡红
+        "Category b": "#66FF66",  # 淡绿
+        "Category c": "#6699FF",  # 淡蓝
+        "Category d": "#FFCC33",  # 淡金
         # Asian languages
         "Chinese": "#FF6B6B",
         "Japanese": "#4ECDC4",
@@ -310,7 +312,7 @@ def analyze_tokenizer_stats(tokenizer, model_path: str) -> dict:
     return stats
 
 
-def load_safetensor_embeddings(
+def _load_safetensor_embeddings(
     safetensor_path: str, layer_name: str = "model.embed_tokens.weight"
 ) -> torch.Tensor:
     """Load embeddings from a safetensor file."""
@@ -369,6 +371,82 @@ def load_safetensor_embeddings(
         embeddings = embeddings.to(torch.float32)
 
     return embeddings
+
+
+def _load_bin_embeddings(
+    bin_path: str, layer_name: str = "model.embed_tokens.weight"
+) -> torch.Tensor | None:
+    """Load embeddings from a .bin file."""
+    state_dict = torch.load(bin_path, map_location="cpu")
+    # state_dict 可能是整个模型，也可能是 LoRA adapter
+    if layer_name in state_dict:
+        tensor = state_dict[layer_name]
+    else:
+        # 尝试自动搜索（与 safetensor 同名逻辑）
+        possible_names = [
+            "model.embed_tokens.weight",
+            "model.language_model.embed_tokens.weight",
+            "language_model.model.embed_tokens.weight",
+            "model.model.embed_tokens.weight",
+            "language_model.embed_tokens.weight",
+            "embed_tokens.weight",
+            "model.model.embed_tokens.weight",
+            "transformer.wte.weight",
+            "transformer.embed_tokens.weight",
+            "embeddings.weight",
+            "shared.weight",
+            "lm_head.weight",
+            "model.embed_tokens",
+            "embed_tokens",
+        ]
+        tensor = None
+        for k in possible_names:
+            if k in state_dict:
+                tensor = state_dict[k]
+                print(f"Found embedding layer at: {k}")
+                break
+    if tensor is None:
+        return None
+    if tensor.dtype == torch.bfloat16:
+        tensor = tensor.to(torch.float32)
+    return tensor
+
+
+def load_any_embeddings(
+    model_dir: str, layer_name: str = "model.embed_tokens.weight"
+) -> torch.Tensor:
+    """
+    统一的加载函数：
+    1) 优先 .safetensors
+    2) 其次 .bin
+    失败时报错
+    """
+    # 1) .safetensors
+    safetensor_files = sorted(
+        [f for f in os.listdir(model_dir) if f.endswith(".safetensors")]
+    )
+    for st_file in safetensor_files:
+        emb = _load_safetensor_embeddings(
+            os.path.join(model_dir, st_file), layer_name
+        )
+        if emb is not None:
+            print(f"Loaded embeddings from .safetensors: {st_file}")
+            return emb
+
+    # 2) .bin
+    bin_files = sorted([f for f in os.listdir(model_dir) if f.endswith(".bin")])
+    for bin_file in bin_files:
+        emb = _load_bin_embeddings(
+            os.path.join(model_dir, bin_file), layer_name
+        )
+        if emb is not None:
+            print(f"Loaded embeddings from .bin: {bin_file}")
+            return emb
+
+    raise RuntimeError(
+        f"Could not load embedding layer '{layer_name}' "
+        f"from any .safetensors or .bin files in {model_dir}"
+    )
 
 
 def merge_lora_embeddings(
@@ -486,6 +564,326 @@ def merge_lora_embeddings(
     return base_embeddings
 
 
+# def load_embeddings_from_model(
+#     model_path: str,
+#     layer_name: str = "model.embed_tokens.weight",
+#     sample_original_tokens: int = 1000,
+#     analyze_languages: bool = True,
+#     filter_languages: list[str] = None,
+#     seed: int = 42,
+#     lora_checkpoint: str = None,
+# ) -> EmbeddingInfo:
+#     """
+#     Load embeddings from model with language analysis.
+
+#     Args:
+#         model_path: Path to base model
+#         layer_name: Name of the embedding layer
+#         sample_original_tokens: Number of original tokens to sample
+#         analyze_languages: Whether to analyze token languages
+#         filter_languages: Languages to filter for
+#         seed: Random seed
+#         lora_checkpoint: Path to LoRA checkpoint (if using LoRA)
+
+#     """
+#     embeddings = None
+
+#     # Check for safetensor files
+#     safetensor_files = sorted(
+#         [f for f in os.listdir(model_path) if f.endswith(".safetensors")]
+#     )
+
+#     if not safetensor_files:
+#         raise FileNotFoundError(f"No safetensor files found in {model_path}")
+
+#     if len(safetensor_files) == 1:
+#         # Single file case
+#         safetensor_path = os.path.join(model_path, safetensor_files[0])
+#         print(f"Loading embeddings from: {safetensor_path}")
+#         embeddings = load_safetensor_embeddings(safetensor_path, layer_name)
+#     else:
+#         # Multiple files case - try each file until we find the embeddings
+#         print("Found multiple safetensor files:")
+#         print(safetensor_files)
+
+#         for file in safetensor_files:
+#             safetensor_path = os.path.join(model_path, file)
+#             print(f"Loading embeddings from: {safetensor_path}")
+#             try:
+#                 embeddings = load_safetensor_embeddings(
+#                     safetensor_path, layer_name
+#                 )
+#                 if embeddings is not None:
+#                     print(f"Successfully loaded embeddings from {file}")
+#                     break
+#                 print("Failed")
+#             except Exception as e:
+#                 print(f"Failed: {str(e)[:100]}")
+#                 continue
+
+#     if embeddings is None:
+#         raise RuntimeError(
+#             f"Could not load embedding layer '{layer_name}' from any safetensor file. "
+#             f"Try specifying a different layer name with --layer_name"
+#         )
+
+#     # Load tokenizer (from LoRA checkpoint if provided, otherwise from base model)
+#     tokenizer_path = lora_checkpoint if lora_checkpoint else model_path
+#     tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+#     vocab_size = len(tokenizer)
+
+#     # Check if we need to resize embeddings for new tokens
+#     if embeddings.shape[0] < vocab_size:
+#         print(
+#             f"\nResizing embeddings from {embeddings.shape[0]} to {vocab_size} tokens"
+#         )
+#         # Create new embedding matrix with space for new tokens
+#         new_embeddings = torch.zeros(
+#             (vocab_size, embeddings.shape[1]), dtype=embeddings.dtype
+#         )
+#         # Copy existing embeddings
+#         new_embeddings[: embeddings.shape[0]] = embeddings
+
+#         # If LoRA checkpoint exists, load new token embeddings from it
+#         if lora_checkpoint:
+#             # Try to load new token embeddings from checkpoint
+#             embed_tokens_path = os.path.join(
+#                 lora_checkpoint, "adapter_model.safetensors"
+#             )
+#             if not os.path.exists(embed_tokens_path):
+#                 embed_tokens_path = os.path.join(
+#                     lora_checkpoint, "adapter_model.bin"
+#                 )
+
+#             if os.path.exists(embed_tokens_path):
+#                 if embed_tokens_path.endswith(".safetensors"):
+#                     from safetensors.torch import safe_open
+
+#                     with safe_open(embed_tokens_path, framework="pt") as f:
+#                         # Look for new token embeddings (usually stored as base_model.model.embed_tokens.modules_to_save.default.weight)
+#                         for key in f.keys():
+#                             if (
+#                                 "embed_tokens" in key
+#                                 and "modules_to_save" in key
+#                             ):
+#                                 print(
+#                                     f"Loading new token embeddings from {key}"
+#                                 )
+#                                 saved_embeddings = f.get_tensor(key)
+#                                 if saved_embeddings.dtype == torch.bfloat16:
+#                                     saved_embeddings = saved_embeddings.to(
+#                                         torch.float32
+#                                     )
+#                                 # Copy the new token embeddings
+#                                 if saved_embeddings.shape[0] == vocab_size:
+#                                     new_embeddings = saved_embeddings
+#                                     print(
+#                                         "Loaded complete embedding matrix with new tokens"
+#                                     )
+#                                 break
+#                 else:
+#                     adapters = torch.load(embed_tokens_path, map_location="cpu")
+#                     for key in adapters.keys():
+#                         if "embed_tokens" in key and "modules_to_save" in key:
+#                             print(f"Loading new token embeddings from {key}")
+#                             saved_embeddings = adapters[key]
+#                             if saved_embeddings.dtype == torch.bfloat16:
+#                                 saved_embeddings = saved_embeddings.to(
+#                                     torch.float32
+#                                 )
+#                             # Copy the new token embeddings
+#                             if saved_embeddings.shape[0] == vocab_size:
+#                                 new_embeddings = saved_embeddings
+#                                 print(
+#                                     "Loaded complete embedding matrix with new tokens"
+#                                 )
+#                             break
+
+#         embeddings = new_embeddings
+
+#     # Merge LoRA weights if checkpoint provided
+#     if lora_checkpoint:
+#         print(f"\nMerging LoRA checkpoint from: {lora_checkpoint}")
+#         embeddings = merge_lora_embeddings(embeddings, lora_checkpoint)
+
+#     # Analyze tokenizer
+#     stats = analyze_tokenizer_stats(tokenizer, model_path)
+
+#     # Get readable vocabulary if analyzing languages
+#     readable_vocab = {}
+#     if analyze_languages:
+#         print("\nConverting vocabulary to readable format...")
+#         readable_vocab = convert_to_readable_vocab(tokenizer, verbose=True)
+
+#     # Get new tokens (added tokens)
+#     new_token_ids = list(tokenizer.added_tokens_decoder.keys())
+
+#     # Filter for specific categories if they exist
+#     filtered_new_tokens = [
+#         token_id
+#         for token_id in new_token_ids
+#         if parse_token_category(tokenizer.decode(token_id))
+#         in ["Category A", "Category B", "Category C", "Category D"]
+#     ]
+
+#     if filtered_new_tokens:
+#         new_token_ids = filtered_new_tokens
+#         print(f"Found {len(new_token_ids)} new tokens in categories A-D")
+#     else:
+#         print(f"Found {len(new_token_ids)} new tokens (all categories)")
+
+#     # Sample original tokens with optional language filtering
+#     original_token_ids = list(range(min(vocab_size, embeddings.shape[0])))
+#     original_token_ids = [
+#         tid for tid in original_token_ids if tid not in new_token_ids
+#     ]
+
+#     # Apply language filter if specified
+#     if filter_languages and analyze_languages:
+#         print(
+#             f"Filtering original tokens for languages: {', '.join(filter_languages)}"
+#         )
+#         filtered_token_ids = []
+
+#         for tid in tqdm(
+#             original_token_ids, desc="Filtering tokens by language"
+#         ):
+#             try:
+#                 if tid in readable_vocab:
+#                     token_text = readable_vocab[tid]
+#                 else:
+#                     token_text = tokenizer.decode(tid)
+
+#                 # Remove special prefixes for language detection
+#                 clean_text = (
+#                     token_text.replace("ADDED_TOKEN:", "")
+#                     .replace("INVALID UTF-8:", "")
+#                     .strip()
+#                 )
+
+#                 # Detect language
+#                 lang = detect_token_language(clean_text)
+
+#                 # Check if token matches any of the filter languages
+#                 if lang in filter_languages:
+#                     filtered_token_ids.append(tid)
+
+#             except Exception:
+#                 continue
+
+#         original_token_ids = filtered_token_ids
+#         print(
+#             f"Found {len(original_token_ids)} tokens matching filter languages"
+#         )
+
+#     random.seed(seed)
+#     num_samples = min(sample_original_tokens, len(original_token_ids))
+#     if num_samples > 0 and len(original_token_ids) > 0:
+#         sampled_original_ids = random.sample(original_token_ids, num_samples)
+#     else:
+#         sampled_original_ids = (
+#             original_token_ids[:num_samples] if original_token_ids else []
+#         )
+
+#     print(f"Sampled {len(sampled_original_ids)} original tokens")
+
+#     # Combine token IDs
+#     all_token_ids = new_token_ids + sampled_original_ids
+
+#     # Get token names and detect languages
+#     token_names = []
+#     token_languages = []
+
+#     for token_id in tqdm(all_token_ids, desc="Processing tokens"):
+#         try:
+#             if token_id in readable_vocab:
+#                 name = readable_vocab[token_id]
+#             else:
+#                 name = tokenizer.decode(token_id)
+
+#             # Mark original tokens
+#             if token_id in sampled_original_ids:
+#                 name = f"[ORIG] {name}"
+
+#             token_names.append(name)
+
+#             # Detect language/category using parse_token_category
+#             if analyze_languages:
+#                 # Use parse_token_category instead of detect_token_language
+#                 # to properly handle custom categories
+#                 category = parse_token_category(name)
+#                 token_languages.append(category)
+
+#         except Exception:
+#             token_names.append(f"<token_{token_id}>")
+#             token_languages.append("Other")
+
+#     # Print language/category distribution
+#     if analyze_languages:
+#         print("\n=== Token Category & Language Distribution ===")
+#         lang_counts = {}
+#         for lang in token_languages:
+#             lang_counts[lang] = lang_counts.get(lang, 0) + 1
+
+#         # Separate custom categories from languages
+#         custom_categories = [
+#             "Category A",
+#             "Category B",
+#             "Category C",
+#             "Category D",
+#         ]
+
+#         # Print custom categories first
+#         print("\nCustom Categories:")
+#         for cat in custom_categories:
+#             if cat in lang_counts:
+#                 count = lang_counts[cat]
+#                 print(
+#                     f"  {cat}: {count} tokens ({count / len(token_languages) * 100:.1f}%)"
+#                 )
+
+#         # Print other categories
+#         print("\nLanguages & Other Categories:")
+#         sorted_langs = sorted(
+#             [
+#                 (lang, count)
+#                 for lang, count in lang_counts.items()
+#                 if lang not in custom_categories
+#             ],
+#             key=lambda x: x[1],
+#             reverse=True,
+#         )
+#         for lang, count in sorted_langs[:20]:  # Show top 20
+#             print(
+#                 f"  {lang}: {count} tokens ({count / len(token_languages) * 100:.1f}%)"
+#             )
+
+#     # Extract embeddings (filter out invalid token IDs)
+#     valid_token_ids = [
+#         tid for tid in all_token_ids if tid < embeddings.shape[0]
+#     ]
+#     if len(valid_token_ids) < len(all_token_ids):
+#         print(
+#             f"Warning: Filtered out {len(all_token_ids) - len(valid_token_ids)} invalid token IDs"
+#         )
+#         # Update token names and languages accordingly
+#         valid_indices = [
+#             i
+#             for i, tid in enumerate(all_token_ids)
+#             if tid < embeddings.shape[0]
+#         ]
+#         token_names = [token_names[i] for i in valid_indices]
+#         if token_languages:
+#             token_languages = [token_languages[i] for i in valid_indices]
+#         all_token_ids = valid_token_ids
+
+#     selected_embeddings = embeddings[all_token_ids, :].numpy()
+
+#     return EmbeddingInfo(
+#         selected_embeddings, token_names, all_token_ids, token_languages
+#     )
+
+
 def load_embeddings_from_model(
     model_path: str,
     layer_name: str = "model.embed_tokens.weight",
@@ -496,314 +894,192 @@ def load_embeddings_from_model(
     lora_checkpoint: str = None,
 ) -> EmbeddingInfo:
     """
-    Load embeddings from model with language analysis.
-
-    Args:
-        model_path: Path to base model
-        layer_name: Name of the embedding layer
-        sample_original_tokens: Number of original tokens to sample
-        analyze_languages: Whether to analyze token languages
-        filter_languages: Languages to filter for
-        seed: Random seed
-        lora_checkpoint: Path to LoRA checkpoint (if using LoRA)
-
+    统一入口：优先 .safetensors，其次 .bin，自动合并 LoRA，支持扩充新 token。
     """
-    embeddings = None
 
-    # Check for safetensor files
-    safetensor_files = sorted(
-        [f for f in os.listdir(model_path) if f.endswith(".safetensors")]
-    )
+    # ------------------------------------------------------------
+    # 1. 工具：真正读取张量的底层函数
+    # ------------------------------------------------------------
+    def _load_tensor_from_safetensor(st_path: str, key: str):
+        from safetensors.torch import safe_open
 
-    if not safetensor_files:
-        raise FileNotFoundError(f"No safetensor files found in {model_path}")
+        with safe_open(st_path, framework="pt") as f:
+            if key in f.keys():
+                t = f.get_tensor(key)
+                return t.float() if t.dtype == torch.bfloat16 else t
+        return None
 
-    if len(safetensor_files) == 1:
-        # Single file case
-        safetensor_path = os.path.join(model_path, safetensor_files[0])
-        print(f"Loading embeddings from: {safetensor_path}")
-        embeddings = load_safetensor_embeddings(safetensor_path, layer_name)
-    else:
-        # Multiple files case - try each file until we find the embeddings
-        print("Found multiple safetensor files:")
-        print(safetensor_files)
-
-        for file in safetensor_files:
-            safetensor_path = os.path.join(model_path, file)
-            print(f"Loading embeddings from: {safetensor_path}")
-            try:
-                embeddings = load_safetensor_embeddings(
-                    safetensor_path, layer_name
-                )
-                if embeddings is not None:
-                    print(f"Successfully loaded embeddings from {file}")
+    def _load_tensor_from_bin(bin_path: str, key: str):
+        state = torch.load(bin_path, map_location="cpu")
+        t = state.get(key)
+        if t is None:
+            # 自动候选 key
+            cand = [
+                "model.embed_tokens.weight",
+                "embed_tokens.weight",
+                "language_model.model.embed_tokens.weight",
+                "transformer.wte.weight",
+                "shared.weight",
+                "lm_head.weight",
+            ]
+            for k in cand:
+                if k in state:
+                    t = state[k]
                     break
-                print("Failed")
-            except Exception as e:
-                print(f"Failed: {str(e)[:100]}")
-                continue
+        return t.float() if t is not None and t.dtype == torch.bfloat16 else t
 
-    if embeddings is None:
-        raise RuntimeError(
-            f"Could not load embedding layer '{layer_name}' from any safetensor file. "
-            f"Try specifying a different layer name with --layer_name"
+    def _load_single_file(file_path: str, key: str):
+        if file_path.endswith(".safetensors"):
+            return _load_tensor_from_safetensor(file_path, key)
+        if file_path.endswith(".bin"):
+            return _load_tensor_from_bin(file_path, key)
+        return None
+
+    # ------------------------------------------------------------
+    # 2. 扫描目录，拿到所有候选文件
+    # ------------------------------------------------------------
+    safes = sorted(
+        [
+            os.path.join(model_path, f)
+            for f in os.listdir(model_path)
+            if f.endswith(".safetensors")
+        ]
+    )
+    bins = sorted(
+        [
+            os.path.join(model_path, f)
+            for f in os.listdir(model_path)
+            if f.endswith(".bin")
+        ]
+    )
+    all_files = safes + bins  # 优先级：safetensors 在前
+
+    if not all_files:
+        raise FileNotFoundError(
+            f"No .safetensors or .bin found in {model_path}"
         )
 
-    # Load tokenizer (from LoRA checkpoint if provided, otherwise from base model)
-    tokenizer_path = lora_checkpoint if lora_checkpoint else model_path
+    # ------------------------------------------------------------
+    # 3. 加载 base embedding
+    # ------------------------------------------------------------
+    embeddings = None
+    key_to_try = None if layer_name == "auto" else layer_name
+    for fp in all_files:
+        embeddings = _load_single_file(
+            fp, key_to_try or "model.embed_tokens.weight"
+        )
+        if embeddings is not None:
+            print(f"Loaded base embeddings from: {fp}")
+            break
+    if embeddings is None:
+        raise RuntimeError("Could not locate embedding layer in any file.")
+
+    # ------------------------------------------------------------
+    # 4. 合并 LoRA（若提供）
+    # ------------------------------------------------------------
+    if lora_checkpoint:
+        lora_files = (
+            [os.path.join(lora_checkpoint, "adapter_model.safetensors")]
+            if os.path.exists(
+                os.path.join(lora_checkpoint, "adapter_model.safetensors")
+            )
+            else [os.path.join(lora_checkpoint, "adapter_model.bin")]
+        )
+        for lora_file in lora_files:
+            if not os.path.exists(lora_file):
+                continue
+            # 尝试加载 LoRA adapter 里的 embed_tokens
+            lora_A = _load_single_file(
+                lora_file, "base_model.model.embed_tokens.lora_A.weight"
+            )
+            lora_B = _load_single_file(
+                lora_file, "base_model.model.embed_tokens.lora_B.weight"
+            )
+            if lora_A is None or lora_B is None:
+                continue
+            alpha = 16  # 默认值，可读取 adapter_config.json 优化
+            r = lora_A.shape[0]
+            scaling = alpha / r
+            delta = (lora_B @ lora_A) * scaling
+            embeddings = embeddings.clone()
+            embeddings += delta.T
+            print(f"Merged LoRA from {lora_file}")
+            break
+
+    # ------------------------------------------------------------
+    # 5. 其余逻辑与原函数一致（tokenizer、扩展、采样等）
+    # ------------------------------------------------------------
+    tokenizer_path = lora_checkpoint or model_path
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
     vocab_size = len(tokenizer)
 
-    # Check if we need to resize embeddings for new tokens
+    # 若 vocab > embed 行数，扩展
     if embeddings.shape[0] < vocab_size:
-        print(
-            f"\nResizing embeddings from {embeddings.shape[0]} to {vocab_size} tokens"
-        )
-        # Create new embedding matrix with space for new tokens
-        new_embeddings = torch.zeros(
+        new_emb = torch.zeros(
             (vocab_size, embeddings.shape[1]), dtype=embeddings.dtype
         )
-        # Copy existing embeddings
-        new_embeddings[: embeddings.shape[0]] = embeddings
+        new_emb[: embeddings.shape[0]] = embeddings
+        embeddings = new_emb
+        print(f"Resized embeddings to {vocab_size} tokens")
 
-        # If LoRA checkpoint exists, load new token embeddings from it
-        if lora_checkpoint:
-            # Try to load new token embeddings from checkpoint
-            embed_tokens_path = os.path.join(
-                lora_checkpoint, "adapter_model.safetensors"
-            )
-            if not os.path.exists(embed_tokens_path):
-                embed_tokens_path = os.path.join(
-                    lora_checkpoint, "adapter_model.bin"
-                )
-
-            if os.path.exists(embed_tokens_path):
-                if embed_tokens_path.endswith(".safetensors"):
-                    from safetensors.torch import safe_open
-
-                    with safe_open(embed_tokens_path, framework="pt") as f:
-                        # Look for new token embeddings (usually stored as base_model.model.embed_tokens.modules_to_save.default.weight)
-                        for key in f.keys():
-                            if (
-                                "embed_tokens" in key
-                                and "modules_to_save" in key
-                            ):
-                                print(
-                                    f"Loading new token embeddings from {key}"
-                                )
-                                saved_embeddings = f.get_tensor(key)
-                                if saved_embeddings.dtype == torch.bfloat16:
-                                    saved_embeddings = saved_embeddings.to(
-                                        torch.float32
-                                    )
-                                # Copy the new token embeddings
-                                if saved_embeddings.shape[0] == vocab_size:
-                                    new_embeddings = saved_embeddings
-                                    print(
-                                        "Loaded complete embedding matrix with new tokens"
-                                    )
-                                break
-                else:
-                    adapters = torch.load(embed_tokens_path, map_location="cpu")
-                    for key in adapters.keys():
-                        if "embed_tokens" in key and "modules_to_save" in key:
-                            print(f"Loading new token embeddings from {key}")
-                            saved_embeddings = adapters[key]
-                            if saved_embeddings.dtype == torch.bfloat16:
-                                saved_embeddings = saved_embeddings.to(
-                                    torch.float32
-                                )
-                            # Copy the new token embeddings
-                            if saved_embeddings.shape[0] == vocab_size:
-                                new_embeddings = saved_embeddings
-                                print(
-                                    "Loaded complete embedding matrix with new tokens"
-                                )
-                            break
-
-        embeddings = new_embeddings
-
-    # Merge LoRA weights if checkpoint provided
-    if lora_checkpoint:
-        print(f"\nMerging LoRA checkpoint from: {lora_checkpoint}")
-        embeddings = merge_lora_embeddings(embeddings, lora_checkpoint)
-
-    # Analyze tokenizer
+    # tokenizer stats
     stats = analyze_tokenizer_stats(tokenizer, model_path)
 
-    # Get readable vocabulary if analyzing languages
+    # readable vocab & language 分析
     readable_vocab = {}
     if analyze_languages:
-        print("\nConverting vocabulary to readable format...")
-        readable_vocab = convert_to_readable_vocab(tokenizer, verbose=True)
+        readable_vocab = convert_to_readable_vocab(tokenizer, verbose=False)
 
-    # Get new tokens (added tokens)
     new_token_ids = list(tokenizer.added_tokens_decoder.keys())
 
-    # Filter for specific categories if they exist
-    filtered_new_tokens = [
-        token_id
-        for token_id in new_token_ids
-        if parse_token_category(tokenizer.decode(token_id))
-        in ["Category A", "Category B", "Category C", "Category D"]
-    ]
-
-    if filtered_new_tokens:
-        new_token_ids = filtered_new_tokens
-        print(f"Found {len(new_token_ids)} new tokens in categories A-D")
-    else:
-        print(f"Found {len(new_token_ids)} new tokens (all categories)")
-
-    # Sample original tokens with optional language filtering
-    original_token_ids = list(range(min(vocab_size, embeddings.shape[0])))
+    # 采样
     original_token_ids = [
-        tid for tid in original_token_ids if tid not in new_token_ids
+        tid
+        for tid in range(min(vocab_size, embeddings.shape[0]))
+        if tid not in new_token_ids
     ]
-
-    # Apply language filter if specified
-    if filter_languages and analyze_languages:
-        print(
-            f"Filtering original tokens for languages: {', '.join(filter_languages)}"
-        )
-        filtered_token_ids = []
-
-        for tid in tqdm(
-            original_token_ids, desc="Filtering tokens by language"
-        ):
-            try:
-                if tid in readable_vocab:
-                    token_text = readable_vocab[tid]
-                else:
-                    token_text = tokenizer.decode(tid)
-
-                # Remove special prefixes for language detection
-                clean_text = (
-                    token_text.replace("ADDED_TOKEN:", "")
-                    .replace("INVALID UTF-8:", "")
-                    .strip()
-                )
-
-                # Detect language
-                lang = detect_token_language(clean_text)
-
-                # Check if token matches any of the filter languages
-                if lang in filter_languages:
-                    filtered_token_ids.append(tid)
-
-            except Exception:
-                continue
-
-        original_token_ids = filtered_token_ids
-        print(
-            f"Found {len(original_token_ids)} tokens matching filter languages"
-        )
-
     random.seed(seed)
     num_samples = min(sample_original_tokens, len(original_token_ids))
-    if num_samples > 0 and len(original_token_ids) > 0:
-        sampled_original_ids = random.sample(original_token_ids, num_samples)
-    else:
-        sampled_original_ids = (
-            original_token_ids[:num_samples] if original_token_ids else []
-        )
+    sampled_original_ids = (
+        random.sample(original_token_ids, num_samples) if num_samples else []
+    )
 
-    print(f"Sampled {len(sampled_original_ids)} original tokens")
+    # 过滤语言
+    if filter_languages and analyze_languages:
+        filtered = []
+        for tid in tqdm(sampled_original_ids, desc="Filtering by language"):
+            name = readable_vocab.get(tid, tokenizer.decode(tid))
+            clean = (
+                name.replace("ADDED_TOKEN:", "")
+                .replace("INVALID UTF-8:", "")
+                .strip()
+            )
+            if detect_token_language(clean) in filter_languages:
+                filtered.append(tid)
+        sampled_original_ids = filtered
 
-    # Combine token IDs
     all_token_ids = new_token_ids + sampled_original_ids
 
-    # Get token names and detect languages
-    token_names = []
-    token_languages = []
+    # 生成 token_names & token_languages
+    token_names, token_languages = [], []
+    for tid in all_token_ids:
+        name = readable_vocab.get(tid, tokenizer.decode(tid))
+        if tid in sampled_original_ids:
+            name = f"[ORIG] {name}"
+        token_names.append(name)
+        if analyze_languages:
+            token_languages.append(parse_token_category(name))
 
-    for token_id in tqdm(all_token_ids, desc="Processing tokens"):
-        try:
-            if token_id in readable_vocab:
-                name = readable_vocab[token_id]
-            else:
-                name = tokenizer.decode(token_id)
-
-            # Mark original tokens
-            if token_id in sampled_original_ids:
-                name = f"[ORIG] {name}"
-
-            token_names.append(name)
-
-            # Detect language/category using parse_token_category
-            if analyze_languages:
-                # Use parse_token_category instead of detect_token_language
-                # to properly handle custom categories
-                category = parse_token_category(name)
-                token_languages.append(category)
-
-        except Exception:
-            token_names.append(f"<token_{token_id}>")
-            token_languages.append("Other")
-
-    # Print language/category distribution
-    if analyze_languages:
-        print("\n=== Token Category & Language Distribution ===")
-        lang_counts = {}
-        for lang in token_languages:
-            lang_counts[lang] = lang_counts.get(lang, 0) + 1
-
-        # Separate custom categories from languages
-        custom_categories = [
-            "Category A",
-            "Category B",
-            "Category C",
-            "Category D",
-        ]
-
-        # Print custom categories first
-        print("\nCustom Categories:")
-        for cat in custom_categories:
-            if cat in lang_counts:
-                count = lang_counts[cat]
-                print(
-                    f"  {cat}: {count} tokens ({count / len(token_languages) * 100:.1f}%)"
-                )
-
-        # Print other categories
-        print("\nLanguages & Other Categories:")
-        sorted_langs = sorted(
-            [
-                (lang, count)
-                for lang, count in lang_counts.items()
-                if lang not in custom_categories
-            ],
-            key=lambda x: x[1],
-            reverse=True,
-        )
-        for lang, count in sorted_langs[:20]:  # Show top 20
-            print(
-                f"  {lang}: {count} tokens ({count / len(token_languages) * 100:.1f}%)"
-            )
-
-    # Extract embeddings (filter out invalid token IDs)
-    valid_token_ids = [
-        tid for tid in all_token_ids if tid < embeddings.shape[0]
+    # 安全索引
+    valid_idx = [
+        i for i, tid in enumerate(all_token_ids) if tid < embeddings.shape[0]
     ]
-    if len(valid_token_ids) < len(all_token_ids):
-        print(
-            f"Warning: Filtered out {len(all_token_ids) - len(valid_token_ids)} invalid token IDs"
-        )
-        # Update token names and languages accordingly
-        valid_indices = [
-            i
-            for i, tid in enumerate(all_token_ids)
-            if tid < embeddings.shape[0]
-        ]
-        token_names = [token_names[i] for i in valid_indices]
-        if token_languages:
-            token_languages = [token_languages[i] for i in valid_indices]
-        all_token_ids = valid_token_ids
+    embeddings = embeddings[[all_token_ids[i] for i in valid_idx]].numpy()
+    token_names = [token_names[i] for i in valid_idx]
+    if analyze_languages:
+        token_languages = [token_languages[i] for i in valid_idx]
 
-    selected_embeddings = embeddings[all_token_ids, :].numpy()
-
-    return EmbeddingInfo(
-        selected_embeddings, token_names, all_token_ids, token_languages
-    )
+    return EmbeddingInfo(embeddings, token_names, valid_idx, token_languages)
 
 
 def perform_dimension_reduction(

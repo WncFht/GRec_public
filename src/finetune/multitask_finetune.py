@@ -24,6 +24,7 @@ from ..utils import (
     ensure_dir,
     freeze_original_embeddings_with_hook,
     load_datasets,
+    make_run_name,
     set_seed,
 )
 
@@ -76,6 +77,8 @@ def get_training_args(args: argparse.Namespace, ddp: bool) -> TrainingArguments:
         TrainingArguments: Hugging Face的训练参数。
 
     """
+    args.run_name = make_run_name(args)
+    print("RUN_NAME:", args.run_name)
     return TrainingArguments(
         seed=args.seed,
         per_device_train_batch_size=args.per_device_batch_size,
@@ -102,7 +105,8 @@ def get_training_args(args: argparse.Namespace, ddp: bool) -> TrainingArguments:
         ddp_find_unused_parameters=False if ddp else None,
         dataloader_num_workers=args.num_workers,
         remove_unused_columns=False,
-        report_to="tensorboard",
+        report_to="wandb",
+        run_name=args.run_name,
         eval_delay=1 if args.save_and_eval_strategy == "epoch" else 2000,
     )
 
@@ -177,6 +181,7 @@ def load_and_prepare_model_tokenizer(
         config=config,
         trust_remote_code=True,
         torch_dtype=torch.bfloat16 if args.bf16 else None,
+        attn_implementation="flash_attention_2",
     )
 
     train_data, valid_data = load_datasets(args)

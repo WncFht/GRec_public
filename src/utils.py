@@ -421,16 +421,16 @@ def load_datasets(args: argparse.Namespace):
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
             )
-            valid_dataset = MultimodalDataset(
-                args,
-                mode="valid",
-                task=task.lower(),
-                prompt_sample_num=prompt_sample_num,
-                sample_num=data_sample_num,
-            )
-            print(
-                f"Prepare MultimodalDataset for {task} - Train: {len(dataset)}, Valid: {len(valid_dataset)}"
-            )
+            # valid_dataset = MultimodalDataset(
+            #     args,
+            #     mode="valid",
+            #     task=task.lower(),
+            #     prompt_sample_num=prompt_sample_num,
+            #     sample_num=data_sample_num,
+            # )
+            # print(
+            #     f"Prepare MultimodalDataset for {task} - Train: {len(dataset)}, Valid: {len(valid_dataset)}"
+            # )
 
         elif task.lower() == "mmitemenrich":
             dataset = TextEnrichDataset(
@@ -439,15 +439,15 @@ def load_datasets(args: argparse.Namespace):
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
             )
-            valid_dataset = TextEnrichDataset(
-                args,
-                mode="valid",
-                prompt_sample_num=prompt_sample_num,
-                sample_num=data_sample_num,
-            )
-            print(
-                f"Prepare TextEnrichDataset for {task} - Train: {len(dataset)}, Valid: {len(valid_dataset)}"
-            )
+            # valid_dataset = TextEnrichDataset(
+            #     args,
+            #     mode="valid",
+            #     prompt_sample_num=prompt_sample_num,
+            #     sample_num=data_sample_num,
+            # )
+            # print(
+            #     f"Prepare TextEnrichDataset for {task} - Train: {len(dataset)}, Valid: {len(valid_dataset)}"
+            # )
 
         elif task.lower() == "mmitemenrichwithoutid":
             dataset = TextEnrichWihtoutItemIDDataset(
@@ -512,6 +512,27 @@ def load_json(file):
     with open(file) as f:
         data = json.load(f)
     return data
+
+
+def make_run_name(args: argparse.Namespace) -> str:
+    """
+    run_name='none' 时自动生成；格式：
+    {base_model_last}__{dataset}__b{bs}__gc{0|1}__{tasks}__p{prompt_num}__idx{index_file_key}
+    index_file_key 为 index_file 去掉前缀 '.' 和后缀 '.json'（若存在）。
+    """
+    if args.run_name != "none":
+        return args.run_name
+
+    base_name = os.path.basename(os.path.normpath(args.base_model))
+    gc_flag = "1" if args.use_gradient_checkpointing else "0"
+
+    # 处理 index_file
+    idx_file = os.path.basename(args.index_file)
+    idx_file = idx_file.removeprefix(".")
+    idx_file = idx_file.removesuffix(".json")
+    idx_key = idx_file or "none"
+
+    return f"{base_name}__{args.dataset}__b{args.per_device_batch_size}__gc{gc_flag}__{args.tasks}__p{args.train_prompt_sample_num}__idx{idx_key}"
 
 
 def verify_token_ordering(

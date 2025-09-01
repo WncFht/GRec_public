@@ -164,9 +164,10 @@ def parse_train_args(
     train_args.add_argument(
         "--gradient_accumulation_steps", type=int, default=2
     )
-    train_args.add_argument("--logging_step", type=int, default=10)
+    train_args.add_argument("--logging_step", type=int, default=1)
     train_args.add_argument("--model_max_length", type=int, default=2048)
     train_args.add_argument("--weight_decay", type=float, default=0.01)
+    train_args.add_argument("--run_name", type=str, default=None)
 
     # lora 的先不管了
     train_args.add_argument("--use_lora", action="store_true", default=False)
