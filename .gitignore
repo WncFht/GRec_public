@@ -19,3 +19,5 @@ Qwen2.5-VL
 .DS_Store
 
 data/
+
+wandb_*.tar.gz

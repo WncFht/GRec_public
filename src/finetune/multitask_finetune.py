@@ -69,7 +69,9 @@ def setup_environment(args: argparse.Namespace, logger) -> tuple[int, bool]:
     return local_rank, ddp
 
 
-def get_training_args(args: argparse.Namespace, ddp: bool, logger) -> TrainingArguments:
+def get_training_args(
+    args: argparse.Namespace, ddp: bool, logger
+) -> TrainingArguments:
     """
     构建Hugging Face Trainer的训练参数。
 
@@ -259,25 +261,25 @@ def train(args: argparse.Namespace) -> None:
 
     """
     # 设置logger
-    debug_mode = args.debug if hasattr(args, 'debug') else False
+    debug_mode = args.debug if hasattr(args, "debug") else False
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
-    
+
     # 首先生成run_name
     args.run_name = make_run_name(args)
-    
+
     logger = get_tqdm_compatible_logger(
         name="multitask_finetune",
         output_dir=args.output_dir,
         run_name=args.run_name,
         debug=debug_mode,
-        rank=local_rank
+        rank=local_rank,
     )
-    
+
     # 配置tqdm
     configure_tqdm_for_file_output(use_file_output=not debug_mode)
-    
+
     logger.info("Starting multitask finetuning...")
-    
+
     local_rank, ddp = setup_environment(args, logger)
 
     (
@@ -343,7 +345,9 @@ if __name__ == "__main__":
     parser = parse_global_args(parser)
     parser = parse_dataset_args(parser)
     parser = parse_train_args(parser)
-    parser.add_argument('--debug', action='store_true', help='Enable debug mode')
+    parser.add_argument(
+        "--debug", action="store_true", help="Enable debug mode"
+    )
 
     args = parser.parse_args()
     train(args)

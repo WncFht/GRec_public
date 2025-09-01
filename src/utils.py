@@ -1,7 +1,6 @@
 import argparse
 import datetime
 import json
-import logging
 import os
 import random
 from typing import Any
@@ -521,29 +520,48 @@ def make_run_name(args: argparse.Namespace) -> str:
     {base_model_last}__{dataset}__b{bs}__gc{0|1}__{tasks}__p{prompt_num}__idx{index_file_key}__{timestamp}
     index_file_key 为 index_file 去掉前缀 '.' 和后缀 '.json'（若存在）。
     """
-    if hasattr(args, 'run_name') and args.run_name != "none":
-        return args.run_name
+    # if hasattr(args, "run_name") and not(args.run_name in ["None","none"]):
+    #     return args.run_name
 
     base_name = os.path.basename(os.path.normpath(args.base_model))
-    gc_flag = "1" if hasattr(args, 'use_gradient_checkpointing') and args.use_gradient_checkpointing else "0"
+    gc_flag = (
+        "1"
+        if hasattr(args, "use_gradient_checkpointing")
+        and args.use_gradient_checkpointing
+        else "0"
+    )
 
     # 处理 index_file
-    idx_file = os.path.basename(args.index_file) if hasattr(args, 'index_file') else "none"
+    idx_file = (
+        os.path.basename(args.index_file)
+        if hasattr(args, "index_file")
+        else "none"
+    )
     if idx_file != "none":
-        idx_file = idx_file.removeprefix(".")
+        idx_file = idx_file.removeprefix(".index_")
         idx_file = idx_file.removesuffix(".json")
     idx_key = idx_file or "none"
-    
+
     # 添加时间戳以确保唯一性
     timestamp = datetime.datetime.now().strftime("%m%d_%H%M")
-    
-    # 处理tasks和prompt_sample_num
-    tasks = args.tasks if hasattr(args, 'tasks') else "unknown"
-    prompt_num = args.train_prompt_sample_num if hasattr(args, 'train_prompt_sample_num') else "0"
-    dataset = args.dataset if hasattr(args, 'dataset') else "unknown"
-    batch_size = args.per_device_batch_size if hasattr(args, 'per_device_batch_size') else "1"
 
-    return f"{base_name}__{dataset}__b{batch_size}__gc{gc_flag}__{tasks}__p{prompt_num}__idx{idx_key}__{timestamp}"
+    # 处理tasks和prompt_sample_num
+    tasks = args.tasks if hasattr(args, "tasks") else "unknown"
+    prompt_num = (
+        args.train_prompt_sample_num
+        if hasattr(args, "train_prompt_sample_num")
+        else "0"
+    )
+    dataset = args.dataset if hasattr(args, "dataset") else "unknown"
+    batch_size = (
+        args.per_device_batch_size
+        if hasattr(args, "per_device_batch_size")
+        else "1"
+    )
+
+    method = "Lora" if args.use_lora else "Finetune"
+
+    return f"{base_name}__{dataset}__{method}__b{batch_size}__gc{gc_flag}__{tasks}__p{prompt_num}__idx{idx_key}__{timestamp}"
 
 
 def verify_token_ordering(
@@ -624,7 +642,7 @@ def freeze_original_embeddings_with_hook(
 
     """
     hooks = []
-    
+
     # 使用logger或print
     log_func = logger.info if logger else print
 
