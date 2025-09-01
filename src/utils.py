@@ -1,6 +1,7 @@
 import argparse
 import datetime
 import json
+import logging
 import os
 import random
 from typing import Any
@@ -517,22 +518,32 @@ def load_json(file):
 def make_run_name(args: argparse.Namespace) -> str:
     """
     run_name='none' 时自动生成；格式：
-    {base_model_last}__{dataset}__b{bs}__gc{0|1}__{tasks}__p{prompt_num}__idx{index_file_key}
+    {base_model_last}__{dataset}__b{bs}__gc{0|1}__{tasks}__p{prompt_num}__idx{index_file_key}__{timestamp}
     index_file_key 为 index_file 去掉前缀 '.' 和后缀 '.json'（若存在）。
     """
-    if args.run_name != "none":
+    if hasattr(args, 'run_name') and args.run_name != "none":
         return args.run_name
 
     base_name = os.path.basename(os.path.normpath(args.base_model))
-    gc_flag = "1" if args.use_gradient_checkpointing else "0"
+    gc_flag = "1" if hasattr(args, 'use_gradient_checkpointing') and args.use_gradient_checkpointing else "0"
 
     # 处理 index_file
-    idx_file = os.path.basename(args.index_file)
-    idx_file = idx_file.removeprefix(".")
-    idx_file = idx_file.removesuffix(".json")
+    idx_file = os.path.basename(args.index_file) if hasattr(args, 'index_file') else "none"
+    if idx_file != "none":
+        idx_file = idx_file.removeprefix(".")
+        idx_file = idx_file.removesuffix(".json")
     idx_key = idx_file or "none"
+    
+    # 添加时间戳以确保唯一性
+    timestamp = datetime.datetime.now().strftime("%m%d_%H%M")
+    
+    # 处理tasks和prompt_sample_num
+    tasks = args.tasks if hasattr(args, 'tasks') else "unknown"
+    prompt_num = args.train_prompt_sample_num if hasattr(args, 'train_prompt_sample_num') else "0"
+    dataset = args.dataset if hasattr(args, 'dataset') else "unknown"
+    batch_size = args.per_device_batch_size if hasattr(args, 'per_device_batch_size') else "1"
 
-    return f"{base_name}__{args.dataset}__b{args.per_device_batch_size}__gc{gc_flag}__{args.tasks}__p{args.train_prompt_sample_num}__idx{idx_key}"
+    return f"{base_name}__{dataset}__b{batch_size}__gc{gc_flag}__{tasks}__p{prompt_num}__idx{idx_key}__{timestamp}"
 
 
 def verify_token_ordering(
@@ -598,7 +609,7 @@ def verify_token_ordering(
 
 
 def freeze_original_embeddings_with_hook(
-    model: torch.nn.Module, original_vocab_size: int
+    model: torch.nn.Module, original_vocab_size: int, logger=None
 ) -> list:
     """
     使用梯度hook冻结原始embedding参数，只训练新添加的token embedding
@@ -606,12 +617,16 @@ def freeze_original_embeddings_with_hook(
     Args:
         model: PyTorch模型
         original_vocab_size: 原始词汇表大小
+        logger: 可选的日志记录器
 
     Returns:
         list: 注册的hook句柄列表，用于后续清理
 
     """
     hooks = []
+    
+    # 使用logger或print
+    log_func = logger.info if logger else print
 
     def set_grads_to_zero_hook(grad: torch.Tensor) -> torch.Tensor:
         """梯度hook函数，将原始token的梯度置零"""
@@ -631,10 +646,10 @@ def freeze_original_embeddings_with_hook(
         ):
             handle = embed_module.weight.register_hook(set_grads_to_zero_hook)
             hooks.append(handle)
-            print(
+            log_func(
                 f"为 language_model.embed_tokens 注册hook, shape: {embed_module.weight.shape}"
             )
-            print(f"冻结前 {original_vocab_size} 个token的梯度")
+            log_func(f"冻结前 {original_vocab_size} 个token的梯度")
     # 3. 冻结视觉模型的rotary_emb
     # if hasattr(model, "language_model") and hasattr(
     #     model.language_model, "rotary_emb"

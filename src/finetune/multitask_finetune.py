@@ -15,6 +15,11 @@ from transformers import (
 )
 
 from ..collator import MultiModalCollator
+from ..logger import (
+    configure_tqdm_for_file_output,
+    get_tqdm_compatible_logger,
+    log_args,
+)
 from ..parser import (
     parse_dataset_args,
     parse_global_args,
@@ -29,13 +34,14 @@ from ..utils import (
 )
 
 
-def setup_environment(args: argparse.Namespace) -> tuple[int, bool]:
+def setup_environment(args: argparse.Namespace, logger) -> tuple[int, bool]:
     """
     设置训练环境，包括随机种子、目录和分布式训练设置。
 
     Args:
     ----
         args (argparse.Namespace): 包含配置的参数。
+        logger: 日志记录器
 
     Returns:
     -------
@@ -57,13 +63,13 @@ def setup_environment(args: argparse.Namespace) -> tuple[int, bool]:
         device_map = "auto"
 
     if local_rank == 0:
-        print(f"训练模式: 全量微调 {'DDP' if ddp else '单GPU'}")
-        print(f"Device map: {device_map}")
-        print(vars(args))
+        logger.info(f"训练模式: 全量微调 {'DDP' if ddp else '单GPU'}")
+        logger.info(f"Device map: {device_map}")
+        log_args(logger, args, "Training Configuration")
     return local_rank, ddp
 
 
-def get_training_args(args: argparse.Namespace, ddp: bool) -> TrainingArguments:
+def get_training_args(args: argparse.Namespace, ddp: bool, logger) -> TrainingArguments:
     """
     构建Hugging Face Trainer的训练参数。
 
@@ -78,7 +84,7 @@ def get_training_args(args: argparse.Namespace, ddp: bool) -> TrainingArguments:
 
     """
     args.run_name = make_run_name(args)
-    print("RUN_NAME:", args.run_name)
+    logger.info(f"RUN_NAME: {args.run_name}")
     return TrainingArguments(
         seed=args.seed,
         per_device_train_batch_size=args.per_device_batch_size,
@@ -117,6 +123,7 @@ def save_new_token_embeddings(
     new_vocab_size: int,
     new_tokens: list[str],
     output_dir: str,
+    logger,
 ) -> None:
     # 保存新 token 的 embedding 用于后续可视化
     new_token_embeddings = (
@@ -139,11 +146,11 @@ def save_new_token_embeddings(
     embedding_save_path = os.path.join(output_dir, "new_token_embeddings.pkl")
     with open(embedding_save_path, "wb") as f:
         pickle.dump(embedding_info, f)
-    print(f"新 token embedding 已保存到: {embedding_save_path}")
+    logger.info(f"新 token embedding 已保存到: {embedding_save_path}")
 
 
 def load_and_prepare_model_tokenizer(
-    args: argparse.Namespace, local_rank: int
+    args: argparse.Namespace, local_rank: int, logger
 ) -> tuple[
     Qwen2VLForConditionalGeneration,
     AutoProcessor,
@@ -202,37 +209,30 @@ def load_and_prepare_model_tokenizer(
         if hasattr(model, "visual"):
             for name, param in model.visual.named_parameters():
                 param.requires_grad = False
-            print("冻结视觉模型参数")
+            logger.info("冻结视觉模型参数")
         if hasattr(model, "visual") and hasattr(model.visual, "merger"):
             for name, param in model.visual.merger.named_parameters():
                 param.requires_grad = False
-            print("冻结视觉模型融合层参数")
+            logger.info("冻结视觉模型融合层参数")
     if args.freeze in ["embeddings", "all"]:
         embedding_hooks = freeze_original_embeddings_with_hook(
-            model, original_vocab_size
+            model, original_vocab_size, logger
         )
 
     if local_rank == 0:
-        # print("=" * 50)
-        # print("model_type:", args.global_args.model_type)
-        # for name, param in model.named_parameters():
-        #     print(
-        #         f"{name}: {tuple(param.shape)}, requires_grad={param.requires_grad}"
-        #     )
-        print(f"添加了 {add_num} 个新token")
-        print(f"新词汇表大小: {new_vocab_size}")
-        print(f"数据量: {len(train_data)}")
+        logger.info(f"添加了 {add_num} 个新token")
+        logger.info(f"新词汇表大小: {new_vocab_size}")
+        logger.info(f"数据量: {len(train_data)}")
         if args.use_gradient_checkpointing:
-            print(
+            logger.info(
                 f"有效batch size: {args.per_device_batch_size * args.gradient_accumulation_steps * int(os.environ.get('WORLD_SIZE', 1))}"
             )
         else:
-            print(
+            logger.info(
                 f"有效batch size: {args.per_device_batch_size * int(os.environ.get('WORLD_SIZE', 1))}"
             )
-        print(
-            "1 epoch step:",
-            len(train_data) / args.per_device_batch_size,
+        logger.info(
+            f"1 epoch step: {len(train_data) / args.per_device_batch_size:.2f}"
         )
         processor.save_pretrained(args.output_dir)
         config.save_pretrained(args.output_dir)
@@ -258,7 +258,27 @@ def train(args: argparse.Namespace) -> None:
         args
 
     """
-    local_rank, ddp = setup_environment(args)
+    # 设置logger
+    debug_mode = args.debug if hasattr(args, 'debug') else False
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    
+    # 首先生成run_name
+    args.run_name = make_run_name(args)
+    
+    logger = get_tqdm_compatible_logger(
+        name="multitask_finetune",
+        output_dir=args.output_dir,
+        run_name=args.run_name,
+        debug=debug_mode,
+        rank=local_rank
+    )
+    
+    # 配置tqdm
+    configure_tqdm_for_file_output(use_file_output=not debug_mode)
+    
+    logger.info("Starting multitask finetuning...")
+    
+    local_rank, ddp = setup_environment(args, logger)
 
     (
         model,
@@ -269,7 +289,7 @@ def train(args: argparse.Namespace) -> None:
         original_vocab_size,
         new_vocab_size,
         new_tokens,
-    ) = load_and_prepare_model_tokenizer(args, local_rank)
+    ) = load_and_prepare_model_tokenizer(args, local_rank, logger)
 
     collator = MultiModalCollator(args, processor)
 
@@ -277,7 +297,7 @@ def train(args: argparse.Namespace) -> None:
         model.is_parallelizable = True
         model.model_parallel = True
 
-    training_args = get_training_args(args, ddp)
+    training_args = get_training_args(args, ddp, logger)
 
     trainer = transformers.Trainer(
         model=model,
@@ -290,16 +310,18 @@ def train(args: argparse.Namespace) -> None:
     # model.config.use_cache = False
 
     if torch.__version__ >= "2" and sys.platform != "win32":
-        print("Compiling model...")
+        logger.info("Compiling model...")
         model = torch.compile(model)
 
+    logger.info("Starting training...")
     trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
+    logger.info("Training completed.")
 
     # 清理embedding梯度hook
     if embedding_hooks:
         for hook in embedding_hooks:
             hook.remove()
-        print(f"清理了 {len(embedding_hooks)} 个embedding梯度hook")
+        logger.info(f"清理了 {len(embedding_hooks)} 个embedding梯度hook")
 
     save_new_token_embeddings(
         model,
@@ -307,10 +329,13 @@ def train(args: argparse.Namespace) -> None:
         new_vocab_size,
         new_tokens,
         args.output_dir,
+        logger,
     )
 
+    logger.info("Saving model and state...")
     trainer.save_state()
     trainer.save_model(output_dir=args.output_dir)
+    logger.info(f"Model saved to {args.output_dir}")
 
 
 if __name__ == "__main__":
@@ -318,6 +343,7 @@ if __name__ == "__main__":
     parser = parse_global_args(parser)
     parser = parse_dataset_args(parser)
     parser = parse_train_args(parser)
+    parser.add_argument('--debug', action='store_true', help='Enable debug mode')
 
     args = parser.parse_args()
     train(args)

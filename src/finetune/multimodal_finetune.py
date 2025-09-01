@@ -17,22 +17,29 @@ from transformers import (
 
 from ..collator import Collator
 from ..config import parse_args
+from ..logger import (
+    configure_tqdm_for_file_output,
+    get_tqdm_compatible_logger,
+    log_args,
+)
 from ..type import Args
 from ..utils import (
     ensure_dir,
     load_datasets,
+    make_run_name,
     set_seed,
     verify_token_ordering,
 )
 
 
-def setup_environment(args: Args) -> tuple[int, bool]:
+def setup_environment(args: Args, logger) -> tuple[int, bool]:
     """
     设置训练环境，包括随机种子、目录和分布式训练设置。
 
     Args:
     ----
-        args (argparse.Namespace): 包含配置的参数。
+        args (Args): 包含配置的参数。
+        logger: 日志记录器
 
     Returns:
     -------
@@ -55,9 +62,9 @@ def setup_environment(args: Args) -> tuple[int, bool]:
         device_map = "auto"
 
     if local_rank == 0:
-        print(f"训练模式: 全量微调 {'DDP' if ddp else '单GPU'}")
-        print(f"Device map: {device_map}")
-        print(vars(args))
+        logger.info(f"训练模式: 全量微调 {'DDP' if ddp else '单GPU'}")
+        logger.info(f"Device map: {device_map}")
+        log_args(logger, args, "Training Configuration")
     return local_rank, ddp
 
 
@@ -71,7 +78,7 @@ def get_tokenizer(
 
 
 def load_and_prepare_model_tokenizer(
-    args: Args, local_rank: int
+    args: Args, local_rank: int, logger
 ) -> tuple[
     Qwen2_5_VLForConditionalGeneration
     | LlamaForCausalLM
@@ -127,8 +134,8 @@ def load_and_prepare_model_tokenizer(
     original_vocab_size = len(tokenizer)
 
     if local_rank == 0:
-        print(f"原始词汇表大小: {original_vocab_size}")
-        print(f"需要添加新token数量: {len(new_tokens)}")
+        logger.info(f"原始词汇表大小: {original_vocab_size}")
+        logger.info(f"需要添加新token数量: {len(new_tokens)}")
 
     if args.global_args.model_type == "qwen_vl":
         model_class = Qwen2_5_VLForConditionalGeneration
@@ -156,32 +163,34 @@ def load_and_prepare_model_tokenizer(
     model.config.vocab_size = new_vocab_size
 
     if local_rank == 0:
-        print(f"添加了 {add_num} 个新token")
-        print(f"新词汇表大小: {new_vocab_size}")
-        print(f"数据量: {len(train_data)}")
-        print(
+        logger.info(f"添加了 {add_num} 个新token")
+        logger.info(f"新词汇表大小: {new_vocab_size}")
+        logger.info(f"数据量: {len(train_data)}")
+        logger.info(
             f"有效batch size: {args.train_args.per_device_batch_size * args.train_args.gradient_accumulation_steps * int(os.environ.get('WORLD_SIZE', 1))}"
         )
-        print("embedding size: ", model.get_input_embeddings().weight.shape)
+        logger.info(f"embedding size: {model.get_input_embeddings().weight.shape}")
         if args.global_args.model_type == "qwen_vl":
             tokenizer_or_processor.save_pretrained(args.global_args.output_dir)
         tokenizer.save_pretrained(args.global_args.output_dir)
         config.save_pretrained(args.global_args.output_dir)
-    print("=" * 50)
-    print("model_type:", args.global_args.model_type)
-    for name, param in model.named_parameters():
-        print(
-            f"{name}: {tuple(param.shape)}, reqires_grad={name, param.requires_grad}"
-        )
+    
+    if hasattr(args.global_args, 'debug') and args.global_args.debug:
+        logger.debug("=" * 50)
+        logger.debug(f"model_type: {args.global_args.model_type}")
+        for name, param in model.named_parameters():
+            logger.debug(
+                f"{name}: {tuple(param.shape)}, requires_grad={param.requires_grad}"
+            )
     if args.global_args.model_type == "qwen_vl":
         if hasattr(model, "visual"):
             for name, param in model.visual.named_parameters():
                 param.requires_grad = False
-            print("冻结视觉模型参数")
+            logger.info("冻结视觉模型参数")
         if hasattr(model, "visual") and hasattr(model.visual, "merger"):
             for name, param in model.visual.merger.named_parameters():
                 param.requires_grad = False
-            print("冻结视觉模型融合层参数")
+            logger.info("冻结视觉模型融合层参数")
     return (
         model,
         tokenizer_or_processor,
@@ -191,7 +200,7 @@ def load_and_prepare_model_tokenizer(
     )
 
 
-def get_training_args(args: Args, ddp: bool) -> TrainingArguments:
+def get_training_args(args: Args, ddp: bool, logger) -> TrainingArguments:
     """
     构建Hugging Face Trainer的训练参数。
 
@@ -207,6 +216,9 @@ def get_training_args(args: Args, ddp: bool) -> TrainingArguments:
     """
     global_args = args.global_args
     train_args = args.train_args
+    
+    logger.info(f"RUN_NAME: {global_args.run_name}")
+    
     return TrainingArguments(
         seed=global_args.seed,
         per_device_train_batch_size=train_args.per_device_batch_size,
@@ -234,6 +246,7 @@ def get_training_args(args: Args, ddp: bool) -> TrainingArguments:
         dataloader_num_workers=0,
         remove_unused_columns=False,
         report_to="wandb",
+        run_name=global_args.run_name,
         eval_delay=1 if train_args.save_and_eval_strategy == "epoch" else 2000,
     )
 
@@ -244,10 +257,30 @@ def train(args: Args) -> None:
 
     Args:
     ----
-        args (argparse.Namespace): 包含所有配置的参数。
+        args (Args): 包含所有配置的参数。
 
     """
-    local_rank, ddp = setup_environment(args)
+    # 设置logger
+    debug_mode = hasattr(args.global_args, 'debug') and args.global_args.debug
+    local_rank = int(os.environ.get("LOCAL_RANK", 0))
+    
+    # 生成run_name
+    args.global_args.run_name = make_run_name(args.global_args)
+    
+    logger = get_tqdm_compatible_logger(
+        name="multimodal_finetune",
+        output_dir=args.global_args.output_dir,
+        run_name=args.global_args.run_name,
+        debug=debug_mode,
+        rank=local_rank
+    )
+    
+    # 配置tqdm
+    configure_tqdm_for_file_output(use_file_output=not debug_mode)
+    
+    logger.info("Starting multimodal finetuning...")
+    
+    local_rank, ddp = setup_environment(args, logger)
 
     (
         model,
@@ -255,7 +288,7 @@ def train(args: Args) -> None:
         original_vocab_size,
         train_data,
         valid_data,
-    ) = load_and_prepare_model_tokenizer(args, local_rank)
+    ) = load_and_prepare_model_tokenizer(args, local_rank, logger)
 
     collator = Collator(args, tokenizer_or_processor)
 
@@ -263,7 +296,7 @@ def train(args: Args) -> None:
         model.is_parallelizable = True
         model.model_parallel = True
 
-    training_args = get_training_args(args, ddp)
+    training_args = get_training_args(args, ddp, logger)
 
     trainer = transformers.Trainer(
         model=model,
@@ -276,13 +309,17 @@ def train(args: Args) -> None:
     model.config.use_cache = False
 
     if torch.__version__ >= "2" and sys.platform != "win32":
-        print("Compiling model...")
+        logger.info("Compiling model...")
         model = torch.compile(model)
 
+    logger.info("Starting training...")
     trainer.train(resume_from_checkpoint=args.train_args.resume_from_checkpoint)
+    logger.info("Training completed.")
 
+    logger.info("Saving model and state...")
     trainer.save_state()
     trainer.save_model(output_dir=args.global_args.output_dir)
+    logger.info(f"Model saved to {args.global_args.output_dir}")
 
 
 if __name__ == "__main__":
