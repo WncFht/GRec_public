@@ -845,7 +845,9 @@ class ItemFeatDataset(BaseDataset):
         self,
         args: argparse.Namespace,
         task="item2index",
+        mode="train",
         prompt_sample_num=1,
+        prompt_id=0,
         sample_num=-1,
         logger=None,
         local_rank=0,
@@ -853,14 +855,25 @@ class ItemFeatDataset(BaseDataset):
         super().__init__(args, logger, local_rank)
 
         self.task = task.lower()
+        self.mode = mode
         self.prompt_sample_num = prompt_sample_num
+        self.prompt_id = prompt_id
         self.sample_num = sample_num
+        self.args = args
 
         self.prompts = all_prompt[self.task]
 
         # 加载数据并处理
         self._load_data()
         self.feat_data = self._process_data()
+        
+        # 根据模式处理数据
+        if self.mode == "valid":
+            self.sample_valid = args.sample_valid
+            self.valid_prompt_id = args.valid_prompt_id
+            self._construct_valid_text()
+            if self.sample_num > 0:
+                self.valid_text_data = self.valid_text_data[:sample_num]
 
     def _load_data(self):
         # 加载物品索引文件
@@ -875,29 +888,79 @@ class ItemFeatDataset(BaseDataset):
             self.item_feat = json.load(f)
 
     def _process_data(self):
+        # 根据 8:1:1 规则获取当前模式下的物品ID列表
+        all_item_ids = list(self.indices.keys())
+        split_map = _split_item_ids(all_item_ids, self.args.seed)
+        item_ids_for_mode = split_map[self.mode]
+        
+        if self.local_rank == 0:
+            self.log_func(f"ItemFeatDataset {self.task} {self.mode}: processing {len(item_ids_for_mode)} items")
+
         # 处理物品特征数据
         feat_data = []
-        for iid in self.item_feat:
-            feat = self.item_feat[iid]
+        for iid in item_ids_for_mode:
+            if iid not in self.item_feat:
+                continue
+                
+            feat = self.item_feat[iid].copy()
             index = "".join(self.indices[iid])  # 物品ID对应的token字符串
             feat["item"] = index
             feat["title"] = feat["title"].strip().strip(".!?,;:`")  # 清理标题
             feat_data.append(feat)
 
         # 如果指定了采样数量，则进行采样
-        if self.sample_num > 0:
+        if self.sample_num > 0 and len(feat_data) > self.sample_num:
             all_idx = range(len(feat_data))
             sample_idx = np.random.choice(
                 all_idx, self.sample_num, replace=False
             )
-
             feat_data = np.array(feat_data)[sample_idx].tolist()
+
+        if self.local_rank == 0:
+            self.log_func(f"ItemFeatDataset {self.task} {self.mode}: final dataset size {len(feat_data)}")
 
         return feat_data
 
+    def _construct_valid_text(self):
+        """构建验证集文本数据"""
+        self.valid_text_data = []
+        if self.sample_valid:
+            all_prompt_ids = range(len(self.prompts))
+            for i in range(len(self.feat_data)):
+                data = self.feat_data[i]
+                prompt_ids = np.random.choice(
+                    all_prompt_ids, self.prompt_sample_num, replace=False
+                )
+                for prompt_id in prompt_ids:
+                    prompt = self.prompts[prompt_id]
+                    input_text, label_text = self._get_text_data(data, prompt)
+                    self.valid_text_data.append(
+                        TrainingSample(
+                            input_text=input_text,
+                            label_text=label_text,
+                            is_multimodal=False,
+                        )
+                    )
+        else:
+            self.prompt_sample_num = 1
+            prompt = self.prompts[self.valid_prompt_id]
+            for i in range(len(self.feat_data)):
+                data = self.feat_data[i]
+                input_text, label_text = self._get_text_data(data, prompt)
+                self.valid_text_data.append(
+                    TrainingSample(
+                        input_text=input_text,
+                        label_text=label_text,
+                        is_multimodal=False,
+                    )
+                )
+
     def __len__(self):
         # 返回数据集长度
-        return len(self.feat_data) * self.prompt_sample_num
+        if self.mode == "valid":
+            return len(self.valid_text_data) if hasattr(self, 'valid_text_data') else 0
+        else:
+            return len(self.feat_data) * self.prompt_sample_num
 
     def _get_text_data(self, data, prompt):
         # 根据prompt和数据构造输入和输出文本
@@ -912,13 +975,21 @@ class ItemFeatDataset(BaseDataset):
 
     def __getitem__(self, index):
         # 根据索引获取数据
+        if self.mode == "valid":
+            return self.valid_text_data[index]
+        
         idx = index // self.prompt_sample_num
         d = self.feat_data[idx]
 
-        # 随机选择prompt
-        prompt_id = random.randint(0, len(self.prompts) - 1)
+        # 根据模式选择prompt
+        if self.mode == "train":
+            prompt_id = random.randint(0, len(self.prompts) - 1)
+        elif self.mode == "test":
+            prompt_id = self.prompt_id
+        else:
+            raise NotImplementedError(f"Unsupported mode: {self.mode}")
+        
         prompt = self.prompts[prompt_id]
-
         input_text, label_text = self._get_text_data(d, prompt)
 
         return TrainingSample(
@@ -938,6 +1009,7 @@ class MultimodalDataset(BaseDataset):
         mode="train",
         task="mmitem2index",
         prompt_sample_num=1,
+        prompt_id=0,
         sample_num=-1,
         logger=None,
         local_rank=0,
@@ -947,6 +1019,7 @@ class MultimodalDataset(BaseDataset):
         self.mode = mode
         self.task = task.lower()
         self.prompt_sample_num = prompt_sample_num
+        self.prompt_id = prompt_id
         self.sample_num = sample_num
         self.args = args
         self.image_path = os.path.join(self.data_path, args.image_path)
@@ -970,6 +1043,14 @@ class MultimodalDataset(BaseDataset):
         self._load_item_metadata()  # 加载物品的元数据
         self._load_item2id()
         self._process_data()
+        
+        # 根据模式处理数据
+        if self.mode == "valid":
+            self.sample_valid = args.sample_valid
+            self.valid_prompt_id = args.valid_prompt_id
+            self._construct_valid_text()
+            if self.sample_num > 0 and len(self.multimodal_data) > self.sample_num:
+                self.valid_text_data = self.valid_text_data[:self.sample_num]
 
     def _load_item_metadata(self):
         """加载物品元数据（标题、描述等）"""
@@ -1056,18 +1137,67 @@ class MultimodalDataset(BaseDataset):
 
         return input_text, label_text, data["image_path"]
 
+    def _construct_valid_text(self):
+        """构建验证集文本数据"""
+        self.valid_text_data = []
+        if self.sample_valid:
+            all_prompt_ids = range(len(self.prompts))
+            for i in range(len(self.multimodal_data)):
+                data = self.multimodal_data[i]
+                prompt_ids = np.random.choice(
+                    all_prompt_ids, self.prompt_sample_num, replace=False
+                )
+                for prompt_id in prompt_ids:
+                    prompt = self.prompts[prompt_id]
+                    input_text, label_text, image_path = self._get_text_data(data, prompt)
+                    self.valid_text_data.append(
+                        TrainingSample(
+                            input_text=input_text,
+                            label_text=label_text,
+                            is_multimodal=True,
+                            image_path=image_path,
+                            item_id=data["item_id"],
+                        )
+                    )
+        else:
+            self.prompt_sample_num = 1
+            prompt = self.prompts[self.valid_prompt_id]
+            for i in range(len(self.multimodal_data)):
+                data = self.multimodal_data[i]
+                input_text, label_text, image_path = self._get_text_data(data, prompt)
+                self.valid_text_data.append(
+                    TrainingSample(
+                        input_text=input_text,
+                        label_text=label_text,
+                        is_multimodal=True,
+                        image_path=image_path,
+                        item_id=data["item_id"],
+                    )
+                )
+
     def __len__(self):
         # 返回数据集长度
-        return len(self.multimodal_data) * self.prompt_sample_num
+        if self.mode == "valid":
+            return len(self.valid_text_data) if hasattr(self, 'valid_text_data') else 0
+        else:
+            return len(self.multimodal_data) * self.prompt_sample_num
 
     def __getitem__(self, index):
+        if self.mode == "valid":
+            return self.valid_text_data[index]
+            
         idx = index // self.prompt_sample_num
         data = self.multimodal_data[idx]
 
-        # 随机选择prompt
-        prompt_id = random.randint(0, len(self.prompts) - 1)
+        # 根据模式选择prompt
+        if self.mode == "train":
+            prompt_id = random.randint(0, len(self.prompts) - 1)
+        elif self.mode == "test":
+            prompt_id = self.prompt_id
+        else:
+            raise NotImplementedError(f"Unsupported mode: {self.mode}")
+        
         prompt = self.prompts[prompt_id]
-
         input_text, label_text, image_path = self._get_text_data(data, prompt)
 
         return TrainingSample(

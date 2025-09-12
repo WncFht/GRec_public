@@ -615,6 +615,7 @@ def load_datasets(args: argparse.Namespace, logger=None, local_rank=0):
             dataset = ItemFeatDataset(
                 args,
                 task=task.lower(),
+                mode="train",
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
                 logger=logger,
@@ -708,6 +709,26 @@ def load_datasets(args: argparse.Namespace, logger=None, local_rank=0):
                 logger=logger,
                 local_rank=local_rank,
             )
+        elif task.lower() in ["item2index", "index2item"]:
+            valid_dataset = ItemFeatDataset(
+                args,
+                task=task.lower(),
+                mode="valid",
+                prompt_sample_num=args.valid_prompt_sample_num,
+                sample_num=data_sample_num,
+                logger=logger,
+                local_rank=local_rank,
+            )
+        elif task.lower() in ["mmitem2index", "mmindex2item"]:
+            valid_dataset = MultimodalDataset(
+                args,
+                mode="valid",
+                task=task.lower(),
+                prompt_sample_num=args.valid_prompt_sample_num,
+                sample_num=data_sample_num,
+                logger=logger,
+                local_rank=local_rank,
+            )
         if dataset:
             train_datasets.append(dataset)
         if valid_dataset:
@@ -743,6 +764,24 @@ def load_test_dataset(args: argparse.Namespace, logger=None, local_rank=0):
         test_data = FusionSeqRecDataset(
             args,
             mode="test",
+            sample_num=args.sample_num,
+            logger=logger,
+            local_rank=local_rank,
+        )
+    elif args.test_task.lower() in ["item2index", "index2item"]:
+        test_data = ItemFeatDataset(
+            args,
+            task=args.test_task.lower(),
+            mode="test",
+            sample_num=args.sample_num,
+            logger=logger,
+            local_rank=local_rank,
+        )
+    elif args.test_task.lower() in ["mmitem2index", "mmindex2item"]:
+        test_data = MultimodalDataset(
+            args,
+            mode="test",
+            task=args.test_task.lower(),
             sample_num=args.sample_num,
             logger=logger,
             local_rank=local_rank,
