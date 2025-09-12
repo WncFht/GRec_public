@@ -139,7 +139,7 @@ def parse_train_args(
         "--freeze",
         type=str,
         default=None,
-        choices=["all", "visual", "embeddings"],
+        choices=["all", "visual", "embeddings", "only_embeddings"],
     )
 
     train_args.add_argument(

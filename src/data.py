@@ -45,10 +45,13 @@ def _split_item_ids(all_item_ids: list[str], seed: int) -> dict[str, list[str]]:
 
 # 定义BaseDataset类，继承自PyTorch的Dataset
 class BaseDataset(Dataset):
-    def __init__(self, args: argparse.Namespace):
+    def __init__(self, args: argparse.Namespace, logger=None, local_rank=0):
         super().__init__()
 
         self.args = args
+        self.logger = logger
+        self.local_rank = local_rank
+        self.log_func = logger.info if logger else print
 
         self.dataset = self.args.dataset
         self.data_path = os.path.join(self.args.data_path, self.dataset)
@@ -145,8 +148,10 @@ class SeqRecDataset(BaseDataset):
         prompt_sample_num=1,  # 每个数据点采样prompt的数量
         prompt_id=0,  # 使用的prompt ID
         sample_num=-1,  # 采样数据点的数量，-1表示不采样
+        logger=None,
+        local_rank=0,
     ):
-        super().__init__(args)
+        super().__init__(args, logger, local_rank)
 
         self.mode = mode
         self.prompt_sample_num = prompt_sample_num
@@ -185,12 +190,14 @@ class SeqRecDataset(BaseDataset):
             self.inters = json.load(f)
 
         total_inters = len(self.inters)
-        print("original total inters:", total_inters)
+        if self.local_rank == 0:
+            self.log_func(f"original total inters: {total_inters}")
         ratio = self.args.ratio_dataset
         target_size = int(ratio * total_inters)
         sorted_items = sorted(self.inters.items(), key=lambda x: int(x[0]))
         self.inters = dict(sorted_items[:target_size])
-        print("new total inters:", len(self.inters))
+        if self.local_rank == 0:
+            self.log_func(f"new total inters: {len(self.inters)}")
 
         # 加载物品索引数据
         with open(
@@ -375,8 +382,10 @@ class MultimodalSeqRecDataset(BaseDataset):
         prompt_sample_num: int = 1,
         prompt_id: int = 0,
         sample_num: int = -1,
+        logger=None,
+        local_rank=0,
     ):
-        super().__init__(args)
+        super().__init__(args, logger, local_rank)
         self.mode = mode
         self.prompt_sample_num = prompt_sample_num
         self.prompt_id = prompt_id
@@ -412,12 +421,14 @@ class MultimodalSeqRecDataset(BaseDataset):
             self.raw_inters = json.load(f)
 
         total_inters = len(self.raw_inters)
-        print("original total inters:", total_inters)
+        if self.local_rank == 0:
+            self.log_func(f"original total inters: {total_inters}")
         ratio = self.args.ratio_dataset
         target_size = int(ratio * total_inters)
         sorted_items = sorted(self.raw_inters.items(), key=lambda x: int(x[0]))
         self.raw_inters = dict(sorted_items[:target_size])
-        print("new total inters:", len(self.raw_inters))
+        if self.local_rank == 0:
+            self.log_func(f"new total inters: {len(self.raw_inters)}")
 
         # 物品 token 索引：{iid: ["A","B",..]}
         with open(
@@ -433,8 +444,9 @@ class MultimodalSeqRecDataset(BaseDataset):
                 item_id, num_id = line.strip().split("\t")
                 self.item2id[item_id] = num_id
                 self.id2item[num_id] = item_id
-            print("item_id:", type(item_id), item_id)
-            print("num_id:", type(num_id), num_id)
+            if self.local_rank == 0:
+                self.log_func(f"item_id: {type(item_id)} {item_id}")
+                self.log_func(f"num_id: {type(num_id)} {num_id}")
 
     def _split_data(self):
         """8:1:1 划分交互序列"""
@@ -542,8 +554,10 @@ class FusionSeqRecDataset(BaseDataset):
         prompt_sample_num=1,
         prompt_id=0,
         sample_num=-1,
+        logger=None,
+        local_rank=0,
     ):
-        super().__init__(args)
+        super().__init__(args, logger, local_rank)
 
         self.mode = mode
         self.prompt_sample_num = prompt_sample_num
@@ -833,8 +847,10 @@ class ItemFeatDataset(BaseDataset):
         task="item2index",
         prompt_sample_num=1,
         sample_num=-1,
+        logger=None,
+        local_rank=0,
     ):
-        super().__init__(args)
+        super().__init__(args, logger, local_rank)
 
         self.task = task.lower()
         self.prompt_sample_num = prompt_sample_num
@@ -923,8 +939,10 @@ class MultimodalDataset(BaseDataset):
         task="mmitem2index",
         prompt_sample_num=1,
         sample_num=-1,
+        logger=None,
+        local_rank=0,
     ):
-        super().__init__(args)
+        super().__init__(args, logger, local_rank)
 
         self.mode = mode
         self.task = task.lower()
@@ -1012,9 +1030,10 @@ class MultimodalDataset(BaseDataset):
                 # 'have_image': have_image
             }
             self.multimodal_data.append(one_data)
-        print(
-            f"Mode: {self.mode}, Task: {self.task}, len(self.multimodal_data): {len(self.multimodal_data)}"
-        )
+        if self.local_rank == 0:
+            self.log_func(
+                f"Mode: {self.mode}, Task: {self.task}, len(self.multimodal_data): {len(self.multimodal_data)}"
+            )
 
         # 数据采样（用于调试）
         if self.sample_num > 0 and len(self.multimodal_data) > self.sample_num:
@@ -1070,8 +1089,10 @@ class TextEnrichDataset(BaseDataset):
         mode="train",
         prompt_sample_num=1,
         sample_num=-1,
+        logger=None,
+        local_rank=0,
     ):
-        super().__init__(args)
+        super().__init__(args, logger, local_rank)
 
         self.mode = mode
         self.prompt_sample_num = prompt_sample_num
@@ -1097,7 +1118,8 @@ class TextEnrichDataset(BaseDataset):
         """加载物品元数据"""
         with open(self.item_meta_path, encoding="utf-8") as f:
             self.item_metadata = json.load(f)
-        print("len(self.item_metadata):", len(self.item_metadata))
+        if self.local_rank == 0:
+            self.log_func(f"len(self.item_metadata): {len(self.item_metadata)}")
 
     def _load_item2id(self):
         self.item2id = {}
@@ -1108,8 +1130,9 @@ class TextEnrichDataset(BaseDataset):
                 item_id, num_id = line.strip().split("\t")
                 self.item2id[item_id] = num_id
                 self.id2item[num_id] = item_id
-        print("len(self.item2id):", len(self.item2id))
-        print("len(self.id2item):", len(self.id2item))
+        if self.local_rank == 0:
+            self.log_func(f"len(self.item2id): {len(self.item2id)}")
+            self.log_func(f"len(self.id2item): {len(self.id2item)}")
 
     def _process_data(self):
         """处理文本丰富数据"""
@@ -1122,7 +1145,8 @@ class TextEnrichDataset(BaseDataset):
 
         for item_id in item_ids_for_mode:
             if item_id not in self.item_metadata:
-                print(f"item_id: {item_id} 没有在item_metadata中")
+                if self.local_rank == 0:
+                    self.log_func(f"item_id: {item_id} 没有在item_metadata中")
                 continue
 
             token_list = self.indices[item_id]
@@ -1146,7 +1170,8 @@ class TextEnrichDataset(BaseDataset):
                     "characteristics",
                 ]:
                     if key not in metadata:
-                        print(f"item_id: {item_id} 的metadata中缺少 {key}")
+                        if self.local_rank == 0:
+                            self.log_func(f"item_id: {item_id} 的metadata中缺少 {key}")
                 continue
 
             image_file = f"{self.id2item[item_id]}.jpg"
@@ -1176,7 +1201,8 @@ class TextEnrichDataset(BaseDataset):
                 image_path=image_path,
             )
             self.textenrich_data.append(enriched_data)
-        print("len(self.textenrich_data):", len(self.textenrich_data))
+        if self.local_rank == 0:
+            self.log_func(f"len(self.textenrich_data): {len(self.textenrich_data)}")
 
         # 数据采样, 调试的时候调用
         if self.sample_num > 0 and len(self.textenrich_data) > self.sample_num:
@@ -1235,8 +1261,10 @@ class TextEnrichWihtoutItemIDDataset(BaseDataset):
         mode="train",
         prompt_sample_num=1,
         sample_num=-1,
+        logger=None,
+        local_rank=0,
     ):
-        super().__init__(args)
+        super().__init__(args, logger, local_rank)
 
         self.mode = mode
         self.prompt_sample_num = prompt_sample_num
@@ -1262,7 +1290,8 @@ class TextEnrichWihtoutItemIDDataset(BaseDataset):
         """加载物品元数据"""
         with open(self.item_meta_path, encoding="utf-8") as f:
             self.item_metadata = json.load(f)
-        print("len(self.item_metadata):", len(self.item_metadata))
+        if self.local_rank == 0:
+            self.log_func(f"len(self.item_metadata): {len(self.item_metadata)}")
 
     def _load_item2id(self):
         self.item2id = {}
@@ -1273,8 +1302,9 @@ class TextEnrichWihtoutItemIDDataset(BaseDataset):
                 item_id, num_id = line.strip().split("\t")
                 self.item2id[item_id] = num_id
                 self.id2item[num_id] = item_id
-        print("len(self.item2id):", len(self.item2id))
-        print("len(self.id2item):", len(self.id2item))
+        if self.local_rank == 0:
+            self.log_func(f"len(self.item2id): {len(self.item2id)}")
+            self.log_func(f"len(self.id2item): {len(self.id2item)}")
 
     def _process_data(self):
         """处理文本丰富数据"""
@@ -1294,7 +1324,8 @@ class TextEnrichWihtoutItemIDDataset(BaseDataset):
 
         for item_id in item_ids_for_mode:
             if item_id not in self.item_metadata:
-                print(f"item_id: {item_id} 没有在item_metadata中")
+                if self.local_rank == 0:
+                    self.log_func(f"item_id: {item_id} 没有在item_metadata中")
                 continue
 
             token_list = self.indices[item_id]
@@ -1318,7 +1349,8 @@ class TextEnrichWihtoutItemIDDataset(BaseDataset):
                     "characteristics",
                 ]:
                     if key not in metadata:
-                        print(f"item_id: {item_id} 的metadata中缺少 {key}")
+                        if self.local_rank == 0:
+                            self.log_func(f"item_id: {item_id} 的metadata中缺少 {key}")
                 continue
 
             image_file = f"{self.id2item[item_id]}.jpg"
@@ -1348,7 +1380,8 @@ class TextEnrichWihtoutItemIDDataset(BaseDataset):
                 image_path=image_path,
             )
             self.textenrich_data.append(enriched_data)
-        print("len(self.textenrich_data):", len(self.textenrich_data))
+        if self.local_rank == 0:
+            self.log_func(f"len(self.textenrich_data): {len(self.textenrich_data)}")
 
     def _get_text_data(
         self, data: EnrichedData, prompt: dict
@@ -1397,8 +1430,10 @@ class SeqRectWithoutItemIDDataset_1(BaseDataset):
         prompt_sample_num=1,  # 每个数据点采样prompt的数量
         prompt_id=0,  # 使用的prompt ID
         sample_num=-1,  # 采样数据点的数量，-1表示不采样
+        logger=None,
+        local_rank=0,
     ):
-        super().__init__(args)
+        super().__init__(args, logger, local_rank)
 
         self.mode = mode
         self.prompt_sample_num = prompt_sample_num
@@ -1436,12 +1471,14 @@ class SeqRectWithoutItemIDDataset_1(BaseDataset):
         ) as f:
             self.inters = json.load(f)
         total_inters = len(self.inters)
-        print("original total inters:", total_inters)
+        if self.local_rank == 0:
+            self.log_func(f"original total inters: {total_inters}")
         ratio = self.args.ratio_dataset
         target_size = int(ratio * total_inters)
         sorted_items = sorted(self.inters.items(), key=lambda x: int(x[0]))
         self.inters = dict(sorted_items[:target_size])
-        print("new total inters:", len(self.inters))
+        if self.local_rank == 0:
+            self.log_func(f"new total inters: {len(self.inters)}")
 
     def _remap_items(self):
         # 将用户交互序列中的物品ID映射为对应的token字符串
@@ -1617,8 +1654,10 @@ class SeqRecWithTitleDataset(BaseDataset):
         prompt_sample_num=1,  # 每个数据点采样prompt的数量
         prompt_id=0,  # 使用的prompt ID
         sample_num=-1,  # 采样数据点的数量，-1表示不采样
+        logger=None,
+        local_rank=0,
     ):
-        super().__init__(args)
+        super().__init__(args, logger, local_rank)
 
         self.mode = mode
         self.prompt_sample_num = prompt_sample_num
@@ -1660,12 +1699,14 @@ class SeqRecWithTitleDataset(BaseDataset):
         ) as f:
             self.items = json.load(f)
         total_inters = len(self.inters)
-        print("original total inters:", total_inters)
+        if self.local_rank == 0:
+            self.log_func(f"original total inters: {total_inters}")
         ratio = self.args.ratio_dataset
         target_size = int(ratio * total_inters)
         sorted_items = sorted(self.inters.items(), key=lambda x: int(x[0]))
         self.inters = dict(sorted_items[:target_size])
-        print("new total inters:", len(self.inters))
+        if self.local_rank == 0:
+            self.log_func(f"new total inters: {len(self.inters)}")
 
     def _remap_items(self):
         # 将用户交互序列中的物品ID映射为对应的token字符串

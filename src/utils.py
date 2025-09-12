@@ -22,7 +22,7 @@ from transformers import (
     T5ForConditionalGeneration,
 )
 
-from .data import (
+from src.data import (
     FusionSeqRecDataset,
     ItemFeatDataset,
     MultimodalDataset,
@@ -204,6 +204,243 @@ def load_model_for_inference(
     return model, processor
 
 
+def _load_processor_and_tokenizer(args, config, base_model_path, local_rank, log_func):
+    """加载处理器和分词器"""
+    processor_class = config["processor_class"]
+    from_pretrained_kwargs = config.get("from_pretrained_kwargs", {})
+    
+    if local_rank == 0:
+        log_func(f"从 '{base_model_path}' 加载处理器/分词器...")
+
+    # 特殊处理文本模型
+    if args.model_type in ["qwen2", "qwen2_5", "llama"]:
+        tokenizer = AutoTokenizer.from_pretrained(
+            base_model_path,
+            use_fast=True,
+            trust_remote_code=True,
+        )
+        processor = tokenizer
+    else:
+        processor = processor_class.from_pretrained(
+            base_model_path,
+            use_fast=True,
+            **from_pretrained_kwargs,
+        )
+        tokenizer = processor.tokenizer
+        
+    return processor, tokenizer
+
+
+def _load_base_model(args, config, base_model_path, config_obj, local_rank, log_func):
+    """加载基础模型"""
+    model_class = config["model_class"]
+    from_pretrained_kwargs = config.get("from_pretrained_kwargs", {})
+    
+    if local_rank == 0:
+        log_func(f"从 '{base_model_path}' 加载基础模型...")
+
+    # 构建模型加载参数
+    model_kwargs = {
+        "config": config_obj,
+        "trust_remote_code": True,
+        **from_pretrained_kwargs,
+    }
+
+    # 根据训练参数设置数据类型
+    if hasattr(args, "bf16") and args.bf16:
+        model_kwargs["torch_dtype"] = torch.bfloat16
+    elif hasattr(args, "fp16") and args.fp16:
+        model_kwargs["torch_dtype"] = torch.float16
+
+    # 对于多模态模型，添加attention实现
+    if args.model_type in ["qwen2_vl", "qwen2_5_vl", "llava_onevision"]:
+        model_kwargs["attn_implementation"] = "flash_attention_2"
+
+    model = model_class.from_pretrained(base_model_path, **model_kwargs)
+    return model
+
+
+def _extend_vocabulary(args, model, tokenizer, new_tokens, local_rank, log_func, logger=None):
+    """扩展词汇表"""
+    # 获取新tokens
+    if new_tokens is None:
+        train_data, _ = load_datasets(args, logger, local_rank)
+        new_tokens = train_data.datasets[0].get_new_tokens()
+
+    if local_rank == 0:
+        log_func(f"从数据集中获取到 {len(new_tokens)} 个新 token 用于扩展词汇表。")
+
+    original_vocab_size = len(tokenizer)
+    tokenizer.add_tokens(new_tokens, special_tokens=True)
+    new_vocab_size = len(tokenizer)
+    model.resize_token_embeddings(new_vocab_size)
+
+    # 更新配置中的词汇表大小
+    if args.model_type != "llava_onevision":
+        model.config.vocab_size = new_vocab_size
+
+    if local_rank == 0:
+        log_func(f"原始词汇表大小: {original_vocab_size}")
+        log_func(f"扩展后新词汇表大小: {new_vocab_size}")
+
+    return original_vocab_size, new_vocab_size, new_tokens
+
+
+def _save_token_metadata(args, original_vocab_size, new_vocab_size, new_tokens, local_rank):
+    """保存词汇表元数据"""
+    ensure_dir(args.output_dir)
+    if local_rank == 0:
+        with open(os.path.join(args.output_dir, "token_meta.json"), "w") as f:
+            json.dump(
+                {
+                    "original_vocab_size": original_vocab_size,
+                    "new_vocab_size": new_vocab_size,
+                    "added_tokens": len(new_tokens),
+                },
+                f,
+                indent=2,
+            )
+
+
+def _setup_lora(args, model, local_rank, log_func):
+    """配置LoRA（如果启用）"""
+    if not (hasattr(args, "use_lora") and args.use_lora):
+        return model
+
+    from peft import LoraConfig, TaskType, get_peft_model, set_peft_model_state_dict
+
+    if local_rank == 0:
+        log_func("启用LoRA训练...")
+
+    # 解析target_modules和modules_to_save
+    target_modules = args.lora_target_modules.split(",")
+    modules_to_save = (
+        args.lora_modules_to_save.split(",")
+        if hasattr(args, "lora_modules_to_save") and args.lora_modules_to_save
+        else ["embed_tokens", "lm_head"]
+    )
+
+    peft_config = LoraConfig(
+        task_type=TaskType.CAUSAL_LM,
+        inference_mode=False,
+        r=args.lora_r,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=args.lora_dropout,
+        target_modules=target_modules,
+        modules_to_save=modules_to_save,
+        bias="none",
+    )
+    model = get_peft_model(model, peft_config)
+
+    # 加载checkpoint权重（如果存在）
+    _load_lora_checkpoint(args, model, local_rank, log_func)
+
+    if local_rank == 0:
+        model.print_trainable_parameters()
+
+    return model
+
+
+def _load_lora_checkpoint(args, model, local_rank, log_func):
+    """加载LoRA检查点权重"""
+    if not (hasattr(args, "resume_from_checkpoint") and args.resume_from_checkpoint):
+        return
+
+    from peft import set_peft_model_state_dict
+
+    checkpoint_name = os.path.join(args.resume_from_checkpoint, "adapter_model.safetensors")
+    if not os.path.exists(checkpoint_name):
+        checkpoint_name = os.path.join(args.resume_from_checkpoint, "adapter_model.bin")
+
+    if os.path.exists(checkpoint_name):
+        if local_rank == 0:
+            log_func(f"从检查点加载LoRA权重: {checkpoint_name}")
+        adapters_weights = torch.load(checkpoint_name, map_location="cpu")
+        model = set_peft_model_state_dict(model, adapters_weights)
+    elif local_rank == 0:
+        log_func(f"未找到检查点: {checkpoint_name}")
+
+
+def _freeze_only_embeddings(model, local_rank, log_func):
+    """只训练embedding，冻结其他所有参数"""
+    # 先冻结所有参数
+    for name, param in model.named_parameters():
+        param.requires_grad = False
+    
+    # 然后只解冻embedding相关参数
+    embedding_unfrozen = False
+    
+    # 尝试不同的embedding参数路径
+    embedding_paths = [
+        ("language_model.embed_tokens", lambda m: getattr(m.language_model, "embed_tokens", None) if hasattr(m, "language_model") else None),
+        ("embed_tokens", lambda m: getattr(m, "embed_tokens", None)),
+        ("model.embed_tokens", lambda m: getattr(m.model, "embed_tokens", None) if hasattr(m, "model") else None),
+    ]
+    
+    for path_name, path_getter in embedding_paths:
+        embed_module = path_getter(model)
+        if embed_module is not None:
+            for name, param in embed_module.named_parameters():
+                param.requires_grad = True
+            if local_rank == 0:
+                log_func(f"解冻 {path_name} 参数")
+            embedding_unfrozen = True
+            break
+    
+    # 尝试解冻lm_head参数（通常embedding和lm_head共享权重）
+    lm_head_paths = [
+        ("lm_head", lambda m: getattr(m, "lm_head", None)),
+        ("language_model.lm_head", lambda m: getattr(m.language_model, "lm_head", None) if hasattr(m, "language_model") else None),
+    ]
+    
+    for path_name, path_getter in lm_head_paths:
+        lm_head_module = path_getter(model)
+        if lm_head_module is not None:
+            for name, param in lm_head_module.named_parameters():
+                param.requires_grad = True
+            if local_rank == 0:
+                log_func(f"解冻 {path_name} 参数")
+            break
+    
+    if not embedding_unfrozen and local_rank == 0:
+        log_func("警告: 未找到embedding参数，请检查模型结构")
+        
+    if local_rank == 0:
+        log_func("只训练embedding参数，冻结其他所有参数")
+
+
+def _apply_freeze_strategy(args, model, original_vocab_size, local_rank, log_func, logger):
+    """应用参数冻结策略"""
+    embedding_hooks = []
+    
+    if not hasattr(args, "freeze"):
+        return embedding_hooks
+
+    if args.freeze == "only_embeddings":
+        _freeze_only_embeddings(model, local_rank, log_func)
+    else:
+        # 冻结视觉模型参数
+        if args.freeze in ["visual", "all"]:
+            if hasattr(model, "visual"):
+                for name, param in model.visual.named_parameters():
+                    param.requires_grad = False
+                if local_rank == 0:
+                    log_func("冻结视觉模型参数")
+            if hasattr(model, "visual") and hasattr(model.visual, "merger"):
+                for name, param in model.visual.merger.named_parameters():
+                    param.requires_grad = False
+                if local_rank == 0:
+                    log_func("冻结视觉模型融合层参数")
+
+        # 冻结原始embedding参数
+        if args.freeze in ["embeddings", "all"]:
+            embedding_hooks = freeze_original_embeddings_with_hook(
+                model, original_vocab_size, logger
+            )
+    
+    return embedding_hooks
+
+
 def load_model_for_training(
     args: argparse.Namespace,
     new_tokens: list[str] | None = None,
@@ -231,7 +468,6 @@ def load_model_for_training(
     Returns:
     -------
         tuple: (model, processor, original_vocab_size, new_vocab_size, new_tokens, embedding_hooks)
-
     """
     model_type = args.model_type
     base_model_path = args.base_model
@@ -243,182 +479,34 @@ def load_model_for_training(
     if local_rank == 0:
         log_func(f"为训练加载 {model_type.upper()} 模型...")
 
+    # 1. 获取配置
     config = MODEL_CONFIG[model_type]
-    model_class = config["model_class"]
-    processor_class = config["processor_class"]
-    from_pretrained_kwargs = config.get("from_pretrained_kwargs", {})
-
-    # 1. 加载配置
     from transformers import AutoConfig
+    config_obj = AutoConfig.from_pretrained(base_model_path, trust_remote_code=True)
 
-    config_obj = AutoConfig.from_pretrained(
-        base_model_path, trust_remote_code=True
+    # 2. 加载处理器和分词器
+    processor, tokenizer = _load_processor_and_tokenizer(
+        args, config, base_model_path, local_rank, log_func
     )
 
-    # 2. 加载 Processor / Tokenizer
-    if local_rank == 0:
-        log_func(f"从 '{base_model_path}' 加载处理器/分词器...")
-
-    # 特殊处理文本模型
-    if model_type in ["qwen2", "qwen2_5", "llama"]:
-        tokenizer = AutoTokenizer.from_pretrained(
-            base_model_path,
-            use_fast=True,
-            trust_remote_code=True,
-        )
-        processor = tokenizer
-    else:
-        processor = processor_class.from_pretrained(
-            base_model_path,
-            use_fast=True,
-            **from_pretrained_kwargs,
-        )
-        tokenizer = processor.tokenizer
-
-    original_vocab_size = len(tokenizer)
-    if local_rank == 0:
-        log_func(f"原始词汇表大小: {original_vocab_size}")
-
     # 3. 加载基础模型
-    if local_rank == 0:
-        log_func(f"从 '{base_model_path}' 加载基础模型...")
+    model = _load_base_model(args, config, base_model_path, config_obj, local_rank, log_func)
 
-    # 构建模型加载参数
-    model_kwargs = {
-        "config": config_obj,
-        "trust_remote_code": True,
-        **from_pretrained_kwargs,
-    }
-
-    # 根据训练参数设置数据类型
-    if hasattr(args, "bf16") and args.bf16:
-        model_kwargs["torch_dtype"] = torch.bfloat16
-    elif hasattr(args, "fp16") and args.fp16:
-        model_kwargs["torch_dtype"] = torch.float16
-
-    # 对于多模态模型，添加attention实现
-    if model_type in ["qwen2_vl", "qwen2_5_vl", "llava_onevision"]:
-        model_kwargs["attn_implementation"] = "flash_attention_2"
-
-    model = model_class.from_pretrained(base_model_path, **model_kwargs)
-
-    # 4. 获取并扩展词汇表
-    if new_tokens is None:
-        # 从数据集获取新tokens
-        train_data, _ = load_datasets(args)
-        new_tokens = train_data.datasets[0].get_new_tokens()
-
-    if local_rank == 0:
-        log_func(
-            f"从数据集中获取到 {len(new_tokens)} 个新 token 用于扩展词汇表。"
-        )
-
-    tokenizer.add_tokens(new_tokens, special_tokens=True)
-    new_vocab_size = len(tokenizer)
-    model.resize_token_embeddings(new_vocab_size)
-
-    # 更新配置中的词汇表大小
-    if model_type != "llava_onevision":
-        config_obj.vocab_size = new_vocab_size
-        model.config.vocab_size = new_vocab_size
-
-    if local_rank == 0:
-        log_func(f"扩展后新词汇表大小: {new_vocab_size}")
+    # 4. 扩展词汇表
+    original_vocab_size, new_vocab_size, new_tokens = _extend_vocabulary(
+        args, model, tokenizer, new_tokens, local_rank, log_func, logger
+    )
 
     # 5. 保存词汇表元数据
-    ensure_dir(args.output_dir)
-    if local_rank == 0:
-        with open(os.path.join(args.output_dir, "token_meta.json"), "w") as f:
-            json.dump(
-                {
-                    "original_vocab_size": original_vocab_size,
-                    "new_vocab_size": new_vocab_size,
-                    "added_tokens": len(new_tokens),
-                },
-                f,
-                indent=2,
-            )
+    _save_token_metadata(args, original_vocab_size, new_vocab_size, new_tokens, local_rank)
 
     # 6. 配置LoRA（如果启用）
-    embedding_hooks = []
-    if hasattr(args, "use_lora") and args.use_lora:
-        from peft import (
-            LoraConfig,
-            TaskType,
-            get_peft_model,
-            set_peft_model_state_dict,
-        )
+    model = _setup_lora(args, model, local_rank, log_func)
 
-        if local_rank == 0:
-            log_func("启用LoRA训练...")
-
-        # 解析target_modules和modules_to_save
-        target_modules = args.lora_target_modules.split(",")
-        modules_to_save = (
-            args.lora_modules_to_save.split(",")
-            if hasattr(args, "lora_modules_to_save")
-            and args.lora_modules_to_save
-            else ["embed_tokens", "lm_head"]
-        )
-
-        peft_config = LoraConfig(
-            task_type=TaskType.CAUSAL_LM,
-            inference_mode=False,
-            r=args.lora_r,
-            lora_alpha=args.lora_alpha,
-            lora_dropout=args.lora_dropout,
-            target_modules=target_modules,
-            modules_to_save=modules_to_save,
-            bias="none",
-        )
-        model = get_peft_model(model, peft_config)
-
-        # 如果有checkpoint，加载LoRA权重
-        if (
-            hasattr(args, "resume_from_checkpoint")
-            and args.resume_from_checkpoint
-        ):
-            checkpoint_name = os.path.join(
-                args.resume_from_checkpoint, "adapter_model.safetensors"
-            )
-            if not os.path.exists(checkpoint_name):
-                checkpoint_name = os.path.join(
-                    args.resume_from_checkpoint, "adapter_model.bin"
-                )
-
-            if os.path.exists(checkpoint_name):
-                if local_rank == 0:
-                    log_func(f"从检查点加载LoRA权重: {checkpoint_name}")
-                adapters_weights = torch.load(
-                    checkpoint_name, map_location="cpu"
-                )
-                model = set_peft_model_state_dict(model, adapters_weights)
-            elif local_rank == 0:
-                log_func(f"未找到检查点: {checkpoint_name}")
-
-        if local_rank == 0:
-            model.print_trainable_parameters()
-
-    # 7. 处理参数冻结
-    if hasattr(args, "freeze"):
-        # 冻结视觉模型参数
-        if args.freeze in ["visual", "all"]:
-            if hasattr(model, "visual"):
-                for name, param in model.visual.named_parameters():
-                    param.requires_grad = False
-                if local_rank == 0:
-                    log_func("冻结视觉模型参数")
-            if hasattr(model, "visual") and hasattr(model.visual, "merger"):
-                for name, param in model.visual.merger.named_parameters():
-                    param.requires_grad = False
-                if local_rank == 0:
-                    log_func("冻结视觉模型融合层参数")
-
-        # 冻结原始embedding参数
-        if args.freeze in ["embeddings", "all"]:
-            embedding_hooks = freeze_original_embeddings_with_hook(
-                model, original_vocab_size, logger
-            )
+    # 7. 应用参数冻结策略
+    embedding_hooks = _apply_freeze_strategy(
+        args, model, original_vocab_size, local_rank, log_func, logger
+    )
 
     # 8. 设置训练模式
     model.train()
@@ -456,8 +544,10 @@ def ensure_dir(dir_path):
     os.makedirs(dir_path, exist_ok=True)
 
 
-def load_datasets(args: argparse.Namespace):
+def load_datasets(args: argparse.Namespace, logger=None, local_rank=0):
     """根据配置加载训练和验证数据集"""
+    log_func = logger.info if logger else print
+    
     tasks = args.tasks.split(",")
 
     train_prompt_sample_num = [
@@ -473,9 +563,10 @@ def load_datasets(args: argparse.Namespace):
         "data sample number does not match task number"
     )
 
-    print("tasks:", tasks)
-    print("train prompt sample num:", train_prompt_sample_num)
-    print("train data sample num:", train_data_sample_num)
+    if local_rank == 0:
+        log_func(f"tasks: {tasks}")
+        log_func(f"train prompt sample num: {train_prompt_sample_num}")
+        log_func(f"train data sample num: {train_data_sample_num}")
 
     train_datasets = []
     valid_datasets = []
@@ -490,6 +581,8 @@ def load_datasets(args: argparse.Namespace):
                 mode="train",
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
+                logger=logger,
+                local_rank=local_rank,
             )
         elif task.lower() == "mmseqrec":
             dataset = MultimodalSeqRecDataset(
@@ -497,6 +590,8 @@ def load_datasets(args: argparse.Namespace):
                 mode="train",
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
+                logger=logger,
+                local_rank=local_rank,
             )
         elif task.lower() == "seqrec_without_id":
             dataset = SeqRectWithoutItemIDDataset_1(
@@ -504,6 +599,8 @@ def load_datasets(args: argparse.Namespace):
                 mode="train",
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
+                logger=logger,
+                local_rank=local_rank,
             )
         elif task.lower() == "seqrec_with_title":
             dataset = SeqRecWithTitleDataset(
@@ -511,6 +608,8 @@ def load_datasets(args: argparse.Namespace):
                 mode="train",
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
+                logger=logger,
+                local_rank=local_rank,
             )
         elif task.lower() in ["item2index", "index2item"]:
             dataset = ItemFeatDataset(
@@ -518,6 +617,8 @@ def load_datasets(args: argparse.Namespace):
                 task=task.lower(),
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
+                logger=logger,
+                local_rank=local_rank,
             )
 
         elif task.lower() == "fusionseqrec":
@@ -526,6 +627,8 @@ def load_datasets(args: argparse.Namespace):
                 mode="train",
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
+                logger=logger,
+                local_rank=local_rank,
             )
 
         elif task.lower() in ["mmitem2index", "mmindex2item"]:
@@ -535,6 +638,8 @@ def load_datasets(args: argparse.Namespace):
                 task=task.lower(),
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
+                logger=logger,
+                local_rank=local_rank,
             )
             # valid_dataset = MultimodalDataset(
             #     args,
@@ -553,6 +658,8 @@ def load_datasets(args: argparse.Namespace):
                 mode="train",
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
+                logger=logger,
+                local_rank=local_rank,
             )
             # valid_dataset = TextEnrichDataset(
             #     args,
@@ -570,6 +677,8 @@ def load_datasets(args: argparse.Namespace):
                 mode="train",
                 prompt_sample_num=prompt_sample_num,
                 sample_num=data_sample_num,
+                logger=logger,
+                local_rank=local_rank,
             )
 
         if task.lower() == "seqrec":
@@ -578,6 +687,8 @@ def load_datasets(args: argparse.Namespace):
                 mode="valid",
                 prompt_sample_num=args.valid_prompt_sample_num,
                 sample_num=data_sample_num,
+                logger=logger,
+                local_rank=local_rank,
             )
         elif task.lower() == "mmseqrec":
             valid_dataset = MultimodalSeqRecDataset(
@@ -585,6 +696,8 @@ def load_datasets(args: argparse.Namespace):
                 mode="valid",
                 prompt_sample_num=args.valid_prompt_sample_num,
                 sample_num=data_sample_num,
+                logger=logger,
+                local_rank=local_rank,
             )
         elif task.lower() == "seqrec_without_id":
             valid_dataset = SeqRectWithoutItemIDDataset_1(
@@ -592,6 +705,8 @@ def load_datasets(args: argparse.Namespace):
                 mode="valid",
                 prompt_sample_num=args.valid_prompt_sample_num,
                 sample_num=data_sample_num,
+                logger=logger,
+                local_rank=local_rank,
             )
         if dataset:
             train_datasets.append(dataset)
@@ -600,30 +715,37 @@ def load_datasets(args: argparse.Namespace):
     train_data = ConcatDataset(train_datasets)
     valid_data = ConcatDataset(valid_datasets)
 
-    print("Train sample nums:", len(train_data))
-    print("Valid sample nums:", len(valid_data))
+    if local_rank == 0:
+        log_func(f"Train sample nums: {len(train_data)}")
+        log_func(f"Valid sample nums: {len(valid_data)}")
     return train_data, valid_data
 
 
-def load_test_dataset(args: argparse.Namespace):
+def load_test_dataset(args: argparse.Namespace, logger=None, local_rank=0):
     """根据配置加载测试数据集"""
     if args.test_task.lower() == "seqrec":
         test_data = SeqRecDataset(
             args,
             mode="test",
             sample_num=args.sample_num,
+            logger=logger,
+            local_rank=local_rank,
         )
     elif args.test_task.lower() == "mmseqrec":
         test_data = MultimodalSeqRecDataset(
             args,
             mode="test",
             sample_num=args.sample_num,
+            logger=logger,
+            local_rank=local_rank,
         )
     elif args.test_task.lower() == "fusionseqrec":
         test_data = FusionSeqRecDataset(
             args,
             mode="test",
             sample_num=args.sample_num,
+            logger=logger,
+            local_rank=local_rank,
         )
     else:
         raise NotImplementedError
