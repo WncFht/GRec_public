@@ -1,27 +1,57 @@
 #!/usr/bin/env bash
-# local_wandb_merge.sh
-# 用法：./local_wandb_merge.sh  ~/Downloads/wandb_2024-08-31-120000.tar.gz
-set -e
+# sync_wandb_client.sh
+# 用法：
+#   普通包   : ./sync_wandb_client.sh wandb_2024-08-31.tar.gz
+#   分卷合并: ./sync_wandb_client.sh "wandb_2025-09-14-034028.part*"
+set -euo pipefail
 
-ARCHIVE="$1"
-[[ -z $ARCHIVE ]] && { echo "Usage: $0 <path_to_tar.gz>"; exit 1; }
+ARCHIVE_SPEC="$1"
+[[ -z $ARCHIVE_SPEC ]] && { echo "Usage: $0 <path_to_tar.gz|path_to_parts*>"; exit 1; }
 
-# 本地已同步的根目录
 LOCAL_ROOT="./wandb"
 mkdir -p "$LOCAL_ROOT"
 
-# 临时解压目录
+# ---------- 1. 分卷检测与合并 ----------
+MERGED_TAR=""
+if [[ "$ARCHIVE_SPEC" == *"part"* ]]; then
+    # 展开通配符并按数字序排序
+    PARTS=($(ls -1v $ARCHIVE_SPEC))
+    [[ ${#PARTS[@]} -eq 0 ]] && { echo "未找到任何分卷文件：$ARCHIVE_SPEC"; exit 2; }
+
+    # 取公共前缀，防止混进不同套
+    PREFIX=$(basename "${PARTS[0]}" | sed 's/\.part[0-9]*$//')
+    for f in "${PARTS[@]}"; do
+        [[ $(basename "$f") =~ ^$PREFIX\.part ]] || \
+            { echo "分卷文件不属于同一套: $f"; exit 3; }
+    done
+
+    MERGED_TAR=$(mktemp -t "${PREFIX}.merged.XXXXXX.tar.gz")
+    trap "rm -f $MERGED_TAR" EXIT
+
+    echo ">>> 合并分卷 -> $MERGED_TAR"
+    cat "${PARTS[@]}" > "$MERGED_TAR"
+    ARCHIVE="$MERGED_TAR"
+else
+    ARCHIVE="$ARCHIVE_SPEC"
+fi
+
+# ---------- 2. 解压 ----------
 TMP=$(mktemp -d)
-trap "rm -rf $TMP" EXIT
+trap "rm -rf $TMP ${MERGED_TAR:-}" EXIT
 
 echo ">>> 解压 $ARCHIVE ..."
-tar -xzf "$ARCHIVE" -C "$TMP"
+if file "$ARCHIVE" | grep -q gzip; then
+    tar -xzf "$ARCHIVE" -C "$TMP"
+else
+    tar -xf "$ARCHIVE" -C "$TMP"
+fi
 
-# 找到解压后的 wandb 根（兼容 tar 里多一层或少一层）
+# ---------- 3. 定位 wandb 目录 ----------
 WANDB_SRC=$(find "$TMP" -type d -name wandb -print -quit || true)
-[[ -z $WANDB_SRC ]] && WANDB_SRC="$TMP"   # 如果 tar 根就是 wandb
+[[ -z $WANDB_SRC ]] && WANDB_SRC="$TMP"
 
+# ---------- 4. 增量同步 ----------
 echo ">>> 增量合并到 $LOCAL_ROOT ..."
-rsync -a --update "$WANDB_SRC/" "$LOCAL_ROOT/"
+rsync -a --update  "$WANDB_SRC/" "$LOCAL_ROOT/"
 
 echo ">>> 完成。"

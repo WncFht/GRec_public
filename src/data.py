@@ -45,7 +45,9 @@ def _split_item_ids(all_item_ids: list[str], seed: int) -> dict[str, list[str]]:
 
 # 定义BaseDataset类，继承自PyTorch的Dataset
 class BaseDataset(Dataset):
-    def __init__(self, args: argparse.Namespace, logger=None, local_rank=0):
+    def __init__(
+        self, args: argparse.Namespace, dataset, logger=None, local_rank=0
+    ):
         super().__init__()
 
         self.args = args
@@ -53,7 +55,7 @@ class BaseDataset(Dataset):
         self.local_rank = local_rank
         self.log_func = logger.info if logger else print
 
-        self.dataset = self.args.dataset
+        self.dataset = dataset
         self.data_path = os.path.join(self.args.data_path, self.dataset)
 
         # 设置历史记录的最大长度、历史记录分隔符和索引文件
@@ -67,6 +69,10 @@ class BaseDataset(Dataset):
         self.new_tokens = None
         self.allowed_tokens = None
         self.all_items = None
+
+    def set_prompt(self, prompt_id):
+        # 设置当前使用的prompt ID
+        self.prompt_id = prompt_id
 
     def _load_data(self):
         # 从指定的索引文件中加载物品索引
@@ -144,6 +150,7 @@ class SeqRecDataset(BaseDataset):
     def __init__(
         self,
         args: argparse.Namespace,
+        dataset: str,
         mode="train",  # 数据集模式：训练、验证、测试
         prompt_sample_num=1,  # 每个数据点采样prompt的数量
         prompt_id=0,  # 使用的prompt ID
@@ -151,7 +158,7 @@ class SeqRecDataset(BaseDataset):
         logger=None,
         local_rank=0,
     ):
-        super().__init__(args, logger, local_rank)
+        super().__init__(args, dataset, logger, local_rank)
 
         self.mode = mode
         self.prompt_sample_num = prompt_sample_num
@@ -378,6 +385,7 @@ class MultimodalSeqRecDataset(BaseDataset):
     def __init__(
         self,
         args: argparse.Namespace,
+        dataset: str,
         mode: str = "train",
         prompt_sample_num: int = 1,
         prompt_id: int = 0,
@@ -385,7 +393,7 @@ class MultimodalSeqRecDataset(BaseDataset):
         logger=None,
         local_rank=0,
     ):
-        super().__init__(args, logger, local_rank)
+        super().__init__(args, dataset, logger, local_rank)
         self.mode = mode
         self.prompt_sample_num = prompt_sample_num
         self.prompt_id = prompt_id
@@ -550,6 +558,7 @@ class FusionSeqRecDataset(BaseDataset):
     def __init__(
         self,
         args: argparse.Namespace,
+        dataset: str,
         mode="train",
         prompt_sample_num=1,
         prompt_id=0,
@@ -557,7 +566,7 @@ class FusionSeqRecDataset(BaseDataset):
         logger=None,
         local_rank=0,
     ):
-        super().__init__(args, logger, local_rank)
+        super().__init__(args, dataset, logger, local_rank)
 
         self.mode = mode
         self.prompt_sample_num = prompt_sample_num
@@ -844,6 +853,7 @@ class ItemFeatDataset(BaseDataset):
     def __init__(
         self,
         args: argparse.Namespace,
+        dataset: str,
         task="item2index",
         mode="train",
         prompt_sample_num=1,
@@ -852,7 +862,7 @@ class ItemFeatDataset(BaseDataset):
         logger=None,
         local_rank=0,
     ):
-        super().__init__(args, logger, local_rank)
+        super().__init__(args, dataset, logger, local_rank)
 
         self.task = task.lower()
         self.mode = mode
@@ -866,7 +876,7 @@ class ItemFeatDataset(BaseDataset):
         # 加载数据并处理
         self._load_data()
         self.feat_data = self._process_data()
-        
+
         # 根据模式处理数据
         if self.mode == "valid":
             self.sample_valid = args.sample_valid
@@ -892,16 +902,18 @@ class ItemFeatDataset(BaseDataset):
         all_item_ids = list(self.indices.keys())
         split_map = _split_item_ids(all_item_ids, self.args.seed)
         item_ids_for_mode = split_map[self.mode]
-        
+
         if self.local_rank == 0:
-            self.log_func(f"ItemFeatDataset {self.task} {self.mode}: processing {len(item_ids_for_mode)} items")
+            self.log_func(
+                f"ItemFeatDataset {self.task} {self.dataset} {self.mode}: processing {len(item_ids_for_mode)} items"
+            )
 
         # 处理物品特征数据
         feat_data = []
         for iid in item_ids_for_mode:
             if iid not in self.item_feat:
                 continue
-                
+
             feat = self.item_feat[iid].copy()
             index = "".join(self.indices[iid])  # 物品ID对应的token字符串
             feat["item"] = index
@@ -917,7 +929,9 @@ class ItemFeatDataset(BaseDataset):
             feat_data = np.array(feat_data)[sample_idx].tolist()
 
         if self.local_rank == 0:
-            self.log_func(f"ItemFeatDataset {self.task} {self.mode}: final dataset size {len(feat_data)}")
+            self.log_func(
+                f"ItemFeatDataset {self.task} {self.mode}: final dataset size {len(feat_data)}"
+            )
 
         return feat_data
 
@@ -958,9 +972,12 @@ class ItemFeatDataset(BaseDataset):
     def __len__(self):
         # 返回数据集长度
         if self.mode == "valid":
-            return len(self.valid_text_data) if hasattr(self, 'valid_text_data') else 0
-        else:
-            return len(self.feat_data) * self.prompt_sample_num
+            return (
+                len(self.valid_text_data)
+                if hasattr(self, "valid_text_data")
+                else 0
+            )
+        return len(self.feat_data) * self.prompt_sample_num
 
     def _get_text_data(self, data, prompt):
         # 根据prompt和数据构造输入和输出文本
@@ -977,7 +994,7 @@ class ItemFeatDataset(BaseDataset):
         # 根据索引获取数据
         if self.mode == "valid":
             return self.valid_text_data[index]
-        
+
         idx = index // self.prompt_sample_num
         d = self.feat_data[idx]
 
@@ -988,7 +1005,7 @@ class ItemFeatDataset(BaseDataset):
             prompt_id = self.prompt_id
         else:
             raise NotImplementedError(f"Unsupported mode: {self.mode}")
-        
+
         prompt = self.prompts[prompt_id]
         input_text, label_text = self._get_text_data(d, prompt)
 
@@ -1006,6 +1023,7 @@ class MultimodalDataset(BaseDataset):
     def __init__(
         self,
         args: argparse.Namespace,
+        dataset: str,
         mode="train",
         task="mmitem2index",
         prompt_sample_num=1,
@@ -1014,7 +1032,7 @@ class MultimodalDataset(BaseDataset):
         logger=None,
         local_rank=0,
     ):
-        super().__init__(args, logger, local_rank)
+        super().__init__(args, dataset, logger, local_rank)
 
         self.mode = mode
         self.task = task.lower()
@@ -1043,14 +1061,17 @@ class MultimodalDataset(BaseDataset):
         self._load_item_metadata()  # 加载物品的元数据
         self._load_item2id()
         self._process_data()
-        
+
         # 根据模式处理数据
         if self.mode == "valid":
             self.sample_valid = args.sample_valid
             self.valid_prompt_id = args.valid_prompt_id
             self._construct_valid_text()
-            if self.sample_num > 0 and len(self.multimodal_data) > self.sample_num:
-                self.valid_text_data = self.valid_text_data[:self.sample_num]
+            if (
+                self.sample_num > 0
+                and len(self.multimodal_data) > self.sample_num
+            ):
+                self.valid_text_data = self.valid_text_data[: self.sample_num]
 
     def _load_item_metadata(self):
         """加载物品元数据（标题、描述等）"""
@@ -1149,7 +1170,9 @@ class MultimodalDataset(BaseDataset):
                 )
                 for prompt_id in prompt_ids:
                     prompt = self.prompts[prompt_id]
-                    input_text, label_text, image_path = self._get_text_data(data, prompt)
+                    input_text, label_text, image_path = self._get_text_data(
+                        data, prompt
+                    )
                     self.valid_text_data.append(
                         TrainingSample(
                             input_text=input_text,
@@ -1164,7 +1187,9 @@ class MultimodalDataset(BaseDataset):
             prompt = self.prompts[self.valid_prompt_id]
             for i in range(len(self.multimodal_data)):
                 data = self.multimodal_data[i]
-                input_text, label_text, image_path = self._get_text_data(data, prompt)
+                input_text, label_text, image_path = self._get_text_data(
+                    data, prompt
+                )
                 self.valid_text_data.append(
                     TrainingSample(
                         input_text=input_text,
@@ -1178,14 +1203,17 @@ class MultimodalDataset(BaseDataset):
     def __len__(self):
         # 返回数据集长度
         if self.mode == "valid":
-            return len(self.valid_text_data) if hasattr(self, 'valid_text_data') else 0
-        else:
-            return len(self.multimodal_data) * self.prompt_sample_num
+            return (
+                len(self.valid_text_data)
+                if hasattr(self, "valid_text_data")
+                else 0
+            )
+        return len(self.multimodal_data) * self.prompt_sample_num
 
     def __getitem__(self, index):
         if self.mode == "valid":
             return self.valid_text_data[index]
-            
+
         idx = index // self.prompt_sample_num
         data = self.multimodal_data[idx]
 
@@ -1196,7 +1224,7 @@ class MultimodalDataset(BaseDataset):
             prompt_id = self.prompt_id
         else:
             raise NotImplementedError(f"Unsupported mode: {self.mode}")
-        
+
         prompt = self.prompts[prompt_id]
         input_text, label_text, image_path = self._get_text_data(data, prompt)
 
@@ -1216,13 +1244,14 @@ class TextEnrichDataset(BaseDataset):
     def __init__(
         self,
         args: argparse.Namespace,
+        dataset: str,
         mode="train",
         prompt_sample_num=1,
         sample_num=-1,
         logger=None,
         local_rank=0,
     ):
-        super().__init__(args, logger, local_rank)
+        super().__init__(args, dataset, logger, local_rank)
 
         self.mode = mode
         self.prompt_sample_num = prompt_sample_num
@@ -1301,7 +1330,9 @@ class TextEnrichDataset(BaseDataset):
                 ]:
                     if key not in metadata:
                         if self.local_rank == 0:
-                            self.log_func(f"item_id: {item_id} 的metadata中缺少 {key}")
+                            self.log_func(
+                                f"item_id: {item_id} 的metadata中缺少 {key}"
+                            )
                 continue
 
             image_file = f"{self.id2item[item_id]}.jpg"
@@ -1332,7 +1363,9 @@ class TextEnrichDataset(BaseDataset):
             )
             self.textenrich_data.append(enriched_data)
         if self.local_rank == 0:
-            self.log_func(f"len(self.textenrich_data): {len(self.textenrich_data)}")
+            self.log_func(
+                f"len(self.textenrich_data): {len(self.textenrich_data)}"
+            )
 
         # 数据采样, 调试的时候调用
         if self.sample_num > 0 and len(self.textenrich_data) > self.sample_num:
@@ -1388,13 +1421,14 @@ class TextEnrichWihtoutItemIDDataset(BaseDataset):
     def __init__(
         self,
         args: argparse.Namespace,
+        dataset: str,
         mode="train",
         prompt_sample_num=1,
         sample_num=-1,
         logger=None,
         local_rank=0,
     ):
-        super().__init__(args, logger, local_rank)
+        super().__init__(args, dataset, logger, local_rank)
 
         self.mode = mode
         self.prompt_sample_num = prompt_sample_num
@@ -1480,7 +1514,9 @@ class TextEnrichWihtoutItemIDDataset(BaseDataset):
                 ]:
                     if key not in metadata:
                         if self.local_rank == 0:
-                            self.log_func(f"item_id: {item_id} 的metadata中缺少 {key}")
+                            self.log_func(
+                                f"item_id: {item_id} 的metadata中缺少 {key}"
+                            )
                 continue
 
             image_file = f"{self.id2item[item_id]}.jpg"
@@ -1511,7 +1547,9 @@ class TextEnrichWihtoutItemIDDataset(BaseDataset):
             )
             self.textenrich_data.append(enriched_data)
         if self.local_rank == 0:
-            self.log_func(f"len(self.textenrich_data): {len(self.textenrich_data)}")
+            self.log_func(
+                f"len(self.textenrich_data): {len(self.textenrich_data)}"
+            )
 
     def _get_text_data(
         self, data: EnrichedData, prompt: dict
@@ -1556,6 +1594,7 @@ class SeqRectWithoutItemIDDataset_1(BaseDataset):
     def __init__(
         self,
         args: argparse.Namespace,
+        dataset: str,
         mode="train",  # 数据集模式：训练、验证、测试
         prompt_sample_num=1,  # 每个数据点采样prompt的数量
         prompt_id=0,  # 使用的prompt ID
@@ -1563,7 +1602,7 @@ class SeqRectWithoutItemIDDataset_1(BaseDataset):
         logger=None,
         local_rank=0,
     ):
-        super().__init__(args, logger, local_rank)
+        super().__init__(args, dataset, logger, local_rank)
 
         self.mode = mode
         self.prompt_sample_num = prompt_sample_num
@@ -1780,6 +1819,7 @@ class SeqRecWithTitleDataset(BaseDataset):
     def __init__(
         self,
         args: argparse.Namespace,
+        dataset: str,
         mode="train",  # 数据集模式：训练、验证、测试
         prompt_sample_num=1,  # 每个数据点采样prompt的数量
         prompt_id=0,  # 使用的prompt ID
@@ -1787,7 +1827,7 @@ class SeqRecWithTitleDataset(BaseDataset):
         logger=None,
         local_rank=0,
     ):
-        super().__init__(args, logger, local_rank)
+        super().__init__(args, dataset, logger, local_rank)
 
         self.mode = mode
         self.prompt_sample_num = prompt_sample_num

@@ -3,6 +3,7 @@ import datetime
 import json
 import os
 import random
+import re
 from typing import Any
 
 import numpy as np
@@ -204,11 +205,13 @@ def load_model_for_inference(
     return model, processor
 
 
-def _load_processor_and_tokenizer(args, config, base_model_path, local_rank, log_func):
+def _load_processor_and_tokenizer(
+    args, config, base_model_path, local_rank, log_func
+):
     """加载处理器和分词器"""
     processor_class = config["processor_class"]
     from_pretrained_kwargs = config.get("from_pretrained_kwargs", {})
-    
+
     if local_rank == 0:
         log_func(f"从 '{base_model_path}' 加载处理器/分词器...")
 
@@ -227,15 +230,17 @@ def _load_processor_and_tokenizer(args, config, base_model_path, local_rank, log
             **from_pretrained_kwargs,
         )
         tokenizer = processor.tokenizer
-        
+
     return processor, tokenizer
 
 
-def _load_base_model(args, config, base_model_path, config_obj, local_rank, log_func):
+def _load_base_model(
+    args, config, base_model_path, config_obj, local_rank, log_func
+):
     """加载基础模型"""
     model_class = config["model_class"]
     from_pretrained_kwargs = config.get("from_pretrained_kwargs", {})
-    
+
     if local_rank == 0:
         log_func(f"从 '{base_model_path}' 加载基础模型...")
 
@@ -260,7 +265,9 @@ def _load_base_model(args, config, base_model_path, config_obj, local_rank, log_
     return model
 
 
-def _extend_vocabulary(args, model, tokenizer, new_tokens, local_rank, log_func, logger=None):
+def _extend_vocabulary(
+    args, model, tokenizer, new_tokens, local_rank, log_func, logger=None
+):
     """扩展词汇表"""
     # 获取新tokens
     if new_tokens is None:
@@ -268,7 +275,9 @@ def _extend_vocabulary(args, model, tokenizer, new_tokens, local_rank, log_func,
         new_tokens = train_data.datasets[0].get_new_tokens()
 
     if local_rank == 0:
-        log_func(f"从数据集中获取到 {len(new_tokens)} 个新 token 用于扩展词汇表。")
+        log_func(
+            f"从数据集中获取到 {len(new_tokens)} 个新 token 用于扩展词汇表。"
+        )
 
     original_vocab_size = len(tokenizer)
     tokenizer.add_tokens(new_tokens, special_tokens=True)
@@ -286,7 +295,9 @@ def _extend_vocabulary(args, model, tokenizer, new_tokens, local_rank, log_func,
     return original_vocab_size, new_vocab_size, new_tokens
 
 
-def _save_token_metadata(args, original_vocab_size, new_vocab_size, new_tokens, local_rank):
+def _save_token_metadata(
+    args, original_vocab_size, new_vocab_size, new_tokens, local_rank
+):
     """保存词汇表元数据"""
     ensure_dir(args.output_dir)
     if local_rank == 0:
@@ -307,7 +318,11 @@ def _setup_lora(args, model, local_rank, log_func):
     if not (hasattr(args, "use_lora") and args.use_lora):
         return model
 
-    from peft import LoraConfig, TaskType, get_peft_model, set_peft_model_state_dict
+    from peft import (
+        LoraConfig,
+        TaskType,
+        get_peft_model,
+    )
 
     if local_rank == 0:
         log_func("启用LoRA训练...")
@@ -343,14 +358,20 @@ def _setup_lora(args, model, local_rank, log_func):
 
 def _load_lora_checkpoint(args, model, local_rank, log_func):
     """加载LoRA检查点权重"""
-    if not (hasattr(args, "resume_from_checkpoint") and args.resume_from_checkpoint):
+    if not (
+        hasattr(args, "resume_from_checkpoint") and args.resume_from_checkpoint
+    ):
         return
 
     from peft import set_peft_model_state_dict
 
-    checkpoint_name = os.path.join(args.resume_from_checkpoint, "adapter_model.safetensors")
+    checkpoint_name = os.path.join(
+        args.resume_from_checkpoint, "adapter_model.safetensors"
+    )
     if not os.path.exists(checkpoint_name):
-        checkpoint_name = os.path.join(args.resume_from_checkpoint, "adapter_model.bin")
+        checkpoint_name = os.path.join(
+            args.resume_from_checkpoint, "adapter_model.bin"
+        )
 
     if os.path.exists(checkpoint_name):
         if local_rank == 0:
@@ -366,17 +387,27 @@ def _freeze_only_embeddings(model, local_rank, log_func):
     # 先冻结所有参数
     for name, param in model.named_parameters():
         param.requires_grad = False
-    
+
     # 然后只解冻embedding相关参数
     embedding_unfrozen = False
-    
+
     # 尝试不同的embedding参数路径
     embedding_paths = [
-        ("language_model.embed_tokens", lambda m: getattr(m.language_model, "embed_tokens", None) if hasattr(m, "language_model") else None),
+        (
+            "language_model.embed_tokens",
+            lambda m: getattr(m.language_model, "embed_tokens", None)
+            if hasattr(m, "language_model")
+            else None,
+        ),
         ("embed_tokens", lambda m: getattr(m, "embed_tokens", None)),
-        ("model.embed_tokens", lambda m: getattr(m.model, "embed_tokens", None) if hasattr(m, "model") else None),
+        (
+            "model.embed_tokens",
+            lambda m: getattr(m.model, "embed_tokens", None)
+            if hasattr(m, "model")
+            else None,
+        ),
     ]
-    
+
     for path_name, path_getter in embedding_paths:
         embed_module = path_getter(model)
         if embed_module is not None:
@@ -386,13 +417,18 @@ def _freeze_only_embeddings(model, local_rank, log_func):
                 log_func(f"解冻 {path_name} 参数")
             embedding_unfrozen = True
             break
-    
+
     # 尝试解冻lm_head参数（通常embedding和lm_head共享权重）
     lm_head_paths = [
         ("lm_head", lambda m: getattr(m, "lm_head", None)),
-        ("language_model.lm_head", lambda m: getattr(m.language_model, "lm_head", None) if hasattr(m, "language_model") else None),
+        (
+            "language_model.lm_head",
+            lambda m: getattr(m.language_model, "lm_head", None)
+            if hasattr(m, "language_model")
+            else None,
+        ),
     ]
-    
+
     for path_name, path_getter in lm_head_paths:
         lm_head_module = path_getter(model)
         if lm_head_module is not None:
@@ -401,18 +437,20 @@ def _freeze_only_embeddings(model, local_rank, log_func):
             if local_rank == 0:
                 log_func(f"解冻 {path_name} 参数")
             break
-    
+
     if not embedding_unfrozen and local_rank == 0:
         log_func("警告: 未找到embedding参数，请检查模型结构")
-        
+
     if local_rank == 0:
         log_func("只训练embedding参数，冻结其他所有参数")
 
 
-def _apply_freeze_strategy(args, model, original_vocab_size, local_rank, log_func, logger):
+def _apply_freeze_strategy(
+    args, model, original_vocab_size, local_rank, log_func, logger
+):
     """应用参数冻结策略"""
     embedding_hooks = []
-    
+
     if not hasattr(args, "freeze"):
         return embedding_hooks
 
@@ -437,7 +475,7 @@ def _apply_freeze_strategy(args, model, original_vocab_size, local_rank, log_fun
             embedding_hooks = freeze_original_embeddings_with_hook(
                 model, original_vocab_size, logger
             )
-    
+
     return embedding_hooks
 
 
@@ -468,6 +506,7 @@ def load_model_for_training(
     Returns:
     -------
         tuple: (model, processor, original_vocab_size, new_vocab_size, new_tokens, embedding_hooks)
+
     """
     model_type = args.model_type
     base_model_path = args.base_model
@@ -482,7 +521,10 @@ def load_model_for_training(
     # 1. 获取配置
     config = MODEL_CONFIG[model_type]
     from transformers import AutoConfig
-    config_obj = AutoConfig.from_pretrained(base_model_path, trust_remote_code=True)
+
+    config_obj = AutoConfig.from_pretrained(
+        base_model_path, trust_remote_code=True
+    )
 
     # 2. 加载处理器和分词器
     processor, tokenizer = _load_processor_and_tokenizer(
@@ -490,7 +532,9 @@ def load_model_for_training(
     )
 
     # 3. 加载基础模型
-    model = _load_base_model(args, config, base_model_path, config_obj, local_rank, log_func)
+    model = _load_base_model(
+        args, config, base_model_path, config_obj, local_rank, log_func
+    )
 
     # 4. 扩展词汇表
     original_vocab_size, new_vocab_size, new_tokens = _extend_vocabulary(
@@ -498,7 +542,9 @@ def load_model_for_training(
     )
 
     # 5. 保存词汇表元数据
-    _save_token_metadata(args, original_vocab_size, new_vocab_size, new_tokens, local_rank)
+    _save_token_metadata(
+        args, original_vocab_size, new_vocab_size, new_tokens, local_rank
+    )
 
     # 6. 配置LoRA（如果启用）
     model = _setup_lora(args, model, local_rank, log_func)
@@ -547,7 +593,7 @@ def ensure_dir(dir_path):
 def load_datasets(args: argparse.Namespace, logger=None, local_rank=0):
     """根据配置加载训练和验证数据集"""
     log_func = logger.info if logger else print
-    
+
     tasks = args.tasks.split(",")
 
     train_prompt_sample_num = [
@@ -573,168 +619,186 @@ def load_datasets(args: argparse.Namespace, logger=None, local_rank=0):
     for task, prompt_sample_num, data_sample_num in zip(
         tasks, train_prompt_sample_num, train_data_sample_num, strict=False
     ):
-        dataset, valid_dataset = None, None
-        # 统一将配置对象传递给各个数据集
-        if task.lower() == "seqrec":
-            dataset = SeqRecDataset(
-                args,
-                mode="train",
-                prompt_sample_num=prompt_sample_num,
-                sample_num=data_sample_num,
-                logger=logger,
-                local_rank=local_rank,
-            )
-        elif task.lower() == "mmseqrec":
-            dataset = MultimodalSeqRecDataset(
-                args,
-                mode="train",
-                prompt_sample_num=prompt_sample_num,
-                sample_num=data_sample_num,
-                logger=logger,
-                local_rank=local_rank,
-            )
-        elif task.lower() == "seqrec_without_id":
-            dataset = SeqRectWithoutItemIDDataset_1(
-                args,
-                mode="train",
-                prompt_sample_num=prompt_sample_num,
-                sample_num=data_sample_num,
-                logger=logger,
-                local_rank=local_rank,
-            )
-        elif task.lower() == "seqrec_with_title":
-            dataset = SeqRecWithTitleDataset(
-                args,
-                mode="train",
-                prompt_sample_num=prompt_sample_num,
-                sample_num=data_sample_num,
-                logger=logger,
-                local_rank=local_rank,
-            )
-        elif task.lower() in ["item2index", "index2item"]:
-            dataset = ItemFeatDataset(
-                args,
-                task=task.lower(),
-                mode="train",
-                prompt_sample_num=prompt_sample_num,
-                sample_num=data_sample_num,
-                logger=logger,
-                local_rank=local_rank,
-            )
+        dataset_list = args.dataset.split(",")
+        for dataset in dataset_list:
+            train_dataset, valid_dataset = None, None
+            # 统一将配置对象传递给各个数据集
+            if task.lower() == "seqrec":
+                train_dataset = SeqRecDataset(
+                    args,
+                    mode="train",
+                    dataset=dataset,
+                    prompt_sample_num=prompt_sample_num,
+                    sample_num=data_sample_num,
+                    logger=logger,
+                    local_rank=local_rank,
+                )
+            elif task.lower() == "mmseqrec":
+                train_dataset = MultimodalSeqRecDataset(
+                    args,
+                    mode="train",
+                    dataset=dataset,
+                    prompt_sample_num=prompt_sample_num,
+                    sample_num=data_sample_num,
+                    logger=logger,
+                    local_rank=local_rank,
+                )
+            elif task.lower() == "seqrec_without_id":
+                train_dataset = SeqRectWithoutItemIDDataset_1(
+                    args,
+                    mode="train",
+                    dataset=dataset,
+                    prompt_sample_num=prompt_sample_num,
+                    sample_num=data_sample_num,
+                    logger=logger,
+                    local_rank=local_rank,
+                )
+            elif task.lower() == "seqrec_with_title":
+                train_dataset = SeqRecWithTitleDataset(
+                    args,
+                    mode="train",
+                    dataset=dataset,
+                    prompt_sample_num=prompt_sample_num,
+                    sample_num=data_sample_num,
+                    logger=logger,
+                    local_rank=local_rank,
+                )
+            elif task.lower() in ["item2index", "index2item"]:
+                train_dataset = ItemFeatDataset(
+                    args,
+                    task=task.lower(),
+                    mode="train",
+                    dataset=dataset,
+                    prompt_sample_num=prompt_sample_num,
+                    sample_num=data_sample_num,
+                    logger=logger,
+                    local_rank=local_rank,
+                )
 
-        elif task.lower() == "fusionseqrec":
-            dataset = FusionSeqRecDataset(
-                args,
-                mode="train",
-                prompt_sample_num=prompt_sample_num,
-                sample_num=data_sample_num,
-                logger=logger,
-                local_rank=local_rank,
-            )
+            elif task.lower() == "fusionseqrec":
+                train_dataset = FusionSeqRecDataset(
+                    args,
+                    mode="train",
+                    dataset=dataset,
+                    prompt_sample_num=prompt_sample_num,
+                    sample_num=data_sample_num,
+                    logger=logger,
+                    local_rank=local_rank,
+                )
 
-        elif task.lower() in ["mmitem2index", "mmindex2item"]:
-            dataset = MultimodalDataset(
-                args,
-                mode="train",
-                task=task.lower(),
-                prompt_sample_num=prompt_sample_num,
-                sample_num=data_sample_num,
-                logger=logger,
-                local_rank=local_rank,
-            )
-            # valid_dataset = MultimodalDataset(
-            #     args,
-            #     mode="valid",
-            #     task=task.lower(),
-            #     prompt_sample_num=prompt_sample_num,
-            #     sample_num=data_sample_num,
-            # )
-            # print(
-            #     f"Prepare MultimodalDataset for {task} - Train: {len(dataset)}, Valid: {len(valid_dataset)}"
-            # )
+            elif task.lower() in ["mmitem2index", "mmindex2item"]:
+                train_dataset = MultimodalDataset(
+                    args,
+                    task=task.lower(),
+                    mode="train",
+                    dataset=dataset,
+                    prompt_sample_num=prompt_sample_num,
+                    sample_num=data_sample_num,
+                    logger=logger,
+                    local_rank=local_rank,
+                )
+                # valid_dataset = MultimodalDataset(
+                #     args,
+                #     mode="valid",
+                #     task=task.lower(),
+                #     dataset=dataset,
+                #     prompt_sample_num=prompt_sample_num,
+                #     sample_num=data_sample_num,
+                # )
+                # print(
+                #     f"Prepare MultimodalDataset for {task} - Train: {len(train_dataset)}, Valid: {len(valid_dataset)}"
+                # )
 
-        elif task.lower() == "mmitemenrich":
-            dataset = TextEnrichDataset(
-                args,
-                mode="train",
-                prompt_sample_num=prompt_sample_num,
-                sample_num=data_sample_num,
-                logger=logger,
-                local_rank=local_rank,
-            )
-            # valid_dataset = TextEnrichDataset(
-            #     args,
-            #     mode="valid",
-            #     prompt_sample_num=prompt_sample_num,
-            #     sample_num=data_sample_num,
-            # )
-            # print(
-            #     f"Prepare TextEnrichDataset for {task} - Train: {len(dataset)}, Valid: {len(valid_dataset)}"
-            # )
+            elif task.lower() == "mmitemenrich":
+                train_dataset = TextEnrichDataset(
+                    args,
+                    mode="train",
+                    dataset=dataset,
+                    prompt_sample_num=prompt_sample_num,
+                    sample_num=data_sample_num,
+                    logger=logger,
+                    local_rank=local_rank,
+                )
+                # valid_dataset = TextEnrichDataset(
+                #     args,
+                #     mode="valid",
+                #     dataset=dataset,
+                #     prompt_sample_num=prompt_sample_num,
+                #     sample_num=data_sample_num,
+                # )
+                # print(
+                #     f"Prepare TextEnrichDataset for {task} - Train: {len(train_dataset)}, Valid: {len(valid_dataset)}"
+                # )
 
-        elif task.lower() == "mmitemenrichwithoutid":
-            dataset = TextEnrichWihtoutItemIDDataset(
-                args,
-                mode="train",
-                prompt_sample_num=prompt_sample_num,
-                sample_num=data_sample_num,
-                logger=logger,
-                local_rank=local_rank,
-            )
+            elif task.lower() == "mmitemenrichwithoutid":
+                train_dataset = TextEnrichWihtoutItemIDDataset(
+                    args,
+                    mode="train",
+                    dataset=dataset,
+                    prompt_sample_num=prompt_sample_num,
+                    sample_num=data_sample_num,
+                    logger=logger,
+                    local_rank=local_rank,
+                )
 
-        if task.lower() == "seqrec":
-            valid_dataset = SeqRecDataset(
-                args,
-                mode="valid",
-                prompt_sample_num=args.valid_prompt_sample_num,
-                sample_num=data_sample_num,
-                logger=logger,
-                local_rank=local_rank,
-            )
-        elif task.lower() == "mmseqrec":
-            valid_dataset = MultimodalSeqRecDataset(
-                args,
-                mode="valid",
-                prompt_sample_num=args.valid_prompt_sample_num,
-                sample_num=data_sample_num,
-                logger=logger,
-                local_rank=local_rank,
-            )
-        elif task.lower() == "seqrec_without_id":
-            valid_dataset = SeqRectWithoutItemIDDataset_1(
-                args,
-                mode="valid",
-                prompt_sample_num=args.valid_prompt_sample_num,
-                sample_num=data_sample_num,
-                logger=logger,
-                local_rank=local_rank,
-            )
-        elif task.lower() in ["item2index", "index2item"]:
-            valid_dataset = ItemFeatDataset(
-                args,
-                task=task.lower(),
-                mode="valid",
-                prompt_sample_num=args.valid_prompt_sample_num,
-                sample_num=data_sample_num,
-                logger=logger,
-                local_rank=local_rank,
-            )
-        elif task.lower() in ["mmitem2index", "mmindex2item"]:
-            valid_dataset = MultimodalDataset(
-                args,
-                mode="valid",
-                task=task.lower(),
-                prompt_sample_num=args.valid_prompt_sample_num,
-                sample_num=data_sample_num,
-                logger=logger,
-                local_rank=local_rank,
-            )
-        if dataset:
-            train_datasets.append(dataset)
-        if valid_dataset:
-            valid_datasets.append(valid_dataset)
-    train_data = ConcatDataset(train_datasets)
-    valid_data = ConcatDataset(valid_datasets)
+            if task.lower() == "seqrec":
+                valid_dataset = SeqRecDataset(
+                    args,
+                    mode="valid",
+                    dataset=dataset,
+                    prompt_sample_num=args.valid_prompt_sample_num,
+                    sample_num=data_sample_num,
+                    logger=logger,
+                    local_rank=local_rank,
+                )
+            elif task.lower() == "mmseqrec":
+                valid_dataset = MultimodalSeqRecDataset(
+                    args,
+                    mode="valid",
+                    dataset=dataset,
+                    prompt_sample_num=args.valid_prompt_sample_num,
+                    sample_num=data_sample_num,
+                    logger=logger,
+                    local_rank=local_rank,
+                )
+            elif task.lower() == "seqrec_without_id":
+                valid_dataset = SeqRectWithoutItemIDDataset_1(
+                    args,
+                    mode="valid",
+                    dataset=dataset,
+                    prompt_sample_num=args.valid_prompt_sample_num,
+                    sample_num=data_sample_num,
+                    logger=logger,
+                    local_rank=local_rank,
+                )
+            elif task.lower() in ["item2index", "index2item"]:
+                valid_dataset = ItemFeatDataset(
+                    args,
+                    task=task.lower(),
+                    mode="valid",
+                    dataset=dataset,
+                    prompt_sample_num=args.valid_prompt_sample_num,
+                    sample_num=data_sample_num,
+                    logger=logger,
+                    local_rank=local_rank,
+                )
+            elif task.lower() in ["mmitem2index", "mmindex2item"]:
+                valid_dataset = MultimodalDataset(
+                    args,
+                    task=task.lower(),
+                    mode="valid",
+                    dataset=dataset,
+                    prompt_sample_num=args.valid_prompt_sample_num,
+                    sample_num=data_sample_num,
+                    logger=logger,
+                    local_rank=local_rank,
+                )
+            if train_dataset:
+                train_datasets.append(train_dataset)
+            if valid_dataset:
+                valid_datasets.append(valid_dataset)
+        train_data = ConcatDataset(train_datasets)
+        valid_data = ConcatDataset(valid_datasets)
 
     if local_rank == 0:
         log_func(f"Train sample nums: {len(train_data)}")
@@ -744,50 +808,57 @@ def load_datasets(args: argparse.Namespace, logger=None, local_rank=0):
 
 def load_test_dataset(args: argparse.Namespace, logger=None, local_rank=0):
     """根据配置加载测试数据集"""
-    if args.test_task.lower() == "seqrec":
-        test_data = SeqRecDataset(
-            args,
-            mode="test",
-            sample_num=args.sample_num,
-            logger=logger,
-            local_rank=local_rank,
-        )
-    elif args.test_task.lower() == "mmseqrec":
-        test_data = MultimodalSeqRecDataset(
-            args,
-            mode="test",
-            sample_num=args.sample_num,
-            logger=logger,
-            local_rank=local_rank,
-        )
-    elif args.test_task.lower() == "fusionseqrec":
-        test_data = FusionSeqRecDataset(
-            args,
-            mode="test",
-            sample_num=args.sample_num,
-            logger=logger,
-            local_rank=local_rank,
-        )
-    elif args.test_task.lower() in ["item2index", "index2item"]:
-        test_data = ItemFeatDataset(
-            args,
-            task=args.test_task.lower(),
-            mode="test",
-            sample_num=args.sample_num,
-            logger=logger,
-            local_rank=local_rank,
-        )
-    elif args.test_task.lower() in ["mmitem2index", "mmindex2item"]:
-        test_data = MultimodalDataset(
-            args,
-            mode="test",
-            task=args.test_task.lower(),
-            sample_num=args.sample_num,
-            logger=logger,
-            local_rank=local_rank,
-        )
-    else:
-        raise NotImplementedError
+    dataset_list = args.dataset.split(",")
+    for dataset in dataset_list:
+        if args.test_task.lower() == "seqrec":
+            test_data = SeqRecDataset(
+                args,
+                mode="test",
+                dataset=dataset,
+                sample_num=args.sample_num,
+                logger=logger,
+                local_rank=local_rank,
+            )
+        elif args.test_task.lower() == "mmseqrec":
+            test_data = MultimodalSeqRecDataset(
+                args,
+                mode="test",
+                dataset=dataset,
+                sample_num=args.sample_num,
+                logger=logger,
+                local_rank=local_rank,
+            )
+        elif args.test_task.lower() == "fusionseqrec":
+            test_data = FusionSeqRecDataset(
+                args,
+                mode="test",
+                dataset=dataset,
+                sample_num=args.sample_num,
+                logger=logger,
+                local_rank=local_rank,
+            )
+        elif args.test_task.lower() in ["item2index", "index2item"]:
+            test_data = ItemFeatDataset(
+                args,
+                task=args.test_task.lower(),
+                mode="test",
+                dataset=dataset,
+                sample_num=args.sample_num,
+                logger=logger,
+                local_rank=local_rank,
+            )
+        elif args.test_task.lower() in ["mmitem2index", "mmindex2item"]:
+            test_data = MultimodalDataset(
+                args,
+                mode="test",
+                dataset=dataset,
+                task=args.test_task.lower(),
+                sample_num=args.sample_num,
+                logger=logger,
+                local_rank=local_rank,
+            )
+        else:
+            raise NotImplementedError
 
     return test_data
 
@@ -845,7 +916,9 @@ def make_run_name(args: argparse.Namespace) -> str:
 
     method = "Lora" if args.use_lora else "Finetune"
 
-    return f"{base_name}__{dataset}__{method}__b{batch_size}__gc{gc_flag}__{tasks}__p{prompt_num}__idx{idx_key}__{timestamp}"
+    lr = args.learning_rate
+
+    return f"{base_name}__{dataset}__{method}__lr{lr}__b{batch_size}__gc{gc_flag}__{tasks}__p{prompt_num}__idx{idx_key}__{timestamp}"
 
 
 def verify_token_ordering(
@@ -965,3 +1038,29 @@ def freeze_original_embeddings_with_hook(
     #         print("冻结 visual.rotary_pos_emb 参数")
 
     return hooks
+
+
+# 1. 仅剔除“框架”特殊 token，保留 item token
+FRAMEWORK_SPECIAL = {
+    "<s>",
+    "</s>",
+    "<unk>",
+    "<pad>",
+    "<|endoftext|>",
+    "<|im_start|>",
+    "<|im_end|>",
+}
+# 2. 预编译空白符正则
+WHITE_PAT = re.compile(r"\s+")
+
+
+def clean_text(text: str) -> str:
+    """
+    只去掉框架特殊 token 和空白，完全保留 <a_*> <b_*> <c_*> <d_*> 等用户 token
+    """
+    # 去掉框架特殊 token
+    for tok in FRAMEWORK_SPECIAL:
+        text = text.replace(tok, "")
+    # 去掉所有空白（空格、换行、制表）
+    text = WHITE_PAT.sub("", text)
+    return text.strip()
