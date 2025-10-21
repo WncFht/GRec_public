@@ -21,3 +21,5 @@ Qwen2.5-VL
 data/
 
 wandb_*.tar.gz
+
+verl/*
