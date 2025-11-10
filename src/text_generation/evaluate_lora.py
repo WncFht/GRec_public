@@ -267,7 +267,7 @@ class TextGenerationBenchmark:
                 start_index = inputs["input_ids"].shape[1]
                 generated_tokens = outputs[:, start_index:]
                 generated_texts = tokenizer.batch_decode(
-                    generated_tokens, skip_special_tokens=True
+                    generated_tokens, skip_special_tokens=False
                 )
 
                 # 【调试模式】如果开启，打印详细信息并只处理一个批次
@@ -283,7 +283,7 @@ class TextGenerationBenchmark:
                     # 注意：input_text需要从dataloader外部获取，或者在collator中也返回
                     # 为了简化，我们直接打印解码后的输入
                     decoded_input = tokenizer.decode(
-                        inputs["input_ids"][0], skip_special_tokens=True
+                        inputs["input_ids"][0], skip_special_tokens=False
                     )
                     print("-" * 70)
                     print(f"✅ MODEL INPUT (Decoded):\n{decoded_input}")

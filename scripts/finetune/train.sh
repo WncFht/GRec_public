@@ -1,13 +1,15 @@
 #!/bin/bash
-
-export CUDA_VISIBLE_DEVICES=4
+export CUDA_VISIBLE_DEVICES=1
+export WANDB_MODE=offline
+export WANDB_PROJECT=GRec
+export PYTHONUNBUFFERED=1
 
 DATASET=Instruments
-BASE_MODEL=Qwen/Qwen2-VL-7B-Instruct
+BASE_MODEL=./ckpt/base_model/Qwen2-VL-2B-Instruct
 MODEL_TYPE=qwen2_vl
 DATA_PATH=./data
 RATIO_DATASET=1
-OUTPUT_DIR=./ckpt/$DATASET/Qwen2-VL-7B-Instruct-seqrec-$RATIO_DATASET-qwen7B
+OUTPUT_DIR=./ckpt/$DATASET/Qwen2-VL-2B-Instruct-mmitemenrich-lora-$RATIO_DATASET-qwen7B
 
 # 检查是否为调试模式
 DEBUG_MODE=false
@@ -27,16 +29,20 @@ CMD="python -m src.finetune.unified_multitask_train \
     --dataset $DATASET \
     --data_path $DATA_PATH \
     --per_device_batch_size 2 \
-    --epochs 4 \
+    --epochs 6 \
+    --use_lora \
+    --gradient_accumulation_steps 2 \
+    --use_gradient_checkpointing \
     --weight_decay 0.01 \
     --save_and_eval_strategy epoch \
     --bf16 \
     --freeze visual \
     --only_train_response \
-    --tasks seqrec \
-    --train_prompt_sample_num 1 \
-    --train_data_sample_num 0 \
+    --tasks item2index,index2item \
+    --train_prompt_sample_num 1,1 \
+    --train_data_sample_num 0,0 \
     --ratio_dataset $RATIO_DATASET \
+    --report_to wandb \
     --index_file .index_qwen7B.json"
 
 # 根据调试模式执行

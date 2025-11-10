@@ -66,7 +66,7 @@ def main(args: argparse.Namespace):
             else processor
         )
         output_texts = tokenizer.batch_decode(
-            output_ids, skip_special_tokens=True
+            output_ids, skip_special_tokens=False
         )
 
         print("生成结果:")

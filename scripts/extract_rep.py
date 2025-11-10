@@ -19,7 +19,7 @@ from data_process.qwen_embeddings import (
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default="Instruments")
-    parser.add_argument("--model", type=str, default="Qwen2-VL-2B-Instruct")
+    parser.add_argument("--model", type=str, default="Qwen2.5-VL-3B-Instruct")
     parser.add_argument("--out-dir", type=str, default="reps")
     parser.add_argument(
         "--modes", type=str, default="orig,orig_enhanced,enhanced"

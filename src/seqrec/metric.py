@@ -6,7 +6,11 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.collator import UnifiedTestCollator
+from src.collator import (
+    ChatTemplateTestCollator,
+    TestCollator,
+    UnifiedTestCollator,
+)
 from src.evaluate import get_metrics_results, get_topk_results
 from src.parser import parse_dataset_args, parse_global_args, parse_test_args
 from src.prompt import all_prompt
@@ -48,7 +52,19 @@ def test(args: argparse.Namespace):
 
     # 准备数据集和数据加载器
     test_data = load_test_dataset(args)
-    collator = UnifiedTestCollator(args, processor_or_tokenizer=processor)
+
+    print("Num test data:", len(test_data))
+
+    if args.model_type == "llama":
+        collator = TestCollator(args, tokenizer=processor)
+        split_word = "Response: "
+    elif args.model_type in ["qwen"]:
+        collator = ChatTemplateTestCollator(args, tokenizer=processor)
+        split_word = "assistant"
+    else:
+        collator = UnifiedTestCollator(args, processor_or_tokenizer=processor)
+        split_word = "assistant"
+
     all_items = test_data.get_all_items()
 
     test_loader = DataLoader(
@@ -96,14 +112,14 @@ def test(args: argparse.Namespace):
                     num_return_sequences=args.num_beams,
                     output_scores=True,
                     return_dict_in_generate=True,
-                    early_stopping=True,
+                    temperature=1.0,
                 )
 
                 output_ids = output["sequences"]
                 scores = output["sequences_scores"]
 
                 output = tokenizer.batch_decode(
-                    output_ids, skip_special_tokens=True
+                    output_ids, skip_special_tokens=False
                 )
                 # print(output)
                 # print(scores)

@@ -1,15 +1,22 @@
 import argparse
 import os
-from typing import TYPE_CHECKING
 
 import torch
 from qwen_vl_utils import process_vision_info
+from transformers import AutoTokenizer
 
 from src.type import Args, TrainingSample
 from src.utils import get_tokenizer
 
-if TYPE_CHECKING:
-    from transformers import AutoTokenizer
+AR_MODEL = [
+    "qwen2_vl",
+    "qwen2_5_vl",
+    "qwen2",
+    "qwen2_5",
+    "llama",
+    "llava_onevision",
+    "qwen",
+]
 
 
 # Collator类，用于处理SFT（监督微调）任务的数据批次
@@ -26,14 +33,7 @@ class Collator:
         # 确保 decoder-only 模型使用正确的 padding_side
         if hasattr(self.tokenizer, "padding_side"):
             # 对于decoder-only模型，使用left padding保持因果性
-            if args.model_type in [
-                "qwen2_vl",
-                "qwen2_5_vl",
-                "qwen2",
-                "qwen2_5",
-                "llama",
-                "llava_onevision",
-            ]:
+            if args.model_type in AR_MODEL:
                 if self.tokenizer.padding_side != "left":
                     print(
                         f"调整 padding_side 从 {self.tokenizer.padding_side} 到 left，"
@@ -110,6 +110,155 @@ class TestCollator:
         return (inputs, targets)
 
 
+class ChatTemplateCollator:
+    """
+    无图版 MultiModalCollator，mask 逻辑与 MultiModalCollator 完全一致
+    """
+
+    def __init__(self, args: Args, tokenizer: AutoTokenizer):
+        self.args = args
+        self.only_train_response = args.only_train_response
+        self.tokenizer = tokenizer
+
+        if self.tokenizer.pad_token_id is None:
+            self.tokenizer.pad_token_id = self.tokenizer.unk_token_id
+
+        if (
+            getattr(self.tokenizer, "padding_side", None) != "left"
+            and args.model_type in AR_MODEL
+        ):
+            self.tokenizer.padding_side = "left"
+
+    def __call__(self, batch: list[TrainingSample]) -> dict[str, torch.Tensor]:
+        # 1. 构造对话
+        full_msgs, user_msgs = [], []
+        for samp in batch:
+            user = [{"role": "user", "content": samp.input_text}]
+            assistant = [{"role": "assistant", "content": samp.label_text}]
+            full_msgs.append(user + assistant)
+            user_msgs.append(user)
+
+        # 2. 渲染模板
+        full_texts = [
+            self.tokenizer.apply_chat_template(
+                m, tokenize=False, add_generation_prompt=False
+            )
+            for m in full_msgs
+        ]
+        user_texts = [
+            self.tokenizer.apply_chat_template(
+                m, tokenize=False, add_generation_prompt=True
+            )
+            for m in user_msgs
+        ]
+
+        # 3. tokenize（两次，分别得到 full 和 user 的 ids）
+        full_batch = self.tokenizer(
+            full_texts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=self.tokenizer.model_max_length,
+        )
+        user_batch = self.tokenizer(
+            user_texts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=self.tokenizer.model_max_length,
+        )
+
+        labels = full_batch["input_ids"].clone()
+
+        # 4. mask 策略与 MultiModalCollator 完全一致
+        if self.only_train_response:
+            for i in range(len(batch)):
+                # 有效 user token 长度（不含 pad）
+                user_len = (
+                    (user_batch["input_ids"][i] != self.tokenizer.pad_token_id)
+                    .sum()
+                    .item()
+                )
+                # 当前样本 pad 长度
+                pad_len = (
+                    (full_batch["input_ids"][i] == self.tokenizer.pad_token_id)
+                    .sum()
+                    .item()
+                )
+                # 掩掉 user + pad 部分
+                if user_len > 0:
+                    labels[i, : pad_len + user_len] = -100
+
+        # 5. 再掩一次 pad（防止 pad 也被算 loss）
+        labels[labels == self.tokenizer.pad_token_id] = -100
+
+        # import pdb
+        # pdb.set_trace()
+
+        return {
+            "input_ids": full_batch["input_ids"],
+            "attention_mask": full_batch["attention_mask"],
+            "labels": labels,
+        }
+
+
+class ChatTemplateTestCollator:
+    """
+    测试阶段使用的 Collator
+    1. 只用 user 消息（不加 assistant 回复）
+    2. 用 chat_template 渲染
+    3. 返回 (inputs, targets, item_ids) 三元组，与 UnifiedTestCollator 保持一致
+    """
+
+    def __init__(self, args: Args, tokenizer: AutoTokenizer):
+        self.args = args
+        self.tokenizer = tokenizer
+
+        # 补 pad_token
+        if self.tokenizer.pad_token_id is None:
+            self.tokenizer.pad_token_id = self.tokenizer.unk_token_id
+
+        # decoder-only 统一 left-pad
+        if (
+            getattr(self.tokenizer, "padding_side", None) != "left"
+            and args.model_type in AR_MODEL
+        ):
+            self.tokenizer.padding_side = "left"
+
+    def __call__(
+        self, batch: list[TrainingSample]
+    ) -> tuple[dict[str, torch.Tensor], list[str], list[str]]:
+        # 1. 仅构造 user 消息
+        user_messages = [
+            [{"role": "user", "content": samp.input_text}] for samp in batch
+        ]
+
+        # 2. 用模板渲染（加 generation_prompt=True，与生成阶段一致）
+        user_texts = [
+            self.tokenizer.apply_chat_template(
+                m, tokenize=False, add_generation_prompt=True
+            )
+            for m in user_messages
+        ]
+
+        # 3. tokenize
+        inputs = self.tokenizer(
+            user_texts,
+            return_tensors="pt",
+            padding="longest",
+            truncation=True,
+            max_length=self.tokenizer.model_max_length,
+            return_attention_mask=True,
+        )
+
+        # 4. 组装与 UnifiedTestCollator 一致的返回格式
+        targets = [samp.label_text for samp in batch]
+        # print(batch[0])
+        # print(type(inputs))
+        # print(inputs)
+        return (inputs, targets)
+
+
 # MultiModalCollator类，用于处理多模态数据批次，支持混合批次
 class MultiModalCollator:
     """多模态数据整理器 - 优化版本，支持混合batch"""
@@ -128,14 +277,7 @@ class MultiModalCollator:
         # 确保 decoder-only 模型使用正确的 padding_side
         if hasattr(self.tokenizer, "padding_side"):
             # 对于decoder-only模型，使用left padding保持因果性
-            if args.model_type in [
-                "qwen2_vl",
-                "qwen2_5_vl",
-                "qwen2",
-                "qwen2_5",
-                "llama",
-                "llava_onevision",
-            ]:
+            if args.model_type in AR_MODEL:
                 if self.tokenizer.padding_side != "left":
                     print(
                         f"调整 padding_side 从 {self.tokenizer.padding_side} 到 left，"
@@ -250,12 +392,6 @@ class MultiModalCollator:
                     .item()
                 )
 
-                # import pdb
-
-                # pdb.set_trace()
-
-                # 这里有大问题，因为labels是 batch_result["input_ids"]，所以labels[i, :user_len] = -100 会导致有剩下的没覆盖掉
-                # 掩码用户输入部分
                 if user_len > 0:
                     labels[i, : pad_len + user_len] = -100
 
@@ -299,14 +435,7 @@ class UnifiedTestCollator:
         # 确保 decoder-only 模型使用正确的 padding_side
         if hasattr(self.tokenizer, "padding_side"):
             # 对于decoder-only模型，使用left padding保持因果性
-            if args.model_type in [
-                "qwen2_vl",
-                "qwen2_5_vl",
-                "qwen2",
-                "qwen2_5",
-                "llama",
-                "llava_onevision",
-            ]:
+            if args.model_type in AR_MODEL:
                 if self.tokenizer.padding_side != "left":
                     print(
                         f"调整 padding_side 从 {self.tokenizer.padding_side} 到 left，"

@@ -1,8 +1,12 @@
 sft_prompt = (
+    # "The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think> <answer> answer here </answer>. User: You must put your answer inside <answer> </answer> tags, i.e., <answer> answer here </answer>."
     "Below is an instruction that describes a task. Write a response that appropriately completes the request."
     "\n\n### Instruction:\n{instruction}\n\n### Response:{response}"
 )
 
+think_prompt = "Think first and then answer. You could put your thinking process in <think> and </think>, and put your answer in <answer> and </answer>."
+
+# sft_prompt = think_prompt + sft_prompt
 
 all_prompt = {}
 
@@ -480,71 +484,71 @@ all_prompt["index2item"] = index2item_prompt
 
 fusionseqrec_prompt = []
 
-#####——0
-prompt = {}
-prompt["instruction"] = (
-    "The user has sequentially interacted with items {inters}. Can you recommend the next item for him? Tell me the title of the item？"
-)
-prompt["response"] = "{title}"
-fusionseqrec_prompt.append(prompt)
+# #####——0
+# prompt = {}
+# prompt["instruction"] = (
+#     "The user has sequentially interacted with items {inters}. Can you recommend the next item for him? Tell me the title of the item？"
+# )
+# prompt["response"] = "{title}"
+# fusionseqrec_prompt.append(prompt)
 
-#####——1
-prompt = {}
-prompt["instruction"] = (
-    "Based on the user's historical interactions: {inters}, try to predict the title of the item that the user may need next."
-)
-prompt["response"] = "{title}"
-fusionseqrec_prompt.append(prompt)
+# #####——1
+# prompt = {}
+# prompt["instruction"] = (
+#     "Based on the user's historical interactions: {inters}, try to predict the title of the item that the user may need next."
+# )
+# prompt["response"] = "{title}"
+# fusionseqrec_prompt.append(prompt)
 
-#####——2
-prompt = {}
-prompt["instruction"] = (
-    "Utilizing the user's past ordered interactions, which include items {inters}, please recommend the next item you think is suitable for the user and provide its title."
-)
-prompt["response"] = "{title}"
-fusionseqrec_prompt.append(prompt)
-
-
-#####——3
-prompt = {}
-prompt["instruction"] = (
-    "After interacting with items {inters}, what is the most probable item for the user to interact with next? Kindly provide the item's title."
-)
-prompt["response"] = "{title}"
-fusionseqrec_prompt.append(prompt)
+# #####——2
+# prompt = {}
+# prompt["instruction"] = (
+#     "Utilizing the user's past ordered interactions, which include items {inters}, please recommend the next item you think is suitable for the user and provide its title."
+# )
+# prompt["response"] = "{title}"
+# fusionseqrec_prompt.append(prompt)
 
 
-#####——4
-prompt = {}
-prompt["instruction"] = (
-    "Please review the user's historical interactions: {inters}, and describe what kind of item he still needs."
-)
-prompt["response"] = "{description}"
-fusionseqrec_prompt.append(prompt)
+# #####——3
+# prompt = {}
+# prompt["instruction"] = (
+#     "After interacting with items {inters}, what is the most probable item for the user to interact with next? Kindly provide the item's title."
+# )
+# prompt["response"] = "{title}"
+# fusionseqrec_prompt.append(prompt)
 
-#####——5
-prompt = {}
-prompt["instruction"] = (
-    "Here is the item interaction history of the user: {inters}, please tell me what features he expects from his next item."
-)
-prompt["response"] = "{description}"
-fusionseqrec_prompt.append(prompt)
 
-#####——6
-prompt = {}
-prompt["instruction"] = (
-    "By analyzing the user's historical interactions with items {inters}, can you infer what the user's next interactive item will look like?"
-)
-prompt["response"] = "{description}"
-fusionseqrec_prompt.append(prompt)
+# #####——4
+# prompt = {}
+# prompt["instruction"] = (
+#     "Please review the user's historical interactions: {inters}, and describe what kind of item he still needs."
+# )
+# prompt["response"] = "{description}"
+# fusionseqrec_prompt.append(prompt)
 
-#####——7
-prompt = {}
-prompt["instruction"] = (
-    "Access the user's historical item interaction records: {inters}. Your objective is to describe the next potential item for him, taking into account his past interactions."
-)
-prompt["response"] = "{description}"
-fusionseqrec_prompt.append(prompt)
+# #####——5
+# prompt = {}
+# prompt["instruction"] = (
+#     "Here is the item interaction history of the user: {inters}, please tell me what features he expects from his next item."
+# )
+# prompt["response"] = "{description}"
+# fusionseqrec_prompt.append(prompt)
+
+# #####——6
+# prompt = {}
+# prompt["instruction"] = (
+#     "By analyzing the user's historical interactions with items {inters}, can you infer what the user's next interactive item will look like?"
+# )
+# prompt["response"] = "{description}"
+# fusionseqrec_prompt.append(prompt)
+
+# #####——7
+# prompt = {}
+# prompt["instruction"] = (
+#     "Access the user's historical item interaction records: {inters}. Your objective is to describe the next potential item for him, taking into account his past interactions."
+# )
+# prompt["response"] = "{description}"
+# fusionseqrec_prompt.append(prompt)
 
 
 #####——8

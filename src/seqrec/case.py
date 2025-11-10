@@ -1,8 +1,13 @@
 import argparse
+import re
 
 import torch
 
-from src.collator import UnifiedTestCollator
+from src.collator import (
+    ChatTemplateTestCollator,
+    TestCollator,
+    UnifiedTestCollator,
+)
 from src.parser import parse_dataset_args, parse_global_args, parse_test_args
 from src.utils import load_model_for_inference, load_test_dataset
 
@@ -20,7 +25,15 @@ def main(args: argparse.Namespace):
         model_path=args.base_model if args.lora else None,
     )
 
-    collator = UnifiedTestCollator(args, processor_or_tokenizer=processor)
+    if args.model_type == "llama":
+        collator = TestCollator(args, tokenizer=processor)
+        split_word = "Response: "
+    elif args.model_type in ["qwen"]:
+        collator = ChatTemplateTestCollator(args, tokenizer=processor)
+        split_word = "assistant"
+    else:
+        collator = UnifiedTestCollator(args, processor_or_tokenizer=processor)
+        split_word = "assistant"
 
     # 获取设备
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -28,6 +41,31 @@ def main(args: argparse.Namespace):
         model.to(device)
 
     length = len(dataset)
+
+    # 1. 仅剔除“框架”特殊 token，保留 item token
+    FRAMEWORK_SPECIAL = {
+        "<s>",
+        "</s>",
+        "<unk>",
+        "<pad>",
+        "<|endoftext|>",
+        # "<|im_start|>",
+        # "<|im_end|>"
+    }
+    # 2. 预编译空白符正则
+    WHITE_PAT = re.compile(r"\s+")
+
+    def clean_text(text: str) -> str:
+        """
+        只去掉框架特殊 token 和空白，完全保留 <a_*> <b_*> <c_*> <d_*> 等用户 token
+        """
+        # 去掉框架特殊 token
+        for tok in FRAMEWORK_SPECIAL:
+            text = text.replace(tok, "")
+        # 去掉所有空白（空格、换行、制表）
+        # text = WHITE_PAT.sub("", text)
+        return text.strip()
+
     # 测试最后5个样本
     for i in range(max(0, length - 5), length):
         batch = collator([dataset[i]])
@@ -47,12 +85,12 @@ def main(args: argparse.Namespace):
             output = model.generate(
                 input_ids=inputs["input_ids"],
                 attention_mask=inputs["attention_mask"],
-                max_new_tokens=4,
-                num_beams=10,
-                num_return_sequences=10,
+                max_new_tokens=1024,
+                num_beams=2,
+                # num_return_sequences=2,
                 output_scores=True,
                 return_dict_in_generate=True,
-                early_stopping=True,
+                # early_stopping=True,
             )
 
         output_ids = output["sequences"]
@@ -65,7 +103,7 @@ def main(args: argparse.Namespace):
             else processor
         )
         output_texts = tokenizer.batch_decode(
-            output_ids, skip_special_tokens=True
+            output_ids, skip_special_tokens=False
         )
 
         print("生成结果:")
@@ -73,7 +111,8 @@ def main(args: argparse.Namespace):
         for j, (text, score) in enumerate(
             zip(output_texts, scores, strict=False)
         ):
-            response = text.split("assistant")[-1].strip()
+            response = clean_text(text)
+            # response = clean_text(text.split(split_word)[-1])
             print(
                 f"  {j + 1}. {response} | ",
                 target_text[0],
@@ -82,10 +121,11 @@ def main(args: argparse.Namespace):
 
         # 检查是否命中
         responses = [
-            text.split("assistant")[-1].strip() for text in output_texts
+            clean_text(text.split(split_word)[-1]) for text in output_texts
         ]
-        if target_text in responses:
-            print(f"✓ 命中! 排名: {responses.index(target_text) + 1}")
+        # remove the blank in responses
+        if target_text[0] in responses:
+            print(f"✓ 命中! 排名: {responses.index(target_text[0]) + 1}")
         else:
             print("✗ 未命中")
         print()

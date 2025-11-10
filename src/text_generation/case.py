@@ -22,7 +22,7 @@ def main(args: argparse.Namespace):
 
     ckpt_path = args.ckpt_path
     model_type = args.model_type
-    tokenizer = AutoProcessor.from_pretrained(ckpt_path)
+    tokenizer = AutoProcessor.from_pretrained(ckpt_path, use_fast=True)
     collator = UnifiedTestCollator(args, processor_or_tokenizer=tokenizer)
     if model_type == "qwen2_5_vl":
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
@@ -39,9 +39,6 @@ def main(args: argparse.Namespace):
     model.eval()
     model.to("cuda")
 
-    # import pdb
-    # pdb.set_trace()
-
     length = len(dataset)
     for i in range(length - 5, length):
         batch = collator([dataset[i]])
@@ -54,13 +51,13 @@ def main(args: argparse.Namespace):
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
             max_new_tokens=2048,
-            do_sample=True,
-            temperature=0.7,
-            top_p=0.9,
+            # do_sample=True,
+            # temperature=0.001,
+            # top_p=0.9
         )
 
         # decode all the results
-        output_texts = tokenizer.batch_decode(output, skip_special_tokens=True)
+        output_texts = tokenizer.batch_decode(output, skip_special_tokens=False)
 
         # extract the output behind the "Response:"
         for i, o in enumerate(output_texts):

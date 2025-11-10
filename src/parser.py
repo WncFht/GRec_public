@@ -19,6 +19,8 @@ def parse_global_args(
             "llava_onevision",
             "qwen2",
             "qwen2_5",
+            "qwen",
+            "llama",
         ],
         help="模型类型 (qwen2_vl or qwen2_5_vl, llava_onevision)",
     )
@@ -162,7 +164,7 @@ def parse_train_args(
         default=False,
     )
     train_args.add_argument(
-        "--gradient_accumulation_steps", type=int, default=2
+        "--gradient_accumulation_steps", type=int, default=1
     )
     train_args.add_argument("--logging_step", type=int, default=1)
     train_args.add_argument("--model_max_length", type=int, default=2048)
@@ -171,7 +173,7 @@ def parse_train_args(
 
     # lora 的先不管了
     train_args.add_argument("--use_lora", action="store_true", default=False)
-    train_args.add_argument("--lora_r", type=int, default=8)
+    train_args.add_argument("--lora_r", type=int, default=32)
     train_args.add_argument("--lora_alpha", type=int, default=32)
     train_args.add_argument("--lora_dropout", type=float, default=0.05)
     train_args.add_argument(

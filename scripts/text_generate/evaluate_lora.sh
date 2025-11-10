@@ -1,11 +1,10 @@
 #!/bin/bash
 
-# LoRA模型评估脚本
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 
 # LoRA配置
-LORA_PATH=./ckpt/Instruments/Qwen2-VL-2B-Instruct-seqrec-mmitemenrich-lora-1-qwen7B/checkpoint-44948
-BASE_MODEL=./ckpt/base_model/Qwen2-VL-2B-Instruct  # 基础模型路径
+LORA_PATH=ckpt/Instruments/Qwen2-VL-7B-Instruct-seqrec-mmitemenrich-lora-1-qwen7B-new/checkpoint-156115
+BASE_MODEL=./ckpt/base_model/Qwen2-VL-7B-Instruct  # 基础模型路径
 MODEL_TYPE=qwen2_vl
 MODEL_NAME=qwen2_vl_lora
 
@@ -23,7 +22,7 @@ python -m src.text_generation.evaluate_lora \
     --model_type $MODEL_TYPE \
     --model_name $MODEL_NAME \
     --lora \
-    --test_batch_size 8 \
+    --test_batch_size 16 \
     --test_prompt_ids 0 \
     --index_file .index_qwen7B.json \
     --benchmark_metrics $METRICS \

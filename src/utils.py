@@ -159,13 +159,13 @@ def load_model_for_inference(
             with open(adapter_config_path) as f:
                 adapter_config = json.load(f)
             # PEFT会在modules_to_save中保存修改过的embedding层信息
-            if adapter_config.get("modules_to_save"):
-                print(f"检测到保存的模块: {adapter_config['modules_to_save']}")
-                # 词汇表大小应该已经在tokenizer中正确设置了
-                new_vocab_size = len(tokenizer)
-                print(f"调整模型词汇表大小为: {new_vocab_size}")
-                model.resize_token_embeddings(new_vocab_size)
-                model.config.vocab_size = new_vocab_size
+            # if adapter_config.get("modules_to_save"):
+            #     print(f"检测到保存的模块: {adapter_config['modules_to_save']}")
+            #     # 词汇表大小应该已经在tokenizer中正确设置了
+            #     new_vocab_size = len(tokenizer)
+            #     print(f"调整模型词汇表大小为: {new_vocab_size}")
+            #     model.resize_token_embeddings(new_vocab_size)
+            #     model.config.vocab_size = new_vocab_size
 
         # 4. 加载并合并LoRA权重
         print(f"加载LoRA权重从: {ckpt_path}")
@@ -216,7 +216,7 @@ def _load_processor_and_tokenizer(
         log_func(f"从 '{base_model_path}' 加载处理器/分词器...")
 
     # 特殊处理文本模型
-    if args.model_type in ["qwen2", "qwen2_5", "llama"]:
+    if args.model_type in ["qwen2", "qwen2_5", "llama", "qwen"]:
         tokenizer = AutoTokenizer.from_pretrained(
             base_model_path,
             use_fast=True,
@@ -280,7 +280,7 @@ def _extend_vocabulary(
         )
 
     original_vocab_size = len(tokenizer)
-    tokenizer.add_tokens(new_tokens, special_tokens=True)
+    tokenizer.add_tokens(new_tokens, special_tokens=False)
     new_vocab_size = len(tokenizer)
     model.resize_token_embeddings(new_vocab_size)
 
@@ -537,14 +537,16 @@ def load_model_for_training(
     )
 
     # 4. 扩展词汇表
-    original_vocab_size, new_vocab_size, new_tokens = _extend_vocabulary(
-        args, model, tokenizer, new_tokens, local_rank, log_func, logger
-    )
+    # original_vocab_size, new_vocab_size, new_tokens = _extend_vocabulary(
+    #     args, model, tokenizer, new_tokens, local_rank, log_func, logger
+    # )
+    original_vocab_size = len(tokenizer)
+    new_vocab_size = len(tokenizer)
 
     # 5. 保存词汇表元数据
-    _save_token_metadata(
-        args, original_vocab_size, new_vocab_size, new_tokens, local_rank
-    )
+    # _save_token_metadata(
+    #     args, original_vocab_size, new_vocab_size, new_tokens, local_rank
+    # )
 
     # 6. 配置LoRA（如果启用）
     model = _setup_lora(args, model, local_rank, log_func)
@@ -795,8 +797,16 @@ def load_datasets(args: argparse.Namespace, logger=None, local_rank=0):
                 )
             if train_dataset:
                 train_datasets.append(train_dataset)
+                if local_rank == 0:
+                    log_func(
+                        f"Task: {task} - train sample nums: {len(train_dataset)}"
+                    )
             if valid_dataset:
                 valid_datasets.append(valid_dataset)
+                if local_rank == 0:
+                    log_func(
+                        f"Task: {task} - valid sample nums: {len(valid_dataset)}"
+                    )
         train_data = ConcatDataset(train_datasets)
         valid_data = ConcatDataset(valid_datasets)
 
