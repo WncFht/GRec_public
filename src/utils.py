@@ -90,6 +90,7 @@ def load_model_for_inference(
     ckpt_path: str,
     use_lora: bool,
     model_path: str | None = None,
+    device: torch.device | str | None = None,  # <-- 2. 添加 device 参数
 ) -> tuple[Any, AutoProcessor | AutoTokenizer]:
     """
     为推理（测试/生成）加载模型和分词器。
@@ -100,12 +101,17 @@ def load_model_for_inference(
 
     它还会根据检查点中的元信息自动处理词汇表扩展。
 
+    (DDP-safe): 接受一个 'device' 参数，以强制模型加载到特定GPU，
+    覆盖 'device_map="auto"'，从而避免与DDP冲突。
+
     Args:
     ----
         model_type (str): 模型类型，例如 "qwen2_vl"。
         ckpt_path (str): 检查点路径（全量微调模型或LoRA适配器）。
         use_lora (bool): 是否加载和合并 LoRA 权重。
         model_path (str): 基础模型路径（仅在use_lora=True时需要）。
+        device (torch.device | str | None): [DDP专用]
+            如果提供，模型将被强制加载到此特定设备 (例如 "cuda:0")。
 
     Returns:
     -------
@@ -123,8 +129,6 @@ def load_model_for_inference(
     from_pretrained_kwargs = config.get("from_pretrained_kwargs", {})
 
     # 1. 加载 Processor / Tokenizer
-    # 对于LoRA模型，从ckpt_path加载（包含扩展的词表）
-    # 对于全量微调，也从ckpt_path加载
     print(f"从 '{ckpt_path}' 加载处理器/分词器...")
     processor = processor_class.from_pretrained(
         ckpt_path,
@@ -134,6 +138,20 @@ def load_model_for_inference(
     )
     tokenizer = get_tokenizer(processor)
     print(f"词汇表大小: {len(tokenizer)}")
+
+    # ======================================================
+    #  ⬇️  修改点 3: DDP 设备映射逻辑
+    # ======================================================
+    if device:
+        # DDP 模式: 强制模型加载到 'device' (例如 'cuda:0' 或 'cuda:1')
+        # {"": device} 告诉 accelerate 将所有模块加载到这个特定设备
+        device_map = {"": device}
+        print(f"[DDP] 强制模型加载到设备: {device}")
+    else:
+        # 原始行为: 自动拆分模型到所有可用 GPU (适用于单进程)
+        device_map = "auto"
+        print("[Single-Process] 使用 device_map='auto'")
+    # ======================================================
 
     if use_lora:
         if not model_path:
@@ -146,7 +164,7 @@ def load_model_for_inference(
             model_path,
             torch_dtype=torch.bfloat16,
             low_cpu_mem_usage=True,
-            device_map="auto",
+            device_map=device_map,
             **from_pretrained_kwargs,
         )
         print("基础模型加载完成。")
@@ -159,13 +177,13 @@ def load_model_for_inference(
             with open(adapter_config_path) as f:
                 adapter_config = json.load(f)
             # PEFT会在modules_to_save中保存修改过的embedding层信息
-            # if adapter_config.get("modules_to_save"):
-            #     print(f"检测到保存的模块: {adapter_config['modules_to_save']}")
-            #     # 词汇表大小应该已经在tokenizer中正确设置了
-            #     new_vocab_size = len(tokenizer)
-            #     print(f"调整模型词汇表大小为: {new_vocab_size}")
-            #     model.resize_token_embeddings(new_vocab_size)
-            #     model.config.vocab_size = new_vocab_size
+            if adapter_config.get("modules_to_save"):
+                print(f"检测到保存的模块: {adapter_config['modules_to_save']}")
+                # 词汇表大小应该已经在tokenizer中正确设置了
+                new_vocab_size = len(tokenizer)
+                print(f"调整模型词汇表大小为: {new_vocab_size}")
+                model.resize_token_embeddings(new_vocab_size)
+                model.config.vocab_size = new_vocab_size
 
         # 4. 加载并合并LoRA权重
         print(f"加载LoRA权重从: {ckpt_path}")
@@ -187,7 +205,7 @@ def load_model_for_inference(
             ckpt_path,
             torch_dtype=torch.bfloat16,
             low_cpu_mem_usage=True,
-            device_map="auto",
+            device_map=device_map,
             **from_pretrained_kwargs,
         )
         print("完整模型加载完成。")
