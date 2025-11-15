@@ -484,6 +484,7 @@ def load_model_for_training(
     new_tokens: list[str] | None = None,
     local_rank: int = 0,
     logger=None,
+    nonewtokens: bool = False,
 ) -> tuple[Any, AutoProcessor | AutoTokenizer, int, int, list[str], list]:
     """
     为训练加载模型、分词器，并进行必要的设置。
@@ -536,17 +537,19 @@ def load_model_for_training(
         args, config, base_model_path, config_obj, local_rank, log_func
     )
 
-    # 4. 扩展词汇表
-    # original_vocab_size, new_vocab_size, new_tokens = _extend_vocabulary(
-    #     args, model, tokenizer, new_tokens, local_rank, log_func, logger
-    # )
-    original_vocab_size = len(tokenizer)
-    new_vocab_size = len(tokenizer)
+    if nonewtokens:
+        original_vocab_size = len(tokenizer)
+        new_vocab_size = len(tokenizer)
+    else:
+        # 4. 扩展词汇表
+        original_vocab_size, new_vocab_size, new_tokens = _extend_vocabulary(
+            args, model, tokenizer, new_tokens, local_rank, log_func, logger
+        )
 
-    # 5. 保存词汇表元数据
-    # _save_token_metadata(
-    #     args, original_vocab_size, new_vocab_size, new_tokens, local_rank
-    # )
+        # 5. 保存词汇表元数据
+        _save_token_metadata(
+            args, original_vocab_size, new_vocab_size, new_tokens, local_rank
+        )
 
     # 6. 配置LoRA（如果启用）
     model = _setup_lora(args, model, local_rank, log_func)

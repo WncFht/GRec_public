@@ -151,6 +151,8 @@ def test(args: argparse.Namespace):
 
             all_prompt_results.append(metrics_results)
             print("======================================================")
+            print(args.ckpt_path)
+            print("======================================================")
             print(f"Prompt {prompt_id} results: ", metrics_results)
             print("======================================================")
             print()

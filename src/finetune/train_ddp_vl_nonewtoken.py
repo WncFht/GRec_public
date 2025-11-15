@@ -148,6 +148,7 @@ class UnifiedTrainer:
             new_tokens=None,
             local_rank=self.local_rank,
             logger=self.logger,
+            nonewtokens=True,
         )
 
         # 加载数据集
@@ -156,11 +157,11 @@ class UnifiedTrainer:
         )
 
         # 记录统计信息
-        self._log_statistics(train_data, original_vocab_size, new_vocab_size)
+        self._log_statistics(train_data)
 
         # 保存processor和config
         if self.local_rank == 0:
-            self._save_configs(processor, new_vocab_size)
+            self._save_configs(processor)
 
         return (
             model,
@@ -168,12 +169,12 @@ class UnifiedTrainer:
             train_data,
             valid_data,
             embedding_hooks,
-            original_vocab_size,
-            new_vocab_size,
-            new_tokens,
         )
 
-    def _log_statistics(self, train_data, original_vocab_size, new_vocab_size):
+    def _log_statistics(
+        self,
+        train_data,
+    ):
         """记录训练统计信息"""
         if self.local_rank == 0:
             if self.args.use_lora:
@@ -191,11 +192,6 @@ class UnifiedTrainer:
                         f"Modules to save: {self.args.lora_modules_to_save}"
                     )
 
-            self.logger.info(
-                f"Added {new_vocab_size - original_vocab_size} new tokens"
-            )
-            self.logger.info(f"Original vocab size: {original_vocab_size}")
-            self.logger.info(f"New vocab size: {new_vocab_size}")
             self.logger.info(f"Train samples: {len(train_data)}")
 
             # 计算有效batch size
@@ -218,7 +214,7 @@ class UnifiedTrainer:
                 f"Steps per epoch: {len(train_data) / self.args.per_device_batch_size:.2f}"
             )
 
-    def _save_configs(self, processor, new_vocab_size: int) -> None:
+    def _save_configs(self, processor) -> None:
         """
         保存 processor 与模型 config，
         仅当确定某字段为 vocab_size 且与旧值不同时才更新，保证鲁棒。
@@ -238,47 +234,9 @@ class UnifiedTrainer:
             self.args.base_model, trust_remote_code=True
         )
 
-        # 3. 递归更新 vocab_size
-        def _update_vocab_size(obj, path="config"):
-            """深度优先遍历，更新所有 vocab_size 字段"""
-            if isinstance(obj, int):
-                return 0
-            if not hasattr(obj, "__dict__") and not isinstance(obj, dict):
-                return 0
-
-            changed = 0
-            # 对 dict 类型（如 qwen2vl 的 vision_config 是 dict）
-            if isinstance(obj, dict):
-                items = obj.items()
-            else:
-                items = vars(obj).items()
-
-            for key, val in items:
-                full_path = f"{path}.{key}"
-                # case 1: 本身就是 vocab_size 字段
-                if key == "vocab_size" and isinstance(val, int):
-                    if val != new_vocab_size:
-                        setattr(obj, key, new_vocab_size)
-                        self.logger.info(
-                            f"[vocab_size] {full_path}  {val} -> {new_vocab_size}"
-                        )
-                        changed += 1
-                # case 2: 可能是嵌套 config
-                elif isinstance(val, (object, dict)):
-                    changed += _update_vocab_size(val, full_path)
-            return changed
-
-        updated = _update_vocab_size(config)
-        if updated == 0:
-            self.logger.warning(
-                "No vocab_size field found in config! Please check manually."
-            )
-
         # 4. 保存修改后的 config
         config.save_pretrained(out_dir)
-        self.logger.info(
-            f"Saved processor and config ({updated} vocab_size field(s) updated) to {out_dir}"
-        )
+        self.logger.info(f"Saved processor and config to {out_dir}")
 
     def train(self):
         """执行训练流程"""
@@ -289,9 +247,6 @@ class UnifiedTrainer:
             train_data,
             valid_data,
             embedding_hooks,
-            original_vocab_size,
-            new_vocab_size,
-            new_tokens,
         ) = self._load_model_and_data()
 
         # 如果是LoRA模式，打印可训练参数
