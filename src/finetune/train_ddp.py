@@ -159,7 +159,9 @@ class UnifiedTrainer:
         )
 
         # 加载数据集
-        train_data, valid_data = load_datasets(self.args, self.logger, self.local_rank)
+        train_data, valid_data = load_datasets(
+            self.args, self.logger, self.local_rank
+        )
 
         # 记录统计信息
         self._log_statistics(train_data, original_vocab_size, new_vocab_size)

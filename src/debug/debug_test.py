@@ -106,7 +106,7 @@ def debug_test(args: argparse.Namespace) -> None:
         )
         print("  - 模型原始输出 (解码后):")
         for i in range(len(targets)):
-            print(f"    - 样本 {i+1} (目标: {targets[i]}):")
+            print(f"    - 样本 {i + 1} (目标: {targets[i]}):")
             sample_predictions = output_texts[
                 i * args.num_beams : (i + 1) * args.num_beams
             ]
@@ -121,7 +121,7 @@ def debug_test(args: argparse.Namespace) -> None:
                 # if args.model_type == "qwen_vl":
                 clean_pred = pred.split("Response:")[-1].strip()
                 print(
-                    f"      - Beam {j+1}: '{clean_pred}' (Score: {score:.4f})"
+                    f"      - Beam {j + 1}: '{clean_pred}' (Score: {score:.4f})"
                 )
 
         # --- 评估计算 ---
@@ -140,7 +140,7 @@ def debug_test(args: argparse.Namespace) -> None:
         )
         print("  - `get_topk_results` 的输出 (命中列表):")
         for i, res in enumerate(topk_res):
-            print(f"    - 样本 {i+1} (目标: {targets[i]}): {res}")
+            print(f"    - 样本 {i + 1} (目标: {targets[i]}): {res}")
 
         # b. 调用 get_metrics_results
         metrics_to_calc = args.metrics.split(",")
@@ -154,7 +154,7 @@ def debug_test(args: argparse.Namespace) -> None:
             single_metric = get_metrics_results(
                 [single_topk_res], metrics_to_calc
             )
-            print(f"    - 样本 {i+1} (目标: {targets[i]}): {single_metric}")
+            print(f"    - 样本 {i + 1} (目标: {targets[i]}): {single_metric}")
 
     print("\n--- 调试结束 ---")
 

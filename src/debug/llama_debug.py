@@ -128,19 +128,25 @@ def test(args):
         scores = output["sequences_scores"]
 
         # 5. 打印原始输出
-        output_texts = tokenizer.batch_decode(output_ids, skip_special_tokens=True)
+        output_texts = tokenizer.batch_decode(
+            output_ids, skip_special_tokens=True
+        )
         print("  - 模型原始输出 (解码后):")
         for i in range(len(targets)):
-            print(f"    - 样本 {i+1} (目标: {targets[i]}):")
+            print(f"    - 样本 {i + 1} (目标: {targets[i]}):")
             sample_predictions = output_texts[
                 i * args.num_beams : (i + 1) * args.num_beams
             ]
-            sample_scores = scores[i * args.num_beams : (i + 1) * args.num_beams]
+            sample_scores = scores[
+                i * args.num_beams : (i + 1) * args.num_beams
+            ]
             for j, (pred, score) in enumerate(
                 zip(sample_predictions, sample_scores, strict=False)
             ):
                 clean_pred = pred.split("### Response:")[-1].strip()
-                print(f"      - Beam {j+1}: '{clean_pred}' (Score: {score:.4f})")
+                print(
+                    f"      - Beam {j + 1}: '{clean_pred}' (Score: {score:.4f})"
+                )
 
         # 6. 评估计算
         print("\n[3. 评估计算]")
@@ -153,7 +159,7 @@ def test(args):
         )
         print("  - `get_topk_results` 的输出 (命中列表):")
         for i, res in enumerate(topk_res):
-            print(f"    - 样本 {i+1} (目标: {targets[i]}): {res}")
+            print(f"    - 样本 {i + 1} (目标: {targets[i]}): {res}")
 
         metrics_to_calc = args.metrics.split(",")
         batch_metrics_res = get_metrics_results(topk_res, metrics_to_calc)

@@ -85,9 +85,7 @@ def parse_args() -> Args:
             origin = typing.get_origin(arg_type)
             if origin is typing.Union or origin is types.UnionType:
                 union_args = typing.get_args(arg_type)
-                non_none_args = [
-                    t for t in union_args if t is not type(None)
-                ]
+                non_none_args = [t for t in union_args if t is not type(None)]
                 if len(non_none_args) == 1:
                     arg_type = non_none_args[0]
 

@@ -1597,7 +1597,9 @@ def main():
     # Set output directory
     if args.output_dir is None:
         # Use LoRA checkpoint directory if provided, otherwise use model path
-        args.output_dir = args.lora_checkpoint if args.lora_checkpoint else args.model_path
+        args.output_dir = (
+            args.lora_checkpoint if args.lora_checkpoint else args.model_path
+        )
     os.makedirs(args.output_dir, exist_ok=True)
 
     # Load embeddings with language analysis

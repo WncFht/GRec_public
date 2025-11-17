@@ -2,7 +2,7 @@ import argparse
 import json
 import os
 import random
-from typing import Any
+from typing import Any, List, Dict
 
 import numpy as np
 from torch.utils.data import Dataset
@@ -823,3 +823,131 @@ class ItemFeatDataset(BaseDataset):
             label_text=label_text,
             is_multimodal=False,
         )
+
+
+def dataset_to_text_samples(
+    dataset_obj, mode: str = "train"
+) -> List[Dict[str, str]]:
+    """
+    Convert any BaseDataset (or its subclasses) instance into a list of text samples
+    usable for RL training loops. Each sample is a dict with keys `prompt` and
+    `completion` (strings). This avoids writing parquet files and provides the
+    samples directly in-memory.
+
+    Args:
+        dataset_obj: an instantiated dataset (subclass of BaseDataset)
+        mode: which split/mode to extract (some datasets use mode when constructed)
+
+    Returns:
+        List of dicts: [{"prompt": <str>, "completion": <str>, "extra_info": <dict>}]
+    """
+    samples: List[Dict[str, str]] = []
+
+    # If dataset provides to_verl_records, use it to get consistent fields
+    if hasattr(dataset_obj, "to_verl_records"):
+        # prefer 'train' or 'valid' where applicable
+        split = "train" if mode == "train" else "valid"
+        try:
+            records = dataset_obj.to_verl_records(split)
+        except Exception:
+            records = []
+
+        for rec in records:
+            # rec['prompt'] is a list with a single role dict in this codebase
+            prompt_field = rec.get("prompt")
+            if isinstance(prompt_field, list) and len(prompt_field) > 0:
+                prompt = prompt_field[0].get("content", "")
+            else:
+                prompt = prompt_field if isinstance(prompt_field, str) else ""
+            completion = rec.get("reward_model", {}).get("ground_truth", "")
+            samples.append(
+                {
+                    "prompt": prompt,
+                    "completion": completion,
+                    "extra_info": rec.get("extra_info", {}),
+                }
+            )
+
+        return samples
+
+    # Fallback: iterate dataset and call __getitem__ to get TrainingSample objects
+    # Some dataset classes return TrainingSample from __getitem__
+    try:
+        length = len(dataset_obj)
+    except Exception:
+        length = None
+
+    if length is None:
+        # try to iterate until exhaustion
+        idx = 0
+        while True:
+            try:
+                ts = dataset_obj[idx]
+            except Exception:
+                break
+            if isinstance(ts, TrainingSample):
+                samples.append(
+                    {
+                        "prompt": ts.input_text,
+                        "completion": ts.label_text,
+                        "extra_info": {},
+                    }
+                )
+            elif isinstance(ts, dict) and "prompt" in ts and "completion" in ts:
+                samples.append(
+                    {
+                        "prompt": ts["prompt"],
+                        "completion": ts["completion"],
+                        "extra_info": ts.get("extra_info", {}),
+                    }
+                )
+            idx += 1
+        return samples
+
+    for i in range(length):
+        try:
+            ts = dataset_obj[i]
+        except Exception:
+            continue
+        if isinstance(ts, TrainingSample):
+            samples.append(
+                {
+                    "prompt": ts.input_text,
+                    "completion": ts.label_text,
+                    "extra_info": {},
+                }
+            )
+        elif isinstance(ts, dict) and "prompt" in ts and "completion" in ts:
+            samples.append(
+                {
+                    "prompt": ts["prompt"],
+                    "completion": ts["completion"],
+                    "extra_info": ts.get("extra_info", {}),
+                }
+            )
+
+    return samples
+
+
+def samples_to_hf_dataset(samples: List[Dict[str, str]]):
+    """
+    Convert the list of prompt/completion dicts into a HuggingFace `datasets.Dataset`.
+    This helper avoids parquet and returns an in-memory dataset ready for trainers.
+    """
+    try:
+        from datasets import Dataset as HFDataset
+    except Exception:
+        raise RuntimeError(
+            "Please install the `datasets` package to convert samples to HF Dataset"
+        )
+
+    if not samples:
+        return HFDataset.from_dict({"prompt": [], "completion": []})
+
+    prompts = [s.get("prompt", "") for s in samples]
+    completions = [s.get("completion", "") for s in samples]
+    extras = [s.get("extra_info", {}) for s in samples]
+
+    return HFDataset.from_dict(
+        {"prompt": prompts, "completion": completions, "extra_info": extras}
+    )

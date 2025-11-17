@@ -66,9 +66,9 @@ def load_model_with_new_tokens(args, device_map):
         )
 
         # 验证词汇表大小
-        assert (
-            len(processor.tokenizer) == new_vocab_size
-        ), f"Tokenizer size {len(processor.tokenizer)} != model vocab size {new_vocab_size}"
+        assert len(processor.tokenizer) == new_vocab_size, (
+            f"Tokenizer size {len(processor.tokenizer)} != model vocab size {new_vocab_size}"
+        )
 
     else:
         print("加载完整微调模型...")

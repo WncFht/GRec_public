@@ -1,7 +1,10 @@
 import argparse
 import os
 
-from transformers import Qwen2_5_VLForConditionalGeneration, AutoModelForCausalLM
+from transformers import (
+    Qwen2_5_VLForConditionalGeneration,
+    AutoModelForCausalLM,
+)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
