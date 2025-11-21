@@ -1,10 +1,7 @@
 import argparse
+import math
 import os
 import sys
-import math
-import random
-import numpy as np
-import torch
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
@@ -12,16 +9,16 @@ sys.path.append(
     str(root)
 )  # add GRec/src to path so relative modules can be imported
 
-from parser import parse_global_args, parse_dataset_args, parse_train_args
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
 from data_rl import (
-    SeqRecDataset,
     FusionSeqRecDataset,
     ItemFeatDataset,
+    SeqRecDataset,
     dataset_to_text_samples,
     samples_to_hf_dataset,
 )
-
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from parser import parse_dataset_args, parse_global_args, parse_train_args
 
 
 def build_args():
@@ -50,7 +47,7 @@ def main():
     elif task == "fusionseqrec":
         ds_train = FusionSeqRecDataset(args, args.dataset, mode="train")
         ds_eval = FusionSeqRecDataset(args, args.dataset, mode="valid")
-    elif task in ("item2index", "item"):
+    elif task in ("item2index"):
         ds_train = ItemFeatDataset(
             args, args.dataset, task="item2index", mode="train"
         )
@@ -90,9 +87,9 @@ def main():
     # prefer dataset-provided mappings if present
     for d in (ds_train, ds_eval):
         if hasattr(d, "prompt2history"):
-            prompt2history.update(getattr(d, "prompt2history"))
+            prompt2history.update(d.prompt2history)
         if hasattr(d, "history2target"):
-            history2target.update(getattr(d, "history2target"))
+            history2target.update(d.history2target)
 
     # fallback: build mappings from samples collected (extra_info)
     for s in samples_train + samples_eval:

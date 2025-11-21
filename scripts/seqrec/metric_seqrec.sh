@@ -1,4 +1,12 @@
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
+
+DATASET=Instruments
+# DATASET=Arts,Games,Instruments
+RATIO=1
+
+CKPT_PATH=ckpt/Instruments/Qwen2-VL-7B-lora-item2index-seqrec-fusionseqrec-nonewtoken/checkpoint-7284
+BASE_MODEL=./ckpt/base_model/Qwen2-VL-7B-Instruct
+MODEL_TYPE=qwen2_vl
 
 # CKPT_PATH=ckpt/Instruments/Llava-onevision-finetune-item2index-index2item-seqrec-fusionseqrec-1-qwen7B/checkpoint-5619
 # BASE_MODEL=./ckpt/base_model/llava-onevision-qwen2-7b-ov-hf
@@ -8,14 +16,7 @@ export CUDA_VISIBLE_DEVICES=0
 # BASE_MODEL=ckpt/base_model/Qwen2.5-7B
 # MODEL_TYPE=qwen
 
-CKPT_PATH=/opt/meituan/dolphinfs_zhangkangning02/zkn/verl/checkpoints/grec_verl/qwen2-vl-7b-n32/global_step_105/actor/merged
-BASE_MODEL=ckpt/base_model/Qwen2-VL-7B-Instruct
-MODEL_TYPE=qwen2_vl
-
-# DATASET=Arts,Automotive,Cell,Games,Instruments,Pet,Tools,Toys,Sports
-# DATASET=Arts,Games,Instruments
-DATASET=Instruments
-
+DATA_PATH=./data
 RESULTS_DIR=./results
 # 1. 获取检查点名称 (例如: checkpoint-855)
 CHECKPOINT_NAME=$(basename $CKPT_PATH)
@@ -25,15 +26,14 @@ MODEL_DIR_NAME=$(basename $(dirname $CKPT_PATH))
 RESULTS_FILE=${RESULTS_DIR}/${TASK}-${MODEL_DIR_NAME}-${CHECKPOINT_NAME}.txt
 
 nohup python -m src.seqrec.metric \
-    --ckpt_path $CKPT_PATH \
     --model_type $MODEL_TYPE \
+    --ckpt_path $CKPT_PATH \
+    --ratio_dataset $RATIO \
     --dataset $DATASET \
-    --test_task item2index \
+    --data_path $DATA_PATH \
     --test_batch_size 16 \
-    --test_prompt_ids 0 \
-    --index_file .index_qwen7B.json \
-    --ratio_dataset 1 \
-    --base_model $BASE_MODEL \
     --num_beams 10 \
+    --index_file .index_qwen7B.json \
+    --test_prompt_ids "0" \
+    --base_model $BASE_MODEL \
     --results_file $RESULTS_FILE > ${RESULTS_FILE%.txt}_log.txt 2>&1 &
-    # --lora \
