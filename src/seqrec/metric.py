@@ -119,7 +119,7 @@ def test(args: argparse.Namespace):
                 scores = output["sequences_scores"]
 
                 output = tokenizer.batch_decode(
-                    output_ids, skip_special_tokens=False
+                    output_ids, skip_special_tokens=True
                 )
                 # print(output)
                 # print(scores)

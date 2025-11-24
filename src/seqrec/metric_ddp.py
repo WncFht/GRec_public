@@ -181,7 +181,7 @@ def test(args: argparse.Namespace):
                 scores = output["sequences_scores"]
 
                 output_text = tokenizer.batch_decode(
-                    output_ids, skip_special_tokens=False
+                    output_ids, skip_special_tokens=True
                 )
 
                 topk_res = get_topk_results(
