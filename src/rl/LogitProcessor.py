@@ -1,4 +1,4 @@
-wfrom collections.abc import Callable
+from collections.abc import Callable
 
 import torch
 from transformers.generation import LogitsProcessor
@@ -57,9 +57,7 @@ class ConstrainedLogitsProcessor(LogitsProcessor):
                 if len(prefix_allowed_tokens) == 0:
                     continue
 
-                mask[
-                    batch_id * self._num_beams + beam_id, prefix_allowed_tokens
-                ] = 0
+                mask[batch_id * self._num_beams + beam_id, prefix_allowed_tokens] = 0
 
         self.count += 1
 

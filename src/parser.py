@@ -5,9 +5,7 @@ def parse_global_args(
     parser: argparse.ArgumentParser,
 ) -> argparse.ArgumentParser:
     global_args = parser.add_argument_group("global_args")
-
     global_args.add_argument("--seed", type=int, default=42, help="Random seed")
-
     global_args.add_argument(
         "--model_type",
         type=str,
@@ -23,6 +21,141 @@ def parse_global_args(
             "llama",
         ],
         help="模型类型 (qwen2_vl or qwen2_5_vl, llava_onevision)",
+    )
+
+    return parser
+
+
+def parse_rl_args(
+    parser: argparse.ArgumentParser,
+) -> argparse.ArgumentParser:
+    rl_parser = parser.add_argument_group("rl_args")
+
+    rl_parser.add_argument(
+        "--output_dir",
+        type=str,
+        default="",
+        help="Output directory for RL checkpoints.",
+    )
+    rl_parser.add_argument(
+        "--train_batch_size",
+        type=int,
+        default=32,
+        help="Per-device train batch size for RL.",
+    )
+    rl_parser.add_argument(
+        "--eval_batch_size",
+        type=int,
+        default=32,
+        help="Per-device eval batch size for RL.",
+    )
+    rl_parser.add_argument(
+        "--gradient_accumulation_steps",
+        type=int,
+        default=1,
+        help="Number of gradient accumulation steps.",
+    )
+    rl_parser.add_argument(
+        "--temperature",
+        type=float,
+        default=1.0,
+        help="Sampling temperature during RL decoding.",
+    )
+    rl_parser.add_argument(
+        "--add_gt",
+        action="store_true",
+        default=False,
+        help="Whether to add ground-truth completion into candidates.",
+    )
+    rl_parser.add_argument(
+        "--eval_step",
+        type=float,
+        default=0.199,
+        help="Evaluation frequency (in epochs or ratio).",
+    )
+    rl_parser.add_argument(
+        "--num_generations",
+        type=int,
+        default=16,
+        help="Number of generations (e.g. beams) per prompt.",
+    )
+    rl_parser.add_argument(
+        "--num_train_epochs",
+        type=int,
+        default=1,
+        help="Number of training epochs for RL.",
+    )
+    rl_parser.add_argument(
+        "--learning_rate",
+        type=float,
+        default=1e-6,
+        help="Learning rate for RL optimizer.",
+    )
+    rl_parser.add_argument(
+        "--beta",
+        type=float,
+        default=0.04,
+        help="Beta coefficient in GRPO loss.",
+    )
+    rl_parser.add_argument(
+        "--beam_search",
+        action="store_true",
+        default=False,
+        help="Whether to use beam search during RL.",
+    )
+    rl_parser.add_argument(
+        "--test_during_training",
+        action="store_true",
+        default=True,
+        help="Whether to run test/eval during training.",
+    )
+    rl_parser.add_argument(
+        "--dynamic_sampling",
+        action="store_true",
+        default=False,
+        help="Enable dynamic sampling strategy for RL data.",
+    )
+    rl_parser.add_argument(
+        "--mask_all_zero",
+        action="store_true",
+        default=False,
+        help="Whether to mask all-zero rewards.",
+    )
+    rl_parser.add_argument(
+        "--sync_ref_model",
+        action="store_true",
+        default=False,
+        help="Whether to periodically sync reference model.",
+    )
+    rl_parser.add_argument(
+        "--test_beam",
+        type=int,
+        default=20,
+        help="Beam size used at test time.",
+    )
+    rl_parser.add_argument(
+        "--reward_type",
+        type=str,
+        default="rule",
+        help="Reward type: rule|ranking|ranking_only|semantic|sasrec.",
+    )
+    rl_parser.add_argument(
+        "--sample_train",
+        action="store_true",
+        default=False,
+        help="Whether to subsample training data.",
+    )
+    rl_parser.add_argument(
+        "--dapo",
+        action="store_true",
+        default=False,
+        help="Enable DAPO training variant.",
+    )
+    rl_parser.add_argument(
+        "--gspo",
+        action="store_true",
+        default=False,
+        help="Enable GSPO training variant.",
     )
 
     return parser
@@ -163,9 +296,7 @@ def parse_train_args(
         action="store_true",
         default=False,
     )
-    train_args.add_argument(
-        "--gradient_accumulation_steps", type=int, default=1
-    )
+    train_args.add_argument("--gradient_accumulation_steps", type=int, default=1)
     train_args.add_argument("--logging_step", type=int, default=1)
     train_args.add_argument("--model_max_length", type=int, default=2048)
     train_args.add_argument("--weight_decay", type=float, default=0.01)
@@ -198,15 +329,11 @@ def parse_train_args(
 
     train_args.add_argument("--warmup_ratio", type=float, default=0.01)
     train_args.add_argument("--lr_scheduler_type", type=str, default="cosine")
-    train_args.add_argument(
-        "--save_and_eval_strategy", type=str, default="epoch"
-    )
+    train_args.add_argument("--save_and_eval_strategy", type=str, default="epoch")
     train_args.add_argument("--save_and_eval_steps", type=int, default=1000)
     train_args.add_argument("--fp16", action="store_true", default=False)
     train_args.add_argument("--bf16", action="store_true", default=False)
-    train_args.add_argument(
-        "--deepspeed", type=str, default="./config/ds_z3_bf16.json"
-    )
+    train_args.add_argument("--deepspeed", type=str, default="./config/ds_z3_bf16.json")
 
     train_args.add_argument(
         "--train_prompt_sample_num",
