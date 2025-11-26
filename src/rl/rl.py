@@ -5,11 +5,7 @@ import sys
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
-sys.path.append(
-    str(root)
-)  # add GRec/src to path so relative modules can be imported
-
-from transformers import AutoModelForCausalLM, AutoTokenizer
+sys.path.append(str(root))  # add GRec/src to path so relative modules can be imported
 
 from data_rl import (
     FusionSeqRecDataset,
@@ -19,6 +15,7 @@ from data_rl import (
     samples_to_hf_dataset,
 )
 from parser import parse_dataset_args, parse_global_args, parse_train_args
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 def build_args():
@@ -48,12 +45,8 @@ def main():
         ds_train = FusionSeqRecDataset(args, args.dataset, mode="train")
         ds_eval = FusionSeqRecDataset(args, args.dataset, mode="valid")
     elif task in ("item2index"):
-        ds_train = ItemFeatDataset(
-            args, args.dataset, task="item2index", mode="train"
-        )
-        ds_eval = ItemFeatDataset(
-            args, args.dataset, task="item2index", mode="valid"
-        )
+        ds_train = ItemFeatDataset(args, args.dataset, task="item2index", mode="train")
+        ds_eval = ItemFeatDataset(args, args.dataset, task="item2index", mode="valid")
     else:
         raise ValueError(f"Unsupported task: {task}")
 
@@ -155,9 +148,7 @@ def main():
         from trl import GRPOConfig, GRPOTrainer
 
         # map args to GRPOConfig parameters (follow MiniOneRec/rl.py)
-        num_train_epochs = getattr(
-            args, "num_train_epochs", getattr(args, "epochs", 1)
-        )
+        num_train_epochs = getattr(args, "num_train_epochs", getattr(args, "epochs", 1))
         train_batch_size = getattr(
             args, "train_batch_size", getattr(args, "per_device_batch_size", 32)
         )
@@ -174,9 +165,7 @@ def main():
             sync_ref_model=getattr(args, "sync_ref_model", False),
             per_device_eval_batch_size=eval_batch_size,
             per_device_train_batch_size=train_batch_size,
-            gradient_accumulation_steps=getattr(
-                args, "gradient_accumulation_steps", 1
-            ),
+            gradient_accumulation_steps=getattr(args, "gradient_accumulation_steps", 1),
             eval_steps=getattr(args, "eval_step", 0.199),
             logging_steps=1,
             learning_rate=getattr(args, "learning_rate", 1e-6),
@@ -189,9 +178,7 @@ def main():
             lr_scheduler_type="cosine",
             save_strategy="steps",
             report_to=(
-                args.wandb_project
-                if getattr(args, "wandb_project", "")
-                else "none"
+                args.wandb_project if getattr(args, "wandb_project", "") else "none"
             ),
             run_name=getattr(args, "wandb_run_name", None),
         )
