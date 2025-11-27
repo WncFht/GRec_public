@@ -4,7 +4,7 @@ sft_prompt = (
     "\n\n### Instruction:\n{instruction}\n\n### Response:{response}"
 )
 
-think_prompt = "Think first and then answer. You could put your thinking process in <think> and </think>, and put your answer in <answer> and </answer>."
+# think_prompt = "Think first and then answer. You could put your thinking process in <think> and </think>, and put your answer in <answer> and </answer>."
 
 # sft_prompt = think_prompt + sft_prompt
 
@@ -231,9 +231,7 @@ item2index_prompt.append(prompt)
 
 #####——7
 prompt = {}
-prompt["instruction"] = (
-    'Can you tell me what item is described as "{description}"?'
-)
+prompt["instruction"] = 'Can you tell me what item is described as "{description}"?'
 prompt["response"] = "{item}"
 item2index_prompt.append(prompt)
 
@@ -253,9 +251,7 @@ item2index_prompt.append(prompt)
 
 #####——9
 prompt = {}
-prompt["instruction"] = (
-    'Which item has the following characteristics: "{description}"?'
-)
+prompt["instruction"] = 'Which item has the following characteristics: "{description}"?'
 prompt["response"] = "{item}"
 item2index_prompt.append(prompt)
 
@@ -385,9 +381,7 @@ index2item_prompt.append(prompt)
 
 #####——5
 prompt = {}
-prompt["instruction"] = (
-    "Would you mind informing me about the title of item {item}?"
-)
+prompt["instruction"] = "Would you mind informing me about the title of item {item}?"
 prompt["response"] = "{title}"
 index2item_prompt.append(prompt)
 
@@ -734,9 +728,7 @@ prompt = {}
 prompt["instruction"] = (
     "Using visual analysis of the product image, provide the title, description, and brand details for item {item}."
 )
-prompt["response"] = (
-    "Title: {title}\nDescription: {description}\nBrand: {brand}"
-)
+prompt["response"] = "Title: {title}\nDescription: {description}\nBrand: {brand}"
 mmindex2item_prompt.append(prompt)
 
 # 变体6：输出title、description和categories

@@ -1,6 +1,7 @@
 import argparse
 import math
 import os
+from collections import defaultdict
 
 import parser as args_parser
 from data_rl import FusionSeqRecDataset, SeqRecDataset
@@ -9,6 +10,22 @@ from minionerec_trainer import ReReTrainer
 from utils import ensure_dir, load_model_for_training, make_run_name, set_seed
 
 from trl import GRPOConfig
+
+
+def debug_prefix_index(tokenizer, base_model_name: str):
+    """
+    辅助函数：打印 '### Response:\\nitem\\n' 的分词结果，方便人工选择 prefix_index。
+    不会在训练流程中自动调用，如需查看可以在 main 里手动调用。
+    """
+    sample_item = "example_item"
+    text = f"### Response:\n{sample_item}\n"
+    tokenized = tokenizer(text)
+    ids = tokenized["input_ids"]
+    tokens = tokenizer.convert_ids_to_tokens(ids)
+    print(f"[Debug prefix_index] base_model={base_model_name}")
+    print("Text:", repr(text))
+    print("IDs :", ids)
+    print("Tokens:", tokens)
 
 
 def main():
@@ -47,44 +64,82 @@ def main():
     # ====================================================
     # 3. 数据集准备
     # ====================================================
-    # 注意：我们需要先加载 Dataset 以便获取 new_tokens (用于扩展词表)
+    # 先构造 data_rl 里的 PyTorch Dataset，
+    # 再统一转换成 Verl 风格记录并包装成 HF Dataset，
+    # 以满足 ReReTrainer 的输入格式要求。
 
-    # 根据任务选择 Dataset 类
-    if "fusionseqrec" in parsed_args.tasks:
-        DatasetClass = FusionSeqRecDataset
-        print("Using FusionSeqRecDataset (Multimodal/Enriched)")
-    else:
-        DatasetClass = SeqRecDataset
-        print("Using SeqRecDataset (Standard ID-based)")
+    tasks = parsed_args.tasks.split(",")
+    train_datasets = []
+    valid_datasets = []
 
-    print("Processing Train Dataset...")
-    # 实例化 Dataset (使用 data_rl.py 的逻辑)
-    raw_train_ds = DatasetClass(
-        args=parsed_args,  # 传入 Namespace，BaseDataset 会处理
-        dataset=parsed_args.dataset,
-        mode="train",
-    )
+    for task in tasks:
+        dataset_list = parsed_args.dataset.split(",")
+        for dataset_name in dataset_list:
+            train_dataset = None
+            valid_dataset = None
 
-    # 获取新 Token (用于 resize embeddings)
-    new_tokens = raw_train_ds.get_new_tokens()
-    print(f"Found {len(new_tokens)} new tokens from dataset.")
+            if task.lower() == "seqrec":
+                train_dataset = SeqRecDataset(
+                    parsed_args,
+                    mode="train",
+                    dataset=dataset_name,
+                )
+                valid_dataset = SeqRecDataset(
+                    parsed_args,
+                    mode="valid",
+                    dataset=dataset_name,
+                )
+            elif task.lower() == "fusionseqrec":
+                train_dataset = FusionSeqRecDataset(
+                    parsed_args,
+                    mode="train",
+                    dataset=dataset_name,
+                )
+                valid_dataset = FusionSeqRecDataset(
+                    parsed_args,
+                    mode="valid",
+                    dataset=dataset_name,
+                )
 
-    # 转换为 RL 格式 (to_verl_records)
-    train_records = raw_train_ds.to_verl_records("train")
+            if train_dataset is not None:
+                train_datasets.append(train_dataset)
+                print(
+                    f"Task: {task} - dataset: {dataset_name} - train samples: {len(train_dataset)}"
+                )
+            if valid_dataset is not None:
+                valid_datasets.append(valid_dataset)
+                print(
+                    f"Task: {task} - dataset: {dataset_name} - valid samples: {len(valid_dataset)}"
+                )
+
+    if not train_datasets:
+        msg = "No train datasets constructed. Please check `--tasks` and `--dataset`."
+        raise ValueError(msg)
+
+    # 用第一个训练集来构建 Trie 约束
+    raw_train_ds = train_datasets[0]
+
+    # 转换所有训练集为 Verl 记录并合并
+    print("Processing Train Dataset (to Verl records)...")
+    train_records = []
+    for ds in train_datasets:
+        if hasattr(ds, "to_verl_records"):
+            train_records.extend(ds.to_verl_records("train"))
+
     train_dataset = HFDataset.from_list(train_records)
     train_dataset = train_dataset.shuffle(seed=parsed_args.seed)
 
-    print("Processing Eval Dataset...")
-    raw_eval_ds = DatasetClass(
-        args=parsed_args,
-        dataset=parsed_args.dataset,
-        mode="valid",
-    )
-    eval_records = raw_eval_ds.to_verl_records("valid")
-    eval_dataset = HFDataset.from_list(eval_records)
+    # 转换所有验证集为 Verl 记录并合并
+    print("Processing Eval Dataset (to Verl records)...")
+    eval_records = []
+    for ds in valid_datasets:
+        if hasattr(ds, "to_verl_records"):
+            eval_records.extend(ds.to_verl_records("valid"))
+
+    eval_dataset = HFDataset.from_list(eval_records) if eval_records else None
 
     print(f"Train Size: {len(train_dataset)}")
-    print(f"Eval Size: {len(eval_dataset)}")
+    print(f"Eval Size: {len(eval_dataset) if eval_dataset is not None else 0}")
 
     # ====================================================
     # 4. 模型加载 (使用 utils.load_model_for_training)
@@ -94,9 +149,7 @@ def main():
     model, processor, orig_vocab, new_vocab, _, embedding_hooks = (
         load_model_for_training(
             args=parsed_args,
-            new_tokens=new_tokens,
             local_rank=int(os.environ.get("LOCAL_RANK", 0)),
-            logger=None,  # 使用 print
         )
     )
 
@@ -114,6 +167,27 @@ def main():
             model.config.pad_token_id = tokenizer.eos_token_id
 
     num_generations = parsed_args.num_generations
+
+    # ====================================================
+    # 4.1 基于数据集构建 hash_dict（前缀约束）
+    # ====================================================
+    # 简单的 prefix_index 规则（与原实现保持一致），
+    # 如需更精细可以用下方 debug 函数做检查后手动调整。
+    base_model_lower = parsed_args.base_model.lower()
+    if "gpt2" in base_model_lower:
+        prefix_index = 4
+    else:
+        prefix_index = 3
+
+    merged_hash_dict: dict[str, set[int]] = defaultdict(set)
+    for ds in train_datasets:
+        if hasattr(ds, "build_hash_dict"):
+            ds_hash = ds.build_hash_dict(tokenizer, prefix_index=prefix_index)
+            for k, vals in ds_hash.items():
+                merged_hash_dict[k].update(vals)
+
+    hash_dict = {k: sorted(list(v)) for k, v in merged_hash_dict.items()}
+    print(f"Built hash_dict entries: {len(hash_dict)} with prefix_index={prefix_index}")
 
     ndcg_rewards = [-1.0 / math.log2(i + 2) for i in range(num_generations)]
     ndcg_rewards = [-elm / sum(ndcg_rewards) for elm in ndcg_rewards]
@@ -191,12 +265,6 @@ def main():
         report_to="wandb",
     )
 
-    # 约束生成设置 (Trie)
-    prefix_allowed_tokens_fn = None
-    if parsed_args.use_constrained_generation:
-        print("Building Trie for Constrained Generation...")
-        prefix_allowed_tokens_fn = raw_train_ds.get_prefix_allowed_tokens_fn(tokenizer)
-
     # 初始化自定义 Trainer
     trainer = ReReTrainer(
         model=parsed_args.model_path,
@@ -208,15 +276,13 @@ def main():
         beam_search=parsed_args.beam_search,
         test_during_training=parsed_args.test_during_training,
         test_beam=parsed_args.test_beam,
-        info_file=parsed_args.info_file,
+        hash_dict=hash_dict,
+        prefix_index=prefix_index,
         reward_funcs=reward_fun,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         args=training_args,
     )
-
-    if prefix_allowed_tokens_fn:
-        trainer.prefix_allowed_tokens_fn = prefix_allowed_tokens_fn
 
     # ====================================================
     # 7. 训练与保存

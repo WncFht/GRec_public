@@ -24,15 +24,22 @@ class ConstrainedLogitsProcessor(LogitsProcessor):
         prefix_allowed_tokens_fn: Callable[[int, torch.Tensor], list[int]],
         num_beams: int,
         base_model: str | None = None,
+        prefix_index: int | None = None,
     ):
         self._prefix_allowed_tokens_fn = prefix_allowed_tokens_fn
         self._num_beams = num_beams
         self.count = 0
-        self.base_model = base_model
-        if self.base_model.lower().find("gpt2") > -1:
-            self.prefix_index = 4
+        self.base_model = base_model or ""
+
+        # 如果显式传入了 prefix_index，则直接使用；
+        # 否则根据 base_model 做一个简单的默认设置（与原逻辑保持一致）。
+        if prefix_index is not None:
+            self.prefix_index = prefix_index
         else:
-            self.prefix_index = 3
+            if self.base_model.lower().find("gpt2") > -1:
+                self.prefix_index = 4
+            else:
+                self.prefix_index = 3
 
     @add_start_docstrings(LOGITS_PROCESSOR_INPUTS_DOCSTRING)
     def __call__(

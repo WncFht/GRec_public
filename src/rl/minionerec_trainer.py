@@ -238,7 +238,8 @@ class ReReTrainer(Trainer):
         dapo: bool = False,
         gspo: bool = False,
         # * others
-        info_file: str = None,
+        hash_dict: dict[str, list[int]] | None = None,
+        prefix_index: int | None = None,
         # logits_processor: Optional[LogitsProcessor] = None,
         # prompt2history: dict[str, str] = None,
         # history2target: dict[str, str] = None,
@@ -414,7 +415,6 @@ class ReReTrainer(Trainer):
         # self.history2target = history2target
         self.add_gt = add_gt
         self.beam_search = beam_search
-        self.info_file = info_file
         self.temperature = args.temperature
         self.length_penalty = length_penalty
         self.test_during_training = test_during_training
@@ -422,6 +422,20 @@ class ReReTrainer(Trainer):
         self.dynamic_sampling = dynamic_sampling
         self.dapo = dapo
         self.gspo = gspo
+
+        # 由外部（如 data_rl / rl_new）预构建好的 hash_dict，用于前缀约束。
+        # 如果未提供，则默认为空 dict，此时前缀约束退化为“无约束”。
+        self.hash_dict: dict[str, list[int]] = hash_dict or {}
+
+        # prefix_index 同样从外部可控；如果没有显式指定，则退回到
+        # 与原始实现一致的基于 base_model 名字的简单规则。
+        if prefix_index is None:
+            if self.base_model.lower().find("gpt2") > -1:
+                self.prefix_index = 4
+            else:
+                self.prefix_index = 3
+        else:
+            self.prefix_index = prefix_index
         # self.logits_processor = logits_processor
 
         # Check if the per_device_train/eval_batch_size * num processes can be divided by the number of generations
@@ -580,52 +594,6 @@ class ReReTrainer(Trainer):
                     reward_func, evaluation_mode=True
                 )
 
-        # -----------------------------
-        with open(self.info_file) as f:
-            info = f.readlines()
-            # Parse new format: semantic_id \t item_title \t item_id
-            semantic_ids = [line.split("\t")[0].strip() + "\n" for line in info]
-            item_titles = [
-                line.split("\t")[1].strip() + "\n"
-                for line in info
-                if len(line.split("\t")) >= 2
-            ]
-
-            # Format for tokenization
-            info_semantic = [f"""### Response:\n{_}""" for _ in semantic_ids]
-            info_titles = [f"""### Response:\n{_}""" for _ in item_titles]
-
-            info = info_semantic
-
-        tokenizer = AutoTokenizer.from_pretrained(self.base_model)
-        if self.base_model.lower().find("llama") > -1:
-            prefixID = [tokenizer(_).input_ids[1:] for _ in info]
-        else:
-            prefixID = [tokenizer(_).input_ids for _ in info]
-
-        if self.base_model.lower().find("gpt2") > -1:
-            prefix_index = 4
-        else:
-            prefix_index = 3
-
-        self.hash_dict = dict()
-        # sasrec_dict = dict()
-        for index, ID in enumerate(prefixID):
-            ID.append(tokenizer.eos_token_id)
-            for i in range(prefix_index, len(ID)):
-                if i == prefix_index:
-                    hash_number = self.get_hash(ID[:i])
-                else:
-                    hash_number = self.get_hash(ID[prefix_index:i])
-                if hash_number not in self.hash_dict:
-                    self.hash_dict[hash_number] = set()
-                    # sasrec_dict[hash_number] = set()
-                self.hash_dict[hash_number].add(ID[i])
-
-        for key in self.hash_dict.keys():
-            self.hash_dict[key] = list(self.hash_dict[key])
-        # -----------------------------
-
         self.test_generation_config = GenerationConfig(
             max_new_tokens=self.max_completion_length,
             length_penalty=self.length_penalty,
@@ -783,6 +751,7 @@ class ReReTrainer(Trainer):
             # unconditional_ids=None,
             num_beams=self.num_generations if self.beam_search else 1,
             base_model=self.base_model,
+            prefix_index=self.prefix_index,
         )
         self.logits_processor = LogitsProcessorList(
             [TemperatureLogitsWarper(temperature=self.temperature), ccc]

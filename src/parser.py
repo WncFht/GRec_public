@@ -157,6 +157,12 @@ def parse_rl_args(
         default=False,
         help="Enable GSPO training variant.",
     )
+    rl_parser.add_argument(
+        "--debug_prefix_index",
+        action="store_true",
+        default=False,
+        help="Print tokenization details for '### Response:' to help choose prefix_index.",
+    )
 
     return parser
 
