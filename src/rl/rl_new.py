@@ -1,15 +1,15 @@
 import argparse
 import math
 import os
+import sys
 from collections import defaultdict
 
-import parser as args_parser
-from data_rl import FusionSeqRecDataset, SeqRecDataset
 from datasets import Dataset as HFDataset
 from minionerec_trainer import ReReTrainer
-from utils import ensure_dir, load_model_for_training, make_run_name, set_seed
-
 from trl import GRPOConfig
+
+from ..data_rl import FusionSeqRecDataset, SeqRecDataset
+from ..utils import ensure_dir, load_model_for_training, make_run_name, set_seed
 
 
 def debug_prefix_index(tokenizer, base_model_name: str):
@@ -17,7 +17,7 @@ def debug_prefix_index(tokenizer, base_model_name: str):
     辅助函数：打印 '### Response:\\nitem\\n' 的分词结果，方便人工选择 prefix_index。
     不会在训练流程中自动调用，如需查看可以在 main 里手动调用。
     """
-    sample_item = "example_item"
+    sample_item = "<a_1><b_1><c_1><d_1>"
     text = f"### Response:\n{sample_item}\n"
     tokenized = tokenizer(text)
     ids = tokenized["input_ids"]
@@ -33,9 +33,9 @@ def main():
     # 1. 参数解析 (使用 parser.py)
     # ====================================================
     parser = argparse.ArgumentParser()
-    parser = args_parser.parse_global_args(parser)
-    parser = args_parser.parse_dataset_args(parser)
-    parser = args_parser.parse_rl_args(parser)
+    parser = parse_global_args(parser)
+    parser = parse_dataset_args(parser)
+    parser = parse_rl_args(parser)
 
     parsed_args = parser.parse_args()  # 扁平对象，传给 utils.* 使用
 
@@ -165,6 +165,9 @@ def main():
 
     num_generations = parsed_args.num_generations
 
+    if True:
+        debug_prefix_index(tokenizer, "test")
+        sys.exit()
     # ====================================================
     # 4.1 基于数据集构建 hash_dict（前缀约束）
     # ====================================================
@@ -184,7 +187,9 @@ def main():
                 merged_hash_dict[k].update(vals)
 
     hash_dict = {k: sorted(list(v)) for k, v in merged_hash_dict.items()}
-    print(f"Built hash_dict entries: {len(hash_dict)} with prefix_index={prefix_index}")
+    print(
+        f"Built hash_dict entries: {len(hash_dict)} with prefix_index={prefix_index}"
+    )
 
     ndcg_rewards = [-1.0 / math.log2(i + 2) for i in range(num_generations)]
     ndcg_rewards = [-elm / sum(ndcg_rewards) for elm in ndcg_rewards]
