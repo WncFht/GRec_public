@@ -99,6 +99,12 @@ class UnifiedTrainer:
 
         self.logger.info(f"Report to: {report_to}")
 
+        # 只保留模型权重，不保存中间 optimizer / scheduler / rng 等训练状态
+        # 注意：在使用 DeepSpeed 时，save_only_model 需要关闭 load_best_model_at_end
+        use_deepspeed = bool(getattr(self.args, "deepspeed", None))
+        save_only_model = True
+        load_best_model_at_end = not use_deepspeed
+
         return TrainingArguments(
             seed=self.args.seed,
             per_device_train_batch_size=self.args.per_device_batch_size,
@@ -119,7 +125,8 @@ class UnifiedTrainer:
             eval_steps=self.args.save_and_eval_steps,
             save_steps=self.args.save_and_eval_steps,
             output_dir=self.args.output_dir,
-            load_best_model_at_end=True,
+            load_best_model_at_end=load_best_model_at_end,
+            save_only_model=save_only_model,
             deepspeed=self.args.deepspeed,
             ddp_find_unused_parameters=False if self.ddp else None,
             dataloader_num_workers=self.args.num_workers,

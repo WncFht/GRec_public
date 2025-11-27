@@ -116,9 +116,6 @@ def main():
         msg = "No train datasets constructed. Please check `--tasks` and `--dataset`."
         raise ValueError(msg)
 
-    # 用第一个训练集来构建 Trie 约束
-    raw_train_ds = train_datasets[0]
-
     # 转换所有训练集为 Verl 记录并合并
     print("Processing Train Dataset (to Verl records)...")
     train_records = []
@@ -297,9 +294,7 @@ def main():
     final_dir = os.path.join(parsed_args.output_dir, "final_checkpoint")
     ensure_dir(final_dir)
 
-    # 处理 LoRA 或 Full Model 保存
-    if hasattr(model, "save_pretrained"):
-        model.save_pretrained(final_dir)
+    trainer.model.save_pretrained(final_dir)
     tokenizer.save_pretrained(final_dir)
 
     # 保存 token metadata
