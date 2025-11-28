@@ -741,9 +741,9 @@ class ReReTrainer(Trainer):
             maybe_apply_chat_template(example, self.processing_class)["prompt"]
             for example in prompt_dicts
         ]
-        print(prompts[0])
-        print(prompt_dicts[0])
-        print(prompts_text[0])
+        # print(prompts[0])
+        # print(prompt_dicts[0])
+        # print(prompts_text[0])
         prompt_inputs = self.processing_class(
             prompts_text,
             return_tensors="pt",
@@ -864,13 +864,23 @@ class ReReTrainer(Trainer):
                         test_completions = self.processing_class.batch_decode(
                             test_completion_ids, skip_special_tokens=True
                         )
+
                     test_completions = [
-                        _.split("Response:\n")[-1] for _ in test_completions
+                        _.split("Response:")[-1] for _ in test_completions
                     ]
+                    test_completions = [
+                        _.strip().replace(" ", "") for _ in test_completions
+                    ]
+                    test_completions = [
+                        _.replace("\n", "").replace("assistant", "")
+                        for _ in test_completions
+                    ]
+
                     test_comp_lis = [
                         test_completions[i : i + self.test_beam]
                         for i in range(0, len(test_completions), self.test_beam)
                     ]
+                    # import pdb; pdb.set_trace()
                     for i, comp_lis in enumerate(test_comp_lis):
                         target = dedup_target[i]
                         for j in range(len(comp_lis)):
@@ -1124,6 +1134,7 @@ class ReReTrainer(Trainer):
                 )
         else:
             completions = completions_text
+        # import pdb;pdb.set_trace()
 
         div_lis = [
             len(set(completions_text[i : i + self.num_generations]))
@@ -1223,8 +1234,10 @@ class ReReTrainer(Trainer):
         advantages = (rewards - mean_grouped_rewards) / (
             std_grouped_rewards + 1e-4
         )
+        # print(f"rewards: {rewards}")
         # print(f"advantages: {advantages}")
 
+        # import pdb; pdb.set_trace()
         # Slice to keep only the local part of the data
         process_slice = slice(
             self.accelerator.process_index * len(prompts_text),
@@ -1324,6 +1337,7 @@ class ReReTrainer(Trainer):
         ) * advantages.unsqueeze(1)
         per_token_loss = -(per_token_loss - self.beta * per_token_kl)
 
+        # import pdb; pdb.set_trace()
         if self.dapo:
             loss = (
                 per_token_loss * completion_mask

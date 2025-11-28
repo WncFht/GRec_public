@@ -18,7 +18,9 @@ def debug_prefix_index(tokenizer, base_model_name: str):
     不会在训练流程中自动调用，如需查看可以在 main 里手动调用。
     """
     sample_item = "<a_1><b_1><c_1><d_1>"
-    text = f"### Response:\n{sample_item}\n"
+    text = (
+        f"### Response:<|im_end|><|im_start|>assistant\n{sample_item}<|im_end|>"
+    )
     tokenized = tokenizer(text)
     ids = tokenized["input_ids"]
     tokens = tokenizer.convert_ids_to_tokens(ids)
@@ -175,7 +177,9 @@ def main():
     # 简单的 prefix_index 规则（与原实现保持一致），
     # 如需更精细可以用下方 debug 函数做检查后手动调整。
     base_model_lower = parsed_args.base_model.lower()
-    if "gpt2" in base_model_lower:
+    if "llava" in base_model_lower:
+        prefix_index = 7
+    elif "gpt2" in base_model_lower:
         prefix_index = 4
     else:
         prefix_index = 3
@@ -191,7 +195,10 @@ def main():
     print(
         f"Built hash_dict entries: {len(hash_dict)} with prefix_index={prefix_index}"
     )
+    # print("10th of the hash_dict")
+    # import pprint; pprint.pprint(dict(list(hash_dict.items())[:10]))
 
+    # import pdb; pdb.set_trace()
     ndcg_rewards = [-1.0 / math.log2(i + 2) for i in range(num_generations)]
     ndcg_rewards = [-elm / sum(ndcg_rewards) for elm in ndcg_rewards]
 
@@ -250,7 +257,8 @@ def main():
     training_args = GRPOConfig(
         output_dir=parsed_args.output_dir,
         save_steps=0.1,
-        save_total_limit=20,
+        save_total_limit=1,
+        save_only_model=True,
         eval_strategy="steps",
         max_completion_length=128,
         num_generations=num_generations,
@@ -261,6 +269,7 @@ def main():
         gradient_accumulation_steps=parsed_args.gradient_accumulation_steps,
         eval_steps=parsed_args.eval_step,
         logging_steps=1,
+        log_completions=False,
         learning_rate=parsed_args.learning_rate,
         beta=parsed_args.beta,
         warmup_ratio=0.03,

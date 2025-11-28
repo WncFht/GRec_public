@@ -1,5 +1,6 @@
 #!/bin/bash
 export WANDB_MODE=offline
+export WANDB_ENTITY=wncfht
 export WANDB_PROJECT=GRec_rl
 export CUDA_LAUNCH_BLOCKING=1
 export PYTHONUNBUFFERED=1

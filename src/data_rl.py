@@ -113,7 +113,7 @@ class BaseDataset(Dataset):
         self,
         tokenizer,
         prefix_index: int = 3,
-        response_prefix: str = "### Response:\n",
+        response_prefix: str = "### Response:<|im_end|><|im_start|>assistant\n",
     ) -> dict[str, list[int]]:
         """
         基于当前数据集中所有 item 构建用于前缀约束的 hash_dict。
@@ -130,7 +130,7 @@ class BaseDataset(Dataset):
         all_items = self.get_all_items()
 
         for item in all_items:
-            text = f"{response_prefix}{item}\n"
+            text = f"{response_prefix}{item}"
             tokenized = tokenizer(text)
             ids = list(tokenized["input_ids"])
 
@@ -411,7 +411,12 @@ class SeqRecDataset(BaseDataset):
 
             rec = {
                 "data_source": "seqrec",
-                "prompt": [{"role": "user", "content": input_text}],
+                "prompt": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": input_text}],
+                    }
+                ],
                 "ability": "rec",
                 "reward_model": {"style": "rule", "ground_truth": label_text},
                 "extra_info": {
@@ -676,7 +681,12 @@ class FusionSeqRecDataset(BaseDataset):
 
             rec = {
                 "data_source": "fusionseqrec",
-                "prompt": [{"role": "user", "content": input_text}],
+                "prompt": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": input_text}],
+                    }
+                ],
                 "ability": "rec",
                 "reward_model": {"style": "rule", "ground_truth": label_text},
                 "extra_info": {
@@ -820,7 +830,12 @@ class ItemFeatDataset(BaseDataset):
 
             rec = {
                 "data_source": self.task,
-                "prompt": [{"role": "user", "content": input_text}],
+                "prompt": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": input_text}],
+                    }
+                ],
                 "ability": "item",
                 "reward_model": {"style": "rule", "ground_truth": label_text},
                 "extra_info": {"split": split, "index": idx, "item": target},
