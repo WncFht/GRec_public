@@ -735,10 +735,15 @@ class ReReTrainer(Trainer):
         # target_ids = self.processing_class(targets, return_tensors="pt", padding=True, padding_side="left")["input_ids"]
         # target_ids = target_ids.to(device)
 
+        prompt_dicts = [{"prompt": x["prompt"]} for x in inputs]
+
         prompts_text = [
             maybe_apply_chat_template(example, self.processing_class)["prompt"]
-            for example in inputs
+            for example in prompt_dicts
         ]
+        print(prompts[0])
+        print(prompt_dicts[0])
+        print(prompts_text[0])
         prompt_inputs = self.processing_class(
             prompts_text,
             return_tensors="pt",
@@ -752,6 +757,7 @@ class ReReTrainer(Trainer):
             prompt_inputs["attention_mask"],
         )
 
+        # import pdb; pdb.set_trace()
         if self.max_prompt_length is not None:
             prompt_ids = prompt_ids[:, -self.max_prompt_length :]
             prompt_mask = prompt_mask[:, -self.max_prompt_length :]
@@ -799,8 +805,8 @@ class ReReTrainer(Trainer):
                 completion_ids, from_process=0
             )
             process_slice = slice(
-                self.accelerator.process_index * len(prompts),
-                (self.accelerator.process_index + 1) * len(prompts),
+                self.accelerator.process_index * len(prompts_text),
+                (self.accelerator.process_index + 1) * len(prompts_text),
             )
             completion_ids = completion_ids[process_slice]
 
@@ -1016,11 +1022,11 @@ class ReReTrainer(Trainer):
                     )
 
             if self.add_gt:
-                repeat = len(prompts) // num_categories
+                repeat = len(prompts_text) // num_categories
                 new_prompt_completions = []
                 flag = False
                 # rep_ind = [random.randint(i, i+repeat-1) for i in range(0, len(prompts), repeat)]
-                for i in range(len(prompts)):
+                for i in range(len(prompts_text)):
                     if (i + 1) % repeat == 0:
                         target_ids = self.processing_class(
                             targets[i],
@@ -1139,7 +1145,7 @@ class ReReTrainer(Trainer):
         )
 
         rewards_per_func = torch.zeros(
-            len(prompts), len(self.reward_funcs), device=device
+            len(prompts_text), len(self.reward_funcs), device=device
         )
         for i, (reward_func, reward_processing_class) in enumerate(
             zip(self.reward_funcs, self.reward_processing_classes, strict=False)
@@ -1184,7 +1190,9 @@ class ReReTrainer(Trainer):
                     key: [example[key] for example in inputs] for key in keys
                 }
                 output_reward_func = reward_func(
-                    prompts=prompts, completions=completions, **reward_kwargs
+                    prompts=prompts_text,
+                    completions=completions,
+                    **reward_kwargs,
                 )
                 rewards_per_func[:, i] = torch.tensor(
                     output_reward_func, dtype=torch.float32, device=device
@@ -1219,8 +1227,8 @@ class ReReTrainer(Trainer):
 
         # Slice to keep only the local part of the data
         process_slice = slice(
-            self.accelerator.process_index * len(prompts),
-            (self.accelerator.process_index + 1) * len(prompts),
+            self.accelerator.process_index * len(prompts_text),
+            (self.accelerator.process_index + 1) * len(prompts_text),
         )
         advantages = advantages[process_slice]
         sliced_rewards = rewards[process_slice]
