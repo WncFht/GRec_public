@@ -1,15 +1,15 @@
 import argparse
 import math
 import os
-import sys
 from collections import defaultdict
 
 from datasets import Dataset as HFDataset
-from minionerec_trainer import ReReTrainer
 from trl import GRPOConfig
 
 from ..data_rl import FusionSeqRecDataset, SeqRecDataset
-from ..utils import ensure_dir, load_model_for_training, make_run_name, set_seed
+from ..parser import parse_dataset_args, parse_global_args, parse_rl_args
+from ..utils import ensure_dir, load_model_for_training, set_seed
+from .minionerec_trainer import ReReTrainer
 
 
 def debug_prefix_index(tokenizer, base_model_name: str):
@@ -39,25 +39,26 @@ def main():
 
     parsed_args = parser.parse_args()  # 扁平对象，传给 utils.* 使用
 
+    print(parsed_args)
     # ====================================================
     # 2. 环境设置 (使用 utils.py)
     # ====================================================
-    # 生成 Run Name
-    run_name = make_run_name(parsed_args)
-    parsed_args.run_name = run_name  # 回写到 args 以供 utils 内部使用
+    # # 生成 Run Name
+    # run_name = make_run_name(parsed_args)
+    # parsed_args.run_name = run_name  # 回写到 args 以供 utils 内部使用
 
     # 设置 WANDB
-    if parsed_args.run_name and parsed_args.run_name != "none":
-        os.environ["WANDB_PROJECT"] = "rl_rec"
-        os.environ["WANDB_RUN_NAME"] = run_name
-    else:
-        os.environ["WANDB_MODE"] = "disabled"
+    # if parsed_args.run_name and parsed_args.run_name != "none":
+    #     os.environ["WANDB_PROJECT"] = "rl_rec"
+    #     os.environ["WANDB_RUN_NAME"] = run_name
+    # else:
+    #     os.environ["WANDB_MODE"] = "disabled"
 
     # 设置随机种子
     set_seed(parsed_args.seed)
     ensure_dir(parsed_args.output_dir)
 
-    print(f"Run Name: {run_name}")
+    # print(f"Run Name: {run_name}")
     print(f"Model Type: {parsed_args.model_type}")
     print(f"Base Model: {parsed_args.base_model}")
 
@@ -165,9 +166,9 @@ def main():
 
     num_generations = parsed_args.num_generations
 
-    if True:
-        debug_prefix_index(tokenizer, "test")
-        sys.exit()
+    # if True:
+    #     debug_prefix_index(tokenizer, "test")
+    #     sys.exit()
     # ====================================================
     # 4.1 基于数据集构建 hash_dict（前缀约束）
     # ====================================================
@@ -194,39 +195,44 @@ def main():
     ndcg_rewards = [-1.0 / math.log2(i + 2) for i in range(num_generations)]
     ndcg_rewards = [-elm / sum(ndcg_rewards) for elm in ndcg_rewards]
 
-    def ndcg_rule_reward(prompts, completions, reward_model):
-        gt = reward_model["ground_truth"]
-        repeat = num_generations
+    def ndcg_rule_reward(reward_model, completions, prompts=None, **unused):
+        repeat = num_generations  # 确保 num_generations 在该作用域内
         rewards = []
         flag = False
         lis = []
 
-        for i, completion in enumerate(completions):
-            if completion.strip('\n"') == gt.strip('\n"'):
+        for i, (completion, rm) in enumerate(
+            zip(completions, reward_model, strict=False)
+        ):
+            if completion[0]["content"].strip('\n"') == rm[
+                "ground_truth"
+            ].strip('\n"'):
                 flag = True
                 lis.append(0.0)
             else:
                 lis.append(ndcg_rewards[i % num_generations])
 
             if (i + 1) % num_generations == 0:
-                if flag:
-                    rewards.extend(lis)
-                else:
-                    rewards.extend([0.0] * repeat)
+                rewards.extend(lis if flag else [0.0] * repeat)
                 flag = False
                 lis = []
 
         return rewards
 
-    def rule_reward(prompts, completions, reward_model):
-        gt = reward_model["ground_truth"]
+    def rule_reward(reward_model, completions, prompts=None, **unused):
         rewards = []
-
-        for i, completion in enumerate(completions):
-            if completion.strip('\n" ') == gt.strip('\n" '):
+        # print(len(completions),len(reward_model))
+        for i, (completion, rm) in enumerate(
+            zip(completions, reward_model, strict=False)
+        ):
+            if completion[0]["content"].strip('\n" ') == rm[
+                "ground_truth"
+            ].strip('\n" '):
                 rewards.append(1.0)
+                # print("1.0")
             else:
                 rewards.append(0.0)
+                # print("0.0")
         return rewards
 
     reward_type = parsed_args.reward_type
@@ -269,8 +275,8 @@ def main():
 
     # 初始化自定义 Trainer
     trainer = ReReTrainer(
-        model=parsed_args.model_path,
-        base_model=parsed_args.model_path,
+        model=model,
+        base_model=parsed_args.base_model,
         dapo=parsed_args.dapo,
         gspo=parsed_args.gspo,
         add_gt=parsed_args.add_gt,
@@ -283,6 +289,7 @@ def main():
         reward_funcs=reward_fun,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
+        processing_class=tokenizer,
         args=training_args,
     )
 

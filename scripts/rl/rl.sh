@@ -1,24 +1,59 @@
 #!/bin/bash
+export WANDB_MODE=offline
+export WANDB_PROJECT=GRec_rl
+export CUDA_LAUNCH_BLOCKING=1
+export PYTHONUNBUFFERED=1
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+export NCCL_IB_DISABLE=1        # 完全禁用 IB/RoCE
 
-# RL training launcher for GRec using GRec/src/rl/rl.py
-# Adjust paths and accelerate config as needed.
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
-export NCCL_IB_DISABLE=1
+DATASET=Instruments
+OUTPUT_DIR=ckpt/$DATASET/rl
 
-DATA_PATH="./data"
-DATASET="Instruments"
-MODEL_PATH="/path/to/your/llm"
-OUTPUT_DIR="./output_rl"
 
-accelerate launch --config_file ./config/zero2_opt.yaml \
+DATA_PATH=./data
+
+export WANDB_NAME=llava_rl
+DATASET=Instruments
+INDEX_FILE=.index_qwen7B.json
+TASK=seqrec
+BASE_MODEL=ckpt/Instruments/Llava-onevision-finetune-item2index-seqrec-fusionseqrec/checkpoint-4098
+MODEL_TYPE=llava_onevision
+
+CHECKPOINT_NAME=$(basename $BASE_MODEL)
+MODEL_DIR_NAME=$(basename $(dirname $BASE_MODEL))
+LOG_FILE="log/${MODEL_DIR_NAME}-${CHECKPOINT_NAME}-${TASK}-${TIMESTAMP}.log"
+
+nohup accelerate launch \
+    --config_file ./config/zero2_opt.yaml \
     --num_processes 4 --main_process_port 29503 \
-    ../src/rl/rl.py \
-    --base_model ${MODEL_PATH} \
-    --output_dir ${OUTPUT_DIR} \
-    --data_path ${DATA_PATH} \
-    --dataset ${DATASET} \
-    --task seqrec \
-    --per_device_batch_size 8 \
-    --epochs 1 \
+    -m src.rl.rl_new \
+    --model_type $MODEL_TYPE \
+    --base_model $BASE_MODEL \
+    --train_batch_size 64 \
+    --eval_batch_size 128 \
+    --num_train_epochs 2 \
+    --gradient_accumulation_steps 2 \
+    --eval_step 0.0999 \
+    --reward_type ranking \
+    --num_generations 16 \
+    --beam_search \
+    --temperature 1.0 \
     --learning_rate 1e-5 \
-    --bf16
+    --beta 1e-3 \
+    --data_path ./data \
+    --dataset $DATASET \
+    --index_file $INDEX_FILE \
+    --output_dir $OUTPUT_DIR \
+    --tasks $TASK \
+    --train_prompt_sample_num 1 \
+    --train_data_sample_num 0 \
+    --bf16 > $LOG_FILE 2>&1 &
+    # --wandb_run_name $WANDB_NAME
+
+PID=$!
+echo "Training started with PID: $PID"
+echo "To stop training: kill $PID"
+
+echo "$LOG_FILE"
