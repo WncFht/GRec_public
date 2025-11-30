@@ -49,8 +49,8 @@ def main(args: argparse.Namespace):
         "<unk>",
         "<pad>",
         "<|endoftext|>",
-        # "<|im_start|>",
-        # "<|im_end|>"
+        "<|im_start|>",
+        "<|im_end|>",
     }
     # 2. 预编译空白符正则
     WHITE_PAT = re.compile(r"\s+")
@@ -63,7 +63,7 @@ def main(args: argparse.Namespace):
         for tok in FRAMEWORK_SPECIAL:
             text = text.replace(tok, "")
         # 去掉所有空白（空格、换行、制表）
-        # text = WHITE_PAT.sub("", text)
+        text = WHITE_PAT.sub("", text)
         return text.strip()
 
     # 测试最后5个样本

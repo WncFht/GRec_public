@@ -1116,7 +1116,7 @@ class ReReTrainer(Trainer):
             )
         else:
             completions_text = self.processing_class.batch_decode(
-                completion_ids, skip_special_tokens=True
+                completion_ids, skip_special_tokens=False
             )
         # print(completions_text)
         if is_conversational(inputs[0]):

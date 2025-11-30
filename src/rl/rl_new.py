@@ -1,5 +1,4 @@
 import argparse
-import math
 import os
 from collections import defaultdict
 
@@ -10,10 +9,16 @@ from ..data_rl import FusionSeqRecDataset, SeqRecDataset
 from ..parser import parse_dataset_args, parse_global_args, parse_rl_args
 from ..utils import ensure_dir, load_model_for_training, set_seed
 from .minionerec_trainer import ReReTrainer
+from .reward_fns import (
+    format_reward,
+    initialize_reward_functions,
+    ndcg_rule_reward,
+    rule_reward,
+)
 
 
 def debug_prefix_index(tokenizer, base_model_name: str):
-    """
+    r"""
     辅助函数：打印 '### Response:\\nitem\\n' 的分词结果，方便人工选择 prefix_index。
     不会在训练流程中自动调用，如需查看可以在 main 里手动调用。
     """
@@ -40,6 +45,10 @@ def main():
     parser = parse_rl_args(parser)
 
     parsed_args = parser.parse_args()  # 扁平对象，传给 utils.* 使用
+    num_generations = parsed_args.num_generations
+
+    if initialize_reward_functions(num_generations):
+        return
 
     print(parsed_args)
     # ====================================================
@@ -166,8 +175,6 @@ def main():
         if model.config.pad_token_id is None:
             model.config.pad_token_id = tokenizer.eos_token_id
 
-    num_generations = parsed_args.num_generations
-
     # if True:
     #     debug_prefix_index(tokenizer, "test")
     #     sys.exit()
@@ -197,58 +204,13 @@ def main():
     )
     # print("10th of the hash_dict")
     # import pprint; pprint.pprint(dict(list(hash_dict.items())[:10]))
-
-    # import pdb; pdb.set_trace()
-    ndcg_rewards = [-1.0 / math.log2(i + 2) for i in range(num_generations)]
-    ndcg_rewards = [-elm / sum(ndcg_rewards) for elm in ndcg_rewards]
-
-    def ndcg_rule_reward(reward_model, completions, prompts=None, **unused):
-        repeat = num_generations  # 确保 num_generations 在该作用域内
-        rewards = []
-        flag = False
-        lis = []
-
-        for i, (completion, rm) in enumerate(
-            zip(completions, reward_model, strict=False)
-        ):
-            if completion[0]["content"].strip('\n"') == rm[
-                "ground_truth"
-            ].strip('\n"'):
-                flag = True
-                lis.append(0.0)
-            else:
-                lis.append(ndcg_rewards[i % num_generations])
-
-            if (i + 1) % num_generations == 0:
-                rewards.extend(lis if flag else [0.0] * repeat)
-                flag = False
-                lis = []
-
-        return rewards
-
-    def rule_reward(reward_model, completions, prompts=None, **unused):
-        rewards = []
-        # print(len(completions),len(reward_model))
-        for i, (completion, rm) in enumerate(
-            zip(completions, reward_model, strict=False)
-        ):
-            if completion[0]["content"].strip('\n" ') == rm[
-                "ground_truth"
-            ].strip('\n" '):
-                rewards.append(1.0)
-                # print("1.0")
-            else:
-                rewards.append(0.0)
-                # print("0.0")
-        return rewards
-
     reward_type = parsed_args.reward_type
     if reward_type == "rule":
-        reward_fun = rule_reward
+        reward_fun = [format_reward, rule_reward]
     elif reward_type == "ranking":
-        reward_fun = [rule_reward, ndcg_rule_reward]
+        reward_fun = [format_reward, rule_reward, ndcg_rule_reward]
     elif reward_type == "ranking_only":
-        reward_fun = ndcg_rule_reward
+        reward_fun = [format_reward, ndcg_rule_reward]
 
     # ====================================================
     # 6. 配置 Trainer
