@@ -63,16 +63,18 @@ COMMON_ARGS=(
     --bf16
 )
 
+RUN_ARGS=("${COMMON_ARGS[@]}")
+
 if $DEBUG; then
     export CUDA_VISIBLE_DEVICES=0
-    python -m src.rl.rl_new "${COMMON_ARGS[@]}"
+    python -m src.rl.rl_new "${RUN_ARGS[@]}"
 else
     export CUDA_VISIBLE_DEVICES=0,1,2,3
     mkdir -p log
     nohup accelerate launch \
         --config_file ./config/zero2_opt.yaml \
         --num_processes 4 --main_process_port 29503 \
-        python -m src.rl.rl_new "${COMMON_ARGS[@]}" \
+        --module src.rl.rl_new "${RUN_ARGS[@]}" \
         > "$LOG_FILE" 2>&1 &
 
     PID=$!
