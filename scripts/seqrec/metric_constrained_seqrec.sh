@@ -15,15 +15,11 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-export CUDA_VISIBLE_DEVICES=0,1,2,3
-
-DATASET=Instruments
-# DATASET=Arts,Games,Instruments
-RATIO=1
+export CUDA_VISIBLE_DEVICES=0
 
 TASK=seqrec
-INDEX_FILE=.index_qwen7B.json
-BATCH_SIZE=16
+DATASET=Instruments
+RATIO=1
 
 # CKPT_PATH=ckpt/Instruments/Qwen2-VL-7B-lora-item2index-seqrec-fusionseqrec-nonewtoken/checkpoint-7284
 # BASE_MODEL=./ckpt/base_model/Qwen2-VL-7B-Instruct
@@ -33,16 +29,16 @@ CKPT_PATH=ckpt/Instruments/Llava-onevision-lora-item2index-index2item-seqrec-fus
 BASE_MODEL=./ckpt/base_model/llava-onevision-qwen2-7b-ov-hf
 MODEL_TYPE=llava_onevision
 
-# CKPT_PATH=ckpt/Instruments/Qwen2.5-7B-lora-item2index,seqrec,fusionseqrec-1-qwen7B/checkpoint-5463
-# BASE_MODEL=ckpt/base_model/Qwen2.5-7B
-# MODEL_TYPE=qwen
-
 DATA_PATH=./data
-
+INDEX_FILE=.index_qwen7B.json
 RESULTS_DIR=./results
+BATCH_SIZE=16
+NUM_BEAMS=10
+MAX_NEW_TOKENS=4
+
 CHECKPOINT_NAME=$(basename "$CKPT_PATH")
 MODEL_DIR_NAME=$(basename "$(dirname "$CKPT_PATH")")
-RESULTS_FILE=${RESULTS_DIR}/${TASK}-${MODEL_DIR_NAME}-${CHECKPOINT_NAME}.txt
+RESULTS_FILE=${RESULTS_DIR}/${TASK}-constrained-${MODEL_DIR_NAME}-${CHECKPOINT_NAME}.txt
 LOG_FILE=${RESULTS_FILE%.txt}_log.txt
 
 mkdir -p "$RESULTS_DIR"
@@ -57,7 +53,8 @@ COMMON_ARGS=(
     --data_path "$DATA_PATH"
     --test_task "$TASK"
     --test_batch_size "$BATCH_SIZE"
-    --num_beams 10
+    --num_beams "$NUM_BEAMS"
+    --max_new_tokens "$MAX_NEW_TOKENS"
     --index_file "$INDEX_FILE"
     --test_prompt_ids "0"
     --base_model "$BASE_MODEL"
@@ -66,11 +63,11 @@ COMMON_ARGS=(
 )
 
 if $DEBUG; then
-    torchrun --nproc_per_node=4 --master_port=33325 -m src.seqrec.metric_ddp "${COMMON_ARGS[@]}"
+    python -m src.seqrec.metric_constrained "${COMMON_ARGS[@]}"
 else
-    nohup torchrun --nproc_per_node=4 --master_port=33325 -m src.seqrec.metric_ddp "${COMMON_ARGS[@]}" \
+    nohup python -m src.seqrec.metric_constrained "${COMMON_ARGS[@]}" \
         > "$LOG_FILE" 2>&1 &
     PID=$!
-    echo "Testing started with PID: $PID"
+    echo "Constrained testing started with PID: $PID"
     echo "Logs: $LOG_FILE"
 fi
