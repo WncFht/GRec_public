@@ -233,7 +233,7 @@ class ReReTrainer(Trainer):
         beam_search: bool = False,
         length_penalty: float = 0.0,
         # * eval
-        test_during_training: bool = True,
+        test_during_training: bool = False,
         test_beam: int = 20,
         # *loss
         dapo: bool = False,
@@ -825,9 +825,9 @@ class ReReTrainer(Trainer):
             with unwrap_model_for_generation(
                 self.model, self.accelerator
             ) as unwrapped_model:
-                topk = [3, 5, 10, 20]
-                ndcg = [0, 0, 0, 0]
-                hr = [0, 0, 0, 0]
+                topk = [1, 3, 5, 10, 20]
+                ndcg = [0, 0, 0, 0, 0]
+                hr = [0, 0, 0, 0, 0]
 
                 if self.test_during_training:
                     dedup_prompt = []
@@ -1208,6 +1208,15 @@ class ReReTrainer(Trainer):
                 rewards_per_func[:, i] = torch.tensor(
                     output_reward_func, dtype=torch.float32, device=device
                 )
+
+        # for i, completion in enumerate(completions):
+        #     print(completion)
+        #     for j, reward_func in enumerate(self.reward_funcs):
+        #         reward_func_name = reward_func.__name__
+        #         print(reward_func_name)
+        #         print(rewards_per_func[i, j])
+        #         print("-"*50)
+        # import pdb; pdb.set_trace()
 
         # Gather the reward per function: this part is crucial, because the rewards are normalized per group and the
         # completions may be distributed across processes
