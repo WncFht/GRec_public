@@ -229,3 +229,52 @@ seqimage
 ensemble
 
 {'hit@1': 0.021724725482771677, 'hit@5': 0.06313896251419916, 'hit@10': 0.10088508140855737, 'ndcg@5': 0.042385666767313916, 'ndcg@10': 0.05450532255303167}
+
+
+### ckpt/Instruments/Llava-onevision-finetune-item2index-seqrec-fusionseqrec/checkpoint-4098
+
+Prompt 0 results:  {'hit@1': 0.08257363253856942, 'hit@5': 0.10805282842449743, 'hit@10': 0.1241234221598878, 'ndcg@5': 0.0952981764346747, 'ndcg@10': 0.10048144003083966}
+
+## With format reward
+
+只用 format + rule, max = 5
+
+### ckpt/Instruments/llava_rl_rule_epoch1/checkpoint-2655
+
+Prompt 0 results:  {'hit@1': 0.08350864890135577, 'hit@5': 0.10010518934081346, 'hit@10': 0.105890603085554, 'ndcg@5': 0.09221462557580344, 'ndcg@10': 0.09415841821711558}
+
+
+
+constrained
+
+Prompt 0 results:  {'hit@1': 0.08420991117344553, 'hit@5': 0.10168302945301542, 'hit@10': 0.11231884057971014, 'ndcg@5': 0.09325453281480382, 'ndcg@10': 0.09671893073908369}
+
+
+
+### ckpt/Instruments/llava_rl_rule/checkpoint-5306
+
+constrained
+
+Prompt 0 results:  {'hit@1': 0.08327489481065918, 'hit@5': 0.10191678354371202, 'hit@10': 0.11354604955586722, 'ndcg@5': 0.09285044023624427, 'ndcg@10': 0.09661165593583429}
+
+
+
+### ckpt/Instruments/llava_rl_rule/checkpoint-1593
+
+Prompt 0 results:  {'hit@1': 0.08093735390369332, 'hit@5': 0.09624824684431978, 'hit@10': 0.10349462365591398, 'ndcg@5': 0.08876213118868491, 'ndcg@10': 0.09114099894701594}
+
+
+
+用 format + rule + rank, max=128
+
+### ckpt/Instruments/llava_rl_ranking/checkpoint-531
+
+Prompt 0 results:  {'hit@1': 0.07859981299672744, 'hit@5': 0.09601449275362318, 'hit@10': 0.10793595137914913, 'ndcg@5': 0.08753389673290221, 'ndcg@10': 0.09142292250579938}
+
+{'eval_loss': 0.0004426949890330434, 'eval_runtime': 6004.4198, 'eval_samples_per_second': 2.85, 'eval_steps_per_second': 0.006, 'eval_rewards/format_reward': 0.01120035046728972, 'eval_rewards/rule_reward': 6.571261682242991e-05, 'eval_rewards/ndcg_rule_reward': -5.8583622345718266e-05, 'eval_reward': 0.011207479517036508, 'eval_reward_std': 0.00032897011385621313, 'eval_categorical_diversity': 1.0, 'eval_token_diversity': 0.47145441716352304, 'eval_NDCG@3': 0.1002110334679578, 'eval_HR@3': 0.10911214953271028, 'eval_NDCG@5': 0.10422227568091734, 'eval_HR@5': 0.11892523364485981, 'eval_NDCG@10': 0.10930926289203732, 'eval_HR@10': 0.13457943925233645, 'eval_NDCG@20': 0.11595011968206749, 'eval_HR@20': 0.16144859813084111, 'eval_completion_length': 5.935457770623893, 'eval_kl': 0.4427022488317757, 'epoch': 0.2}
+
+## No format reward
+
+### ckpt/Instruments/rl/checkpoint-3186
+
+Prompt 0 results:  {'hit@1': 0.07521037868162693, 'hit@5': 0.08683964469378214, 'hit@10': 0.09262505843852267, 'ndcg@5': 0.08127355876836882, 'ndcg@10': 0.0831450655008663}
