@@ -250,6 +250,7 @@ def main():
         base_model=parsed_args.base_model,
         dapo=parsed_args.dapo,
         gspo=parsed_args.gspo,
+        noscale=parsed_args.noscale,
         add_gt=parsed_args.add_gt,
         dynamic_sampling=parsed_args.dynamic_sampling,
         beam_search=parsed_args.beam_search,

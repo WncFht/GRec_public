@@ -183,6 +183,13 @@ def parse_rl_args(
     rl_parser.add_argument("--fp16", action="store_true", default=False)
     rl_parser.add_argument("--bf16", action="store_true", default=False)
 
+    rl_parser.add_argument(
+        "--noscale",
+        action="store_true",
+        default=False,
+        help="If set, do not divide advantages by std when normalizing rewards.",
+    )
+
     return parser
 
 

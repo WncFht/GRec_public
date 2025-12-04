@@ -236,6 +236,7 @@ class ReReTrainer(Trainer):
         # *loss
         dapo: bool = False,
         gspo: bool = False,
+        noscale: bool = False,
         # * others
         hash_dict: dict[str, list[int]] | None = None,
         prefix_index: int | None = None,
@@ -267,6 +268,7 @@ class ReReTrainer(Trainer):
         # Models
         # Trained model
         self.base_model = base_model
+        self.noscale = noscale
         model_init_kwargs = args.model_init_kwargs or {}
         if isinstance(model, str):
             model_id = model
@@ -1178,8 +1180,9 @@ class ReReTrainer(Trainer):
         std_grouped_rewards = std_grouped_rewards.repeat_interleave(
             self.num_generations, dim=0
         )
-        advantages = (rewards - mean_grouped_rewards) 
-        # advantages = (rewards - mean_grouped_rewards)  / (std_grouped_rewards + 1e-4)
+        advantages = rewards - mean_grouped_rewards
+        if not getattr(self, "noscale", False):
+            advantages = advantages / (std_grouped_rewards + 1e-4)
         # print(f"rewards: {rewards}")
         # print(f"advantages: {advantages}")
 
