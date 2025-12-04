@@ -107,7 +107,7 @@ def format_reward(
     rewards: list[float] = []
     ds_iter = data_source if data_source is not None else repeat(None)
     for completion, ds in zip(completions, ds_iter, strict=False):
-        if ds == "seqrec":
+        if ds in ["seqrec", "fusionseqrec"]:
             content = completion[0]["content"]
             # import pdb; pdb.set_trace()
             if _is_valid_seqrec_content(content):
