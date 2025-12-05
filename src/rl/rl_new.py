@@ -222,7 +222,7 @@ def main():
         save_total_limit=1,
         save_only_model=True,
         eval_strategy="steps",
-        max_completion_length=128,
+        max_completion_length=parsed_args.max_completion_length,
         num_generations=num_generations,
         temperature=parsed_args.temperature,
         sync_ref_model=parsed_args.sync_ref_model,

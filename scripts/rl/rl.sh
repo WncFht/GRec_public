@@ -51,6 +51,7 @@ COMMON_ARGS=(
     --num_generations 16
     --beam_search
     --temperature 1.0
+    --max_completion_length 128
     --learning_rate 1e-5
     --beta 1e-3
     --data_path "$DATA_PATH"

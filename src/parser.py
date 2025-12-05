@@ -65,6 +65,12 @@ def parse_rl_args(
         help="Sampling temperature during RL decoding.",
     )
     rl_parser.add_argument(
+        "--max_completion_length",
+        type=int,
+        default=128,
+        help="Maximum number of tokens to generate for each completion during RL.",
+    )
+    rl_parser.add_argument(
         "--add_gt",
         action="store_true",
         default=False,
