@@ -473,7 +473,6 @@ class ReReTrainer(Trainer):
         set_seed(args.seed, device_specific=True)
 
         if self.use_vllm:
-
             if self.accelerator.is_main_process:
                 vllm_device = self.args.vllm_device
                 if vllm_device == "auto":
@@ -718,12 +717,7 @@ class ReReTrainer(Trainer):
         # target_ids = self.processing_class(targets, return_tensors="pt", padding=True, padding_side="left")["input_ids"]
         # target_ids = target_ids.to(device)
 
-        prompt_dicts = [
-            {
-                "prompt": x["prompt"]
-            }
-            for x in inputs
-        ]
+        prompt_dicts = [{"prompt": x["prompt"]} for x in inputs]
 
         prompts_text = [
             maybe_apply_chat_template(example, self.processing_class)["prompt"]
@@ -849,9 +843,16 @@ class ReReTrainer(Trainer):
                             test_completion_ids, skip_special_tokens=True
                         )
 
-                    test_completions = [_.split("Response:")[-1] for _ in test_completions]
-                    test_completions = [_.strip().replace(" ", "") for _ in test_completions]
-                    test_completions = [_.replace("\n", "").replace("assistant", "") for _ in test_completions]
+                    test_completions = [
+                        _.split("Response:")[-1] for _ in test_completions
+                    ]
+                    test_completions = [
+                        _.strip().replace(" ", "") for _ in test_completions
+                    ]
+                    test_completions = [
+                        _.replace("\n", "").replace("assistant", "")
+                        for _ in test_completions
+                    ]
 
                     test_comp_lis = [
                         test_completions[i : i + self.test_beam]
@@ -918,8 +919,7 @@ class ReReTrainer(Trainer):
                         )
                     else:
                         extended_completions_text = self.processing_class.batch_decode(
-                            extended_completion_ids,
-                            skip_special_tokens=True
+                            extended_completion_ids, skip_special_tokens=True
                         )
                     # print(f"extended_completions_text: {extended_completions_text}")
 
@@ -986,7 +986,6 @@ class ReReTrainer(Trainer):
                         [prompt_ids, selected_completion_ids], dim=1
                     )
                     # print(f"dynSam_prompt_completion_ids: {prompt_completion_ids.shape}")
-
                 else:
                     prompt_completion_ids = unwrapped_model.generate(
                         prompt_ids,
@@ -1072,8 +1071,7 @@ class ReReTrainer(Trainer):
             )
         else:
             completions_text = self.processing_class.batch_decode(
-                completion_ids, 
-                skip_special_tokens=False
+                completion_ids, skip_special_tokens=False
             )
         # print(completions_text)
         if is_conversational(inputs[0]):
