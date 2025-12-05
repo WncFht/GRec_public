@@ -42,15 +42,12 @@ def ndcg_rule_reward(
     flag = False
     lis: list[float] = []
 
-    format_rewards = format_reward(
-        completions, prompts, data_source=data_source
-    )
+    format_rewards = format_reward(completions, prompts, data_source=data_source)
     for i, (completion, rm, fr) in enumerate(
         zip(completions, reward_model, format_rewards, strict=False)
     ):
         if (
-            clean_text(completion[0]["content"])
-            == clean_text(rm["ground_truth"])
+            clean_text(completion[0]["content"]) == clean_text(rm["ground_truth"])
             and fr != 0
         ):
             flag = True
@@ -75,15 +72,12 @@ def rule_reward(
 ):
     """这里 reward_model 实际上是 ground_truth"""
     rewards: list[float] = []
-    format_rewards = format_reward(
-        completions, prompts, data_source=data_source
-    )
+    format_rewards = format_reward(completions, prompts, data_source=data_source)
     for i, (completion, rm, fr) in enumerate(
         zip(completions, reward_model, format_rewards, strict=False)
     ):
         if (
-            clean_text(completion[0]["content"])
-            == clean_text(rm["ground_truth"])
+            clean_text(completion[0]["content"]) == clean_text(rm["ground_truth"])
             and fr != 0
         ):
             rewards.append(1.0)
@@ -103,7 +97,11 @@ def format_reward(
     data_source: Iterable[str] | None = None,
     **unused,
 ):
-    r"""如果是 seqrec, 要符合 <a_*><b_*><c*_><d*_><|im_end|> 的格式,总共只能有 5 个 token,不能有 \n"""
+    r"""
+    如果是 seqrec, 要符合 <a_*><b_*><c*_><d*_><|im_end|> 的格式,总共只能有 5 个 token,不能有 \n.
+    否则直接给 -1.0 分.
+    hints: 如果这里错误的给 0.0,不能修复 format, 因为内容错误在 rule_reward 里也会拿到 0.0 分.
+    """
     rewards: list[float] = []
     ds_iter = data_source if data_source is not None else repeat(None)
     for completion, ds in zip(completions, ds_iter, strict=False):
@@ -113,7 +111,7 @@ def format_reward(
             if _is_valid_seqrec_content(content):
                 rewards.append(1.0)
             else:
-                rewards.append(0.0)
+                rewards.append(-1.0)
         else:
             rewards.append(1.0)
     return rewards
@@ -157,9 +155,7 @@ if __name__ == "__main__":
     for i in range(ctx.num_generations):
         sample = valid_samples[i % len(valid_samples)]
         completions.append([{"content": sample}])
-        reward_model.append(
-            {"ground_truth": perfect_match if i == 0 else mismatch_gt}
-        )
+        reward_model.append({"ground_truth": perfect_match if i == 0 else mismatch_gt})
 
     for i in range(ctx.num_generations):
         sample = invalid_samples[i % len(invalid_samples)]
