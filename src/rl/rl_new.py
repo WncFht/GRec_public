@@ -251,6 +251,8 @@ def main():
         dapo=parsed_args.dapo,
         gspo=parsed_args.gspo,
         noscale=parsed_args.noscale,
+        use_sft_loss=parsed_args.use_sft_loss,
+        sft_loss_coef=parsed_args.sft_loss_coef,
         add_gt=parsed_args.add_gt,
         dynamic_sampling=parsed_args.dynamic_sampling,
         beam_search=parsed_args.beam_search,

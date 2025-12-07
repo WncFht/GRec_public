@@ -167,6 +167,18 @@ def parse_rl_args(
         help="Enable GSPO training variant.",
     )
     rl_parser.add_argument(
+        "--use_sft_loss",
+        action="store_true",
+        default=False,
+        help="Mix in an auxiliary SFT loss during RL updates.",
+    )
+    rl_parser.add_argument(
+        "--sft_loss_coef",
+        type=float,
+        default=1e-3,
+        help="Weight for the auxiliary SFT loss when enabled.",
+    )
+    rl_parser.add_argument(
         "--debug_prefix_index",
         action="store_true",
         default=False,

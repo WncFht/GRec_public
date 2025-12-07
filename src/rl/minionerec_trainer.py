@@ -237,6 +237,8 @@ class ReReTrainer(Trainer):
         dapo: bool = False,
         gspo: bool = False,
         noscale: bool = False,
+        use_sft_loss: bool = False,
+        sft_loss_coef: float = 1e-3,
         # * others
         hash_dict: dict[str, list[int]] | None = None,
         prefix_index: int | None = None,
@@ -423,6 +425,9 @@ class ReReTrainer(Trainer):
         self.dynamic_sampling = dynamic_sampling
         self.dapo = dapo
         self.gspo = gspo
+        self.use_sft_loss = use_sft_loss
+        self.sft_loss_coef = sft_loss_coef
+        self._sft_loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
 
         # 由外部（如 data_rl / rl_new）预构建好的 hash_dict，用于前缀约束。
         # 如果未提供，则默认为空 dict，此时前缀约束退化为“无约束”。
@@ -708,7 +713,14 @@ class ReReTrainer(Trainer):
         device = self.accelerator.device
         prompts = [x["prompt"] for x in inputs]
 
-        if self.add_gt or self.test_during_training or self.dynamic_sampling:
+        targets: list[str] | None = None
+        num_categories: int | None = None
+        if (
+            self.add_gt
+            or self.test_during_training
+            or self.dynamic_sampling
+            or self.use_sft_loss
+        ):
             # histories = [self.prompt2history[x["prompt"]] for x in inputs]
             # targets = [self.history2target[x] for x in histories]
             targets = [x["reward_model"]["ground_truth"] for x in inputs]
@@ -738,6 +750,24 @@ class ReReTrainer(Trainer):
             prompt_inputs["input_ids"],
             prompt_inputs["attention_mask"],
         )
+
+        gt_input_ids = None
+        gt_attention_mask = None
+        if self.use_sft_loss:
+            if targets is None:
+                targets = [x["reward_model"]["ground_truth"] for x in inputs]
+            gt_inputs = self.processing_class(
+                targets,
+                return_tensors="pt",
+                padding=True,
+                padding_side="right",
+                add_special_tokens=True,
+            )
+            gt_inputs = super()._prepare_inputs(gt_inputs)
+            gt_input_ids, gt_attention_mask = (
+                gt_inputs["input_ids"],
+                gt_inputs["attention_mask"],
+            )
 
         # import pdb; pdb.set_trace()
         if self.max_prompt_length is not None:
@@ -1235,7 +1265,7 @@ class ReReTrainer(Trainer):
             if wandb.run is not None and self.accelerator.is_main_process:
                 wandb.log({"completions": wandb.Table(dataframe=df)})
 
-        return {
+        result = {
             "prompt_ids": prompt_ids,
             "prompt_mask": prompt_mask,
             "completion_ids": completion_ids,
@@ -1244,6 +1274,10 @@ class ReReTrainer(Trainer):
             "advantages": advantages,
             "sliced_rewards": sliced_rewards,
         }
+        if gt_input_ids is not None:
+            result["gt_input_ids"] = gt_input_ids
+            result["gt_attention_mask"] = gt_attention_mask
+        return result
 
     def compute_loss(
         self, model, inputs, return_outputs=False, num_items_in_batch=None
@@ -1255,6 +1289,10 @@ class ReReTrainer(Trainer):
         completion_ids, completion_mask = (
             inputs["completion_ids"],
             inputs["completion_mask"],
+        )
+        gt_input_ids = inputs.get("gt_input_ids") if self.use_sft_loss else None
+        gt_attention_mask = (
+            inputs.get("gt_attention_mask") if self.use_sft_loss else None
         )
         input_ids = torch.cat([prompt_ids, completion_ids], dim=1)
         attention_mask = torch.cat([prompt_mask, completion_mask], dim=1)
@@ -1279,6 +1317,7 @@ class ReReTrainer(Trainer):
             per_token_logps - per_token_logps.detach()
         ) * advantages.unsqueeze(1)
         per_token_loss = -(per_token_loss - self.beta * per_token_kl)
+        sft_loss_val = None
 
         # import pdb; pdb.set_trace()
         if self.dapo:
@@ -1298,6 +1337,31 @@ class ReReTrainer(Trainer):
                 (per_token_loss * completion_mask).sum(dim=1)
                 / completion_mask.sum(dim=1)
             ).mean()
+
+        if self.use_sft_loss:
+            if gt_input_ids is None or gt_attention_mask is None:
+                raise ValueError(
+                    "SFT loss is enabled but ground-truth tensors are missing."
+                )
+
+            sft_input_ids = torch.cat([prompt_ids, gt_input_ids], dim=1)
+            sft_attention_mask = torch.cat([prompt_mask, gt_attention_mask], dim=1)
+            sft_logits = model(
+                input_ids=sft_input_ids,
+                attention_mask=sft_attention_mask,
+            ).logits
+
+            shift_logits = sft_logits[:, :-1, :].contiguous()
+            shift_labels = sft_input_ids[:, 1:].contiguous()
+            label_mask = torch.cat(
+                [torch.zeros_like(prompt_mask[:, 1:]), gt_attention_mask], dim=1
+            )
+            masked_labels = shift_labels.masked_fill(label_mask == 0, -100)
+            sft_loss_val = self._sft_loss_fct(
+                shift_logits.view(-1, shift_logits.size(-1)),
+                masked_labels.view(-1),
+            )
+            loss = loss + self.sft_loss_coef * sft_loss_val
         # Log the metrics
 
         completion_length = (
@@ -1314,6 +1378,12 @@ class ReReTrainer(Trainer):
         self._metrics["kl"].append(
             self.accelerator.gather_for_metrics(mean_kl).mean().item()
         )
+        if sft_loss_val is not None:
+            self._metrics["sft_loss"].append(
+                self.accelerator.gather_for_metrics(
+                    sft_loss_val.detach()
+                ).mean().item()
+            )
 
         return loss
 
