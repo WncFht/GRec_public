@@ -119,6 +119,12 @@ def parse_rl_args(
         help="Whether to run test/eval during training.",
     )
     rl_parser.add_argument(
+        "--eval_on_test",
+        action="store_true",
+        default=False,
+        help="训练结束后是否额外在 test split 上跑一轮评估。",
+    )
+    rl_parser.add_argument(
         "--dynamic_sampling",
         action="store_true",
         default=False,

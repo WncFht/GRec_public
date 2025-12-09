@@ -23,9 +23,7 @@ def debug_prefix_index(tokenizer, base_model_name: str):
     不会在训练流程中自动调用，如需查看可以在 main 里手动调用。
     """
     sample_item = "<a_1><b_1><c_1><d_1>"
-    text = (
-        f"### Response:<|im_end|><|im_start|>assistant\n{sample_item}<|im_end|>"
-    )
+    text = f"### Response:<|im_end|><|im_start|>assistant\n{sample_item}<|im_end|>"
     tokenized = tokenizer(text)
     ids = tokenized["input_ids"]
     tokens = tokenizer.convert_ids_to_tokens(ids)
@@ -83,12 +81,14 @@ def main():
     tasks = parsed_args.tasks.split(",")
     train_datasets = []
     valid_datasets = []
+    test_datasets = []
 
     for task in tasks:
         dataset_list = parsed_args.dataset.split(",")
         for dataset_name in dataset_list:
             train_dataset = None
             valid_dataset = None
+            test_dataset = None
 
             if task.lower() == "seqrec":
                 train_dataset = SeqRecDataset(
@@ -101,17 +101,29 @@ def main():
                     mode="valid",
                     dataset=dataset_name,
                 )
+                if parsed_args.eval_on_test:
+                    test_dataset = SeqRecDataset(
+                        parsed_args,
+                        mode="test",
+                        dataset=dataset_name,
+                    )
             elif task.lower() == "fusionseqrec":
                 train_dataset = FusionSeqRecDataset(
                     parsed_args,
                     mode="train",
                     dataset=dataset_name,
                 )
-                valid_dataset = FusionSeqRecDataset(
-                    parsed_args,
-                    mode="valid",
-                    dataset=dataset_name,
-                )
+                # valid_dataset = FusionSeqRecDataset(
+                #     parsed_args,
+                #     mode="valid",
+                #     dataset=dataset_name,
+                # )
+                # if parsed_args.eval_on_test:
+                #     test_dataset = FusionSeqRecDataset(
+                #         parsed_args,
+                #         mode="test",
+                #         dataset=dataset_name,
+                #     )
 
             if train_dataset is not None:
                 train_datasets.append(train_dataset)
@@ -122,6 +134,11 @@ def main():
                 valid_datasets.append(valid_dataset)
                 print(
                     f"Task: {task} - dataset: {dataset_name} - valid samples: {len(valid_dataset)}"
+                )
+            if test_dataset is not None:
+                test_datasets.append(test_dataset)
+                print(
+                    f"Task: {task} - dataset: {dataset_name} - test samples: {len(test_dataset)}"
                 )
 
     if not train_datasets:
@@ -146,9 +163,23 @@ def main():
             eval_records.extend(ds.to_verl_records("valid"))
 
     eval_dataset = HFDataset.from_list(eval_records) if eval_records else None
+    test_dataset = None
+    if parsed_args.eval_on_test and test_datasets:
+        test_records = []
+        for ds in test_datasets:
+            if hasattr(ds, "to_verl_records"):
+                test_records.extend(ds.to_verl_records("test"))
+        test_dataset = HFDataset.from_list(test_records) if test_records else None
+
+    # 组合验证/测试集，使每次 eval 都同时跑 valid+test（若开启开关且两者存在）
+    combined_eval_dataset = eval_dataset
+    if parsed_args.eval_on_test and eval_dataset is not None and test_dataset is not None:
+        combined_eval_dataset = {"valid": eval_dataset, "test": test_dataset}
 
     print(f"Train Size: {len(train_dataset)}")
     print(f"Eval Size: {len(eval_dataset) if eval_dataset is not None else 0}")
+    if parsed_args.eval_on_test:
+        print(f"Test Size: {len(test_dataset) if test_dataset is not None else 0}")
 
     # ====================================================
     # 4. 模型加载 (使用 utils.load_model_for_training)
@@ -199,9 +230,7 @@ def main():
                 merged_hash_dict[k].update(vals)
 
     hash_dict = {k: sorted(list(v)) for k, v in merged_hash_dict.items()}
-    print(
-        f"Built hash_dict entries: {len(hash_dict)} with prefix_index={prefix_index}"
-    )
+    print(f"Built hash_dict entries: {len(hash_dict)} with prefix_index={prefix_index}")
     # print("10th of the hash_dict")
     # import pprint; pprint.pprint(dict(list(hash_dict.items())[:10]))
     reward_type = parsed_args.reward_type
@@ -262,7 +291,7 @@ def main():
         prefix_index=prefix_index,
         reward_funcs=reward_fun,
         train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
+        eval_dataset=combined_eval_dataset,
         processing_class=tokenizer,
         args=training_args,
     )
@@ -275,6 +304,13 @@ def main():
 
     print(f"Saving model to {parsed_args.output_dir}")
     trainer.save_model(parsed_args.output_dir)
+
+    if test_dataset is not None:
+        print("Running evaluation on test split...")
+        test_metrics = trainer.evaluate(
+            eval_dataset=test_dataset, metric_key_prefix="test"
+        )
+        print(f"Test metrics: {test_metrics}")
 
     # 保存最终 checkpoint
     final_dir = os.path.join(parsed_args.output_dir, "final_checkpoint")

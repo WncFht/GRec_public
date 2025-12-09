@@ -386,22 +386,18 @@ class SeqRecDataset(BaseDataset):
           - extra_info: contains split, index, item, inters (history)
 
         Args:
-            split: 'train' or 'valid'
+            split: 'train', 'valid' or 'test'
         Returns:
             List of dict records
 
         """
         records: list[dict[str, Any]] = []
 
-        if split not in ("train", "valid"):
-            msg = "split must be 'train' or 'valid'"
+        if split not in ("train", "valid", "test"):
+            msg = "split must be 'train', 'valid' or 'test'"
             raise ValueError(msg)
 
-        # Ensure data prepared
-        if split in ["train", "valid"]:
-            data_list = self.inter_data
-        else:
-            raise NotImplementedError(f"Unsupported split:{split}")
+        data_list = self.inter_data
 
         for idx, d in enumerate(data_list):
             target = d.get("item")
@@ -666,8 +662,8 @@ class FusionSeqRecDataset(BaseDataset):
         """
         records: list[dict[str, Any]] = []
 
-        if split not in ("train", "valid"):
-            msg = "split must be 'train' or 'valid'"
+        if split not in ("train", "valid", "test"):
+            msg = "split must be 'train', 'valid' or 'test'"
             raise ValueError(msg)
 
         data_list = self.inter_data

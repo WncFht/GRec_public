@@ -1408,8 +1408,20 @@ class ReReTrainer(Trainer):
 
         # This method can be called both in training and evaluation. When called in evaluation, the keys in `logs`
         # start with "eval_". We need to add the prefix "eval_" to the keys in `metrics` to match the format.
-        if next(iter(logs.keys())).startswith("eval_"):
-            metrics = {f"eval_{key}": val for key, val in metrics.items()}
+        prefix = None
+        if logs:
+            first_key = next(iter(logs.keys()))
+            if first_key.startswith("eval_"):
+                parts = first_key.split("_")
+                # 支持 eval_valid_*/eval_test_* 这类多数据集前缀
+                if len(parts) >= 3 and parts[1] in {"valid", "test"}:
+                    prefix = f"eval_{parts[1]}"
+                else:
+                    prefix = "eval"
+            elif first_key.startswith("test_"):
+                prefix = "test"
+        if prefix is not None:
+            metrics = {f"{prefix}_{key}": val for key, val in metrics.items()}
 
         logs = {**logs, **metrics}
         if version.parse(transformers.__version__) >= version.parse("4.47.0.dev0"):
