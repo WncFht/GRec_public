@@ -83,6 +83,18 @@ def parse_rl_args(
         help="Evaluation frequency (in epochs or ratio).",
     )
     rl_parser.add_argument(
+        "--log_completions",
+        action="store_true",
+        default=False,
+        help="Whether to log rollout prompts/completions and rewards to wandb.",
+    )
+    rl_parser.add_argument(
+        "--completion_log_interval",
+        type=int,
+        default=50,
+        help="Step interval for logging rollouts (independent from --logging_steps).",
+    )
+    rl_parser.add_argument(
         "--num_generations",
         type=int,
         default=16,

@@ -375,6 +375,13 @@ class ReReTrainer(Trainer):
                 reward_func.config.pad_token_id = reward_processing_class.pad_token_id
                 reward_processing_classes[i] = reward_processing_class
         self.reward_processing_classes = reward_processing_classes
+        self.reward_func_names: list[str] = []
+        for reward_func in self.reward_funcs:
+            if isinstance(reward_func, nn.Module):
+                reward_func_name = reward_func.config._name_or_path.split("/")[-1]
+            else:
+                reward_func_name = reward_func.__name__
+            self.reward_func_names.append(reward_func_name)
 
         # Data collator
         def data_collator(features):  # No data collation is needed in GRPO
@@ -402,6 +409,9 @@ class ReReTrainer(Trainer):
         # Initialize the metrics
         self._metrics = defaultdict(list)
         self.log_completions = args.log_completions
+        self.completion_log_interval = getattr(
+            args, "completion_log_interval", args.logging_steps
+        )
 
         super().__init__(
             model=model,
@@ -651,7 +661,14 @@ class ReReTrainer(Trainer):
         )
 
     # Get the per-token log probabilities for the completions for the model and the reference model
-    def _get_per_token_logps(self, model, input_ids, attention_mask, logits_to_keep):
+    def _get_per_token_logps(
+        self,
+        model,
+        input_ids,
+        attention_mask,
+        logits_to_keep,
+        return_entropy: bool = False,
+    ):
         # We add 1 to `logits_to_keep` because the last logits of the sequence is later excluded
         logits = model(
             input_ids=input_ids,
@@ -666,9 +683,14 @@ class ReReTrainer(Trainer):
         # For transformers<=4.48, logits_to_keep argument isn't supported, so here we drop logits ourselves.
         # See https://github.com/huggingface/trl/issues/2770
         logits = logits[:, -logits_to_keep:]
-        return selective_log_softmax(
+        per_token_logps = selective_log_softmax(
             logits, input_ids
         )  #  compute logprobs for the input tokens
+        if return_entropy:
+            log_probs = torch.log_softmax(logits, dim=-1)
+            token_entropy = -(log_probs.exp() * log_probs).sum(dim=-1)
+            return per_token_logps, token_entropy
+        return per_token_logps
 
     def _move_model_to_vllm(self):
         with unwrap_model_for_generation(
@@ -1225,13 +1247,7 @@ class ReReTrainer(Trainer):
 
         # Log the metrics
         reward_per_func = rewards_per_func.mean(0)
-        for i, reward_func in enumerate(self.reward_funcs):
-            if isinstance(
-                reward_func, nn.Module
-            ):  # Module instead of PretrainedModel for compat with compiled models
-                reward_func_name = reward_func.config._name_or_path.split("/")[-1]
-            else:
-                reward_func_name = reward_func.__name__
+        for i, reward_func_name in enumerate(self.reward_func_names):
             self._metrics[f"rewards/{reward_func_name}"].append(
                 reward_per_func[i].item()
             )
@@ -1246,19 +1262,29 @@ class ReReTrainer(Trainer):
                 self._metrics[f"NDCG@{topk[i]}"].append(ndcg[i])
                 self._metrics[f"HR@{topk[i]}"].append(hr[i])
 
-        if (
+        should_log_completions = (
             self.log_completions
-            and self.state.global_step % self.args.logging_steps == 0
+            and self.completion_log_interval > 0
+            and self.state.global_step % self.completion_log_interval == 0
+            and self.args.report_to
             and "wandb" in self.args.report_to
-        ):
+        )
+        if should_log_completions:
             import pandas as pd
 
-            # For logging
+            prompts_to_log = gather_object(prompts_text)
+            completions_to_log = gather_object(completions_text)
+            reward_columns: dict[str, list[float]] = {}
+            rewards_cpu = rewards_per_func.cpu()
+            for idx, name in enumerate(self.reward_func_names):
+                reward_columns[name] = rewards_cpu[:, idx].tolist()
+
             table = {
                 "step": [str(self.state.global_step)] * len(rewards),
-                "prompt": gather_object(prompts_text),
-                "completion": gather_object(completions_text),
+                "prompt": prompts_to_log,
+                "completion": completions_to_log,
                 "reward": rewards.tolist(),
+                **reward_columns,
             }
             df = pd.DataFrame(table)
 
@@ -1300,8 +1326,8 @@ class ReReTrainer(Trainer):
             1
         )  # we only need to compute the logits for the completion tokens
 
-        per_token_logps = self._get_per_token_logps(
-            model, input_ids, attention_mask, logits_to_keep
+        per_token_logps, per_token_entropy = self._get_per_token_logps(
+            model, input_ids, attention_mask, logits_to_keep, return_entropy=True
         )
 
         ref_per_token_logps = inputs["ref_per_token_logps"]
@@ -1377,6 +1403,12 @@ class ReReTrainer(Trainer):
         ).mean()
         self._metrics["kl"].append(
             self.accelerator.gather_for_metrics(mean_kl).mean().item()
+        )
+        entropy_per_seq = (
+            per_token_entropy.detach() * completion_mask
+        ).sum(dim=1) / completion_mask.sum(dim=1).clamp(min=1)
+        self._metrics["entropy"].append(
+            self.accelerator.gather_for_metrics(entropy_per_seq.detach()).mean().item()
         )
         if sft_loss_val is not None:
             self._metrics["sft_loss"].append(

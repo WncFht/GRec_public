@@ -260,7 +260,7 @@ def main():
         gradient_accumulation_steps=parsed_args.gradient_accumulation_steps,
         eval_steps=parsed_args.eval_step,
         logging_steps=1,
-        log_completions=False,
+        log_completions=parsed_args.log_completions,
         learning_rate=parsed_args.learning_rate,
         beta=parsed_args.beta,
         warmup_ratio=0.03,
@@ -272,6 +272,7 @@ def main():
         save_strategy="steps",
         report_to="wandb",
     )
+    training_args.completion_log_interval = parsed_args.completion_log_interval
 
     # 初始化自定义 Trainer
     trainer = ReReTrainer(
