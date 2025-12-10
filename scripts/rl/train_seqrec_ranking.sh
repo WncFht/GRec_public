@@ -16,6 +16,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 export WANDB_MODE=offline
+export WANDB_LOG_MODEL=false
 export WANDB_ENTITY=wncfht
 export WANDB_PROJECT=GRec_rl
 export CUDA_LAUNCH_BLOCKING=1
@@ -64,6 +65,7 @@ COMMON_ARGS=(
     --train_data_sample_num 0
     --bf16
     --log_completions
+    --completion_log_interval 100
 )
 
 RUN_ARGS=("${COMMON_ARGS[@]}")
