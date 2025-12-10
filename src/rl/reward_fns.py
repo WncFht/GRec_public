@@ -12,9 +12,24 @@ from typing import Any
 class _RewardContext:
     num_generations: int
     ndcg_rewards: list[float]
+    pad_token_id: int | None = None
+    pad_token: str | None = None
 
 
 _REWARD_CONTEXT: _RewardContext | None = None
+_SEQREC_PATTERN: re.Pattern[str] | None = None
+
+
+def _build_seqrec_pattern(pad_token: str | None) -> re.Pattern[str]:
+    """
+    Build a regex that accepts the canonical seqrec format and ignores trailing pad tokens.
+    """
+    base = r"^<a_[^<>\n]+><b_[^<>\n]+><c_[^<>\n]+><d_[^<>\n]+><\|im_end\|>"
+    if pad_token:
+        escaped_pad = re.escape(pad_token.strip())
+        base += f"(?:{escaped_pad})*"
+    base += "$"
+    return re.compile(base)
 
 
 def _extract_gt_tokens(rm: dict[str, Any]) -> list[int]:
@@ -27,14 +42,27 @@ def _extract_gt_tokens(rm: dict[str, Any]) -> list[int]:
     raise RuntimeError(msg)
 
 
-def initialize_reward_functions(num_generations: int) -> bool:
+def initialize_reward_functions(
+    num_generations: int,
+    pad_token_id: int | None = None,
+    pad_token: str | None = None,
+) -> bool:
     """Prepare reward helpers and optionally run a quick sanity check."""
-    global _REWARD_CONTEXT
+    global _REWARD_CONTEXT, _SEQREC_PATTERN
     ndcg_rewards = [-1.0 / math.log2(i + 2) for i in range(num_generations)]
     ndcg_rewards = [-elm / sum(ndcg_rewards) for elm in ndcg_rewards]
-    _REWARD_CONTEXT = _RewardContext(num_generations, ndcg_rewards)
+    _SEQREC_PATTERN = _build_seqrec_pattern(pad_token)
+    _REWARD_CONTEXT = _RewardContext(
+        num_generations, ndcg_rewards, pad_token_id=pad_token_id, pad_token=pad_token
+    )
 
     return False
+
+
+def _strip_padding_tokens(tokens: Iterable[int], pad_token_id: int | None) -> list[int]:
+    if pad_token_id is None:
+        return list(tokens)
+    return [tok for tok in tokens if tok != pad_token_id]
 
 
 def ndcg_rule_reward(
@@ -47,6 +75,7 @@ def ndcg_rule_reward(
 ):
     ctx = _ensure_context()
     repeat = ctx.num_generations
+    pad_token_id = ctx.pad_token_id
     rewards: list[float] = []
     flag = False
     lis: list[float] = []
@@ -63,8 +92,9 @@ def ndcg_rule_reward(
     for i, (tokens, rm, fr) in enumerate(
         zip(completion_token_ids, reward_model, format_rewards, strict=False)
     ):
-        gt_tokens = _extract_gt_tokens(rm)
-        if tokens == gt_tokens and fr != 0:
+        gt_tokens = _strip_padding_tokens(_extract_gt_tokens(rm), pad_token_id)
+        norm_tokens = _strip_padding_tokens(tokens, pad_token_id)
+        if norm_tokens == gt_tokens and fr != 0:
             flag = True
             lis.append(0.0)
         else:
@@ -87,6 +117,8 @@ def rule_reward(
     **unused,
 ):
     """这里 reward_model 实际上是 ground_truth"""
+    ctx = _ensure_context()
+    pad_token_id = ctx.pad_token_id
     rewards: list[float] = []
     format_rewards = format_reward(
         completions,
@@ -101,16 +133,15 @@ def rule_reward(
         zip(completion_token_ids, reward_model, format_rewards, strict=False)
     ):
         gt_tokens = _extract_gt_tokens(rm)
-        if tokens == gt_tokens and fr != 0:
+        if (
+            _strip_padding_tokens(tokens, pad_token_id)
+            == _strip_padding_tokens(gt_tokens, pad_token_id)
+            and fr != 0
+        ):
             rewards.append(1.0)
         else:
             rewards.append(0.0)
     return rewards
-
-
-_SEQREC_PATTERN = re.compile(
-    r"^<a_[^<>\n]+><b_[^<>\n]+><c_[^<>\n]+><d_[^<>\n]+><\|im_end\|>$"
-)
 
 
 def format_reward(
@@ -143,7 +174,8 @@ def format_reward(
 def _is_valid_seqrec_content(content: str) -> bool:
     if "\n" in content:
         return False
-    return bool(_SEQREC_PATTERN.match(content.strip()))
+    pattern = _SEQREC_PATTERN or _build_seqrec_pattern(None)
+    return bool(pattern.match(content.strip()))
 
 
 def _ensure_context() -> _RewardContext:

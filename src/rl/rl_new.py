@@ -172,7 +172,11 @@ def main():
     print(f"Using pad_token: {tokenizer.pad_token} (ID: {tokenizer.pad_token_id})")
 
     # 注册 tokenizer 并初始化奖励函数所需的上下文
-    if initialize_reward_functions(num_generations):
+    if initialize_reward_functions(
+        num_generations,
+        pad_token_id=tokenizer.pad_token_id,
+        pad_token=tokenizer.pad_token,
+    ):
         return
 
     # ====================================================
@@ -268,7 +272,7 @@ def main():
     training_args = GRPOConfig(
         output_dir=parsed_args.output_dir,
         save_steps=0.1,
-        save_total_limit=10,
+        save_total_limit=20,
         save_only_model=True,
         eval_strategy="steps",
         max_completion_length=parsed_args.max_completion_length,
@@ -279,7 +283,7 @@ def main():
         per_device_train_batch_size=parsed_args.train_batch_size,
         gradient_accumulation_steps=parsed_args.gradient_accumulation_steps,
         eval_steps=parsed_args.eval_step,
-        logging_steps=1,
+        logging_steps=5,
         log_completions=parsed_args.log_completions,
         learning_rate=parsed_args.learning_rate,
         beta=parsed_args.beta,
