@@ -17,6 +17,47 @@ class _RewardContext:
 
 
 _REWARD_CONTEXT: _RewardContext | None = None
+_REWARD_TOKENIZER = None
+
+
+def set_reward_tokenizer(tokenizer):
+    """Register tokenizer for token-level matching."""
+    global _REWARD_TOKENIZER
+    _REWARD_TOKENIZER = tokenizer
+
+
+def _get_tokenizer():
+    if _REWARD_TOKENIZER is None:
+        raise RuntimeError("Reward tokenizer not set. Call set_reward_tokenizer().")
+    return _REWARD_TOKENIZER
+
+
+def _tokenize_with_eos(text: str) -> list[int]:
+    tok = _get_tokenizer()
+    try:
+        tokens = tok.encode(text, add_special_tokens=False)
+    except Exception:
+        tokenized = tok(text, add_special_tokens=False, return_tensors=None)
+        tokens = tokenized.get("input_ids", [])
+        if tokens and isinstance(tokens[0], list):
+            tokens = tokens[0]
+    eos_id = getattr(tok, "eos_token_id", None)
+    tokens = list(tokens)
+    if eos_id is not None and (not tokens or tokens[-1] != eos_id):
+        tokens.append(eos_id)
+    return tokens
+
+
+def _extract_gt_tokens(rm: dict[str, Any]) -> list[int]:
+    gt = rm.get("ground_truth", "")
+    if isinstance(gt, dict):
+        tokens = gt.get("token", []) or []
+        if tokens:
+            return tokens
+        text = gt.get("text", "")
+    else:
+        text = gt
+    return _tokenize_with_eos(text)
 
 
 def initialize_reward_functions(num_generations: int) -> bool:
@@ -46,10 +87,11 @@ def ndcg_rule_reward(
     for i, (completion, rm, fr) in enumerate(
         zip(completions, reward_model, format_rewards, strict=False)
     ):
-        if (
-            clean_text(completion[0]["content"]) == clean_text(rm["ground_truth"])
-            and fr != 0
-        ):
+        if _REWARD_TOKENIZER is None:
+            raise RuntimeError("Reward tokenizer not set for token matching.")
+        gt_tokens = _extract_gt_tokens(rm)
+        completion_tokens = _tokenize_with_eos(completion[0]["content"])
+        if completion_tokens == gt_tokens and fr != 0:
             flag = True
             lis.append(0.0)
         else:
@@ -76,10 +118,11 @@ def rule_reward(
     for i, (completion, rm, fr) in enumerate(
         zip(completions, reward_model, format_rewards, strict=False)
     ):
-        if (
-            clean_text(completion[0]["content"]) == clean_text(rm["ground_truth"])
-            and fr != 0
-        ):
+        if _REWARD_TOKENIZER is None:
+            raise RuntimeError("Reward tokenizer not set for token matching.")
+        gt_tokens = _extract_gt_tokens(rm)
+        completion_tokens = _tokenize_with_eos(completion[0]["content"])
+        if completion_tokens == gt_tokens and fr != 0:
             rewards.append(1.0)
         else:
             rewards.append(0.0)

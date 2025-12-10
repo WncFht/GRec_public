@@ -619,6 +619,12 @@ class ReReTrainer(Trainer):
         x = [str(_) for _ in x]
         return "-".join(x)
 
+    @staticmethod
+    def _ground_truth_text(gt_value: Any) -> str:
+        if isinstance(gt_value, dict):
+            return gt_value.get("text", "")
+        return gt_value
+
     def prefix_allowed_tokens_fn(self, batch_id, input_ids):
         hash_number = self.get_hash(input_ids)
         if hash_number in self.hash_dict:
@@ -746,7 +752,10 @@ class ReReTrainer(Trainer):
         ):
             # histories = [self.prompt2history[x["prompt"]] for x in inputs]
             # targets = [self.history2target[x] for x in histories]
-            targets = [x["reward_model"]["ground_truth"] for x in inputs]
+            targets = [
+                self._ground_truth_text(x["reward_model"]["ground_truth"])
+                for x in inputs
+            ]
             # print(f"targets: {targets}")
             num_categories = len(set(targets))
         # target_ids = self.processing_class(targets, return_tensors="pt", padding=True, padding_side="left")["input_ids"]
@@ -778,7 +787,10 @@ class ReReTrainer(Trainer):
         gt_attention_mask = None
         if self.use_sft_loss:
             if targets is None:
-                targets = [x["reward_model"]["ground_truth"] for x in inputs]
+                targets = [
+                    self._ground_truth_text(x["reward_model"]["ground_truth"])
+                    for x in inputs
+                ]
             gt_inputs = self.processing_class(
                 targets,
                 return_tensors="pt",

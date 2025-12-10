@@ -71,6 +71,32 @@ class BaseDataset(Dataset):
         # 设置当前使用的prompt ID
         self.prompt_id = prompt_id
 
+    def _build_ground_truth(
+        self, label_text: str, tokenizer: Any | None
+    ) -> dict[str, Any]:
+        """
+        Wrap ground truth with both raw text and token ids (optionally).
+        If tokenizer is provided, tokenize without special tokens and append eos.
+        """
+        tokens: list[int] = []
+        if tokenizer is not None:
+            try:
+                tokens = tokenizer.encode(label_text, add_special_tokens=False)
+            except Exception:
+                # fallback for processors returning dict
+                tokenized = tokenizer(
+                    label_text, add_special_tokens=False, return_tensors=None
+                )
+                tokens = tokenized.get("input_ids", [])
+                if tokens and isinstance(tokens[0], list):
+                    tokens = tokens[0]
+            eos_id = getattr(tokenizer, "eos_token_id", None)
+            if eos_id is not None:
+                tokens = list(tokens)
+                if not tokens or tokens[-1] != eos_id:
+                    tokens.append(eos_id)
+        return {"text": label_text, "token": tokens}
+
     def _load_data(self):
         # 从指定的索引文件中加载物品索引
         with open(os.path.join(self.data_path, self.dataset + self.index_file)) as f:
@@ -358,7 +384,9 @@ class SeqRecDataset(BaseDataset):
             is_multimodal=False,
         )
 
-    def to_verl_records(self, split: str) -> list[dict[str, Any]]:
+    def to_verl_records(
+        self, split: str, tokenizer: Any | None = None
+    ) -> list[dict[str, Any]]:
         """
         Convert the processed dataset into Verl-style records (like gsm8k).
 
@@ -388,6 +416,7 @@ class SeqRecDataset(BaseDataset):
             prompt_id = random.randint(0, len(self.prompts) - 1)
             prompt = self.prompts[prompt_id]
             input_text, label_text = self._get_text_data(d, prompt)
+            gt_payload = self._build_ground_truth(label_text, tokenizer)
 
             rec = {
                 "data_source": "seqrec",
@@ -398,7 +427,7 @@ class SeqRecDataset(BaseDataset):
                     }
                 ],
                 "ability": "rec",
-                "reward_model": {"style": "rule", "ground_truth": label_text},
+                "reward_model": {"style": "rule", "ground_truth": gt_payload},
                 "extra_info": {
                     "split": split,
                     "index": idx,
@@ -611,7 +640,9 @@ class FusionSeqRecDataset(BaseDataset):
 
         return input_text, label_text
 
-    def to_verl_records(self, split: str) -> list[dict[str, Any]]:
+    def to_verl_records(
+        self, split: str, tokenizer: Any | None = None
+    ) -> list[dict[str, Any]]:
         """
         Convert FusionSeqRecDataset into Verl-style records.
 
@@ -632,6 +663,7 @@ class FusionSeqRecDataset(BaseDataset):
             prompt = self.prompts[prompt_id]
 
             input_text, label_text = self._get_text_data(d, prompt)
+            gt_payload = self._build_ground_truth(label_text, tokenizer)
 
             rec = {
                 "data_source": "fusionseqrec",
@@ -642,7 +674,7 @@ class FusionSeqRecDataset(BaseDataset):
                     }
                 ],
                 "ability": "rec",
-                "reward_model": {"style": "rule", "ground_truth": label_text},
+                "reward_model": {"style": "rule", "ground_truth": gt_payload},
                 "extra_info": {
                     "split": split,
                     "index": idx,
@@ -755,7 +787,9 @@ class ItemFeatDataset(BaseDataset):
 
         return feat_data
 
-    def to_verl_records(self, split: str) -> list[dict[str, Any]]:
+    def to_verl_records(
+        self, split: str, tokenizer: Any | None = None
+    ) -> list[dict[str, Any]]:
         """
         Convert ItemFeatDataset into Verl-style records.
 
@@ -775,6 +809,7 @@ class ItemFeatDataset(BaseDataset):
             prompt = self.prompts[prompt_id]
 
             input_text, label_text = self._get_text_data(d, prompt)
+            gt_payload = self._build_ground_truth(label_text, tokenizer)
 
             rec = {
                 "data_source": self.task,
@@ -785,7 +820,7 @@ class ItemFeatDataset(BaseDataset):
                     }
                 ],
                 "ability": "item",
-                "reward_model": {"style": "rule", "ground_truth": label_text},
+                "reward_model": {"style": "rule", "ground_truth": gt_payload},
                 "extra_info": {"split": split, "index": idx, "item": target},
             }
             # include available features
@@ -866,6 +901,8 @@ def dataset_to_text_samples(dataset_obj, mode: str = "train") -> list[dict[str, 
             else:
                 prompt = prompt_field if isinstance(prompt_field, str) else ""
             completion = rec.get("reward_model", {}).get("ground_truth", "")
+            if isinstance(completion, dict):
+                completion = completion.get("text", "")
             samples.append(
                 {
                     "prompt": prompt,

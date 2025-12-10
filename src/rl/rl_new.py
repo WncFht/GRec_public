@@ -15,6 +15,7 @@ from .reward_fns import (
     initialize_reward_functions,
     ndcg_rule_reward,
     rule_reward,
+    set_reward_tokenizer,
 )
 
 
@@ -45,9 +46,6 @@ def main():
 
     parsed_args = parser.parse_args()  # 扁平对象，传给 utils.* 使用
     num_generations = parsed_args.num_generations
-
-    if initialize_reward_functions(num_generations):
-        return
 
     print(parsed_args)
     # ====================================================
@@ -147,57 +145,6 @@ def main():
         msg = "No train datasets constructed. Please check `--tasks` and `--dataset`."
         raise ValueError(msg)
 
-    # 转换所有训练集为 Verl 记录并合并
-    print("Processing Train Dataset (to Verl records)...")
-    train_records = []
-    for ds in train_datasets:
-        if hasattr(ds, "to_verl_records"):
-            train_records.extend(ds.to_verl_records("train"))
-
-    train_dataset = HFDataset.from_list(train_records)
-    train_dataset = train_dataset.shuffle(seed=parsed_args.seed)
-
-    # 转换测试/验证集为 Verl 记录并合并
-    test_eval_dataset = None
-    if parsed_args.eval_on_test and test_datasets:
-        print("Processing Test Dataset (to Verl records)...")
-        test_records = []
-        for ds in test_datasets:
-            if hasattr(ds, "to_verl_records"):
-                test_records.extend(ds.to_verl_records("test"))
-        test_eval_dataset = HFDataset.from_list(test_records) if test_records else None
-
-    valid_eval_dataset = None
-    if parsed_args.eval_on_valid and valid_datasets:
-        print("Processing Valid Dataset (to Verl records)...")
-        valid_records = []
-        for ds in valid_datasets:
-            if hasattr(ds, "to_verl_records"):
-                valid_records.extend(ds.to_verl_records("valid"))
-        valid_eval_dataset = (
-            HFDataset.from_list(valid_records) if valid_records else None
-        )
-
-    # 组合测试/验证集，使每次 eval 都同时跑 test + valid（若开启开关且两者存在）
-    combined_eval_dataset = test_eval_dataset
-    if parsed_args.eval_on_valid:
-        if valid_eval_dataset is not None and test_eval_dataset is not None:
-            combined_eval_dataset = {
-                "test": test_eval_dataset,
-                "valid": valid_eval_dataset,
-            }
-        elif valid_eval_dataset is not None:
-            combined_eval_dataset = valid_eval_dataset
-
-    print(f"Train Size: {len(train_dataset)}")
-    print(
-        f"Test Eval Size: {len(test_eval_dataset) if test_eval_dataset is not None else 0}"
-    )
-    if parsed_args.eval_on_valid:
-        print(
-            f"Valid Eval Size: {len(valid_eval_dataset) if valid_eval_dataset is not None else 0}"
-        )
-
     # ====================================================
     # 4. 模型加载 (使用 utils.load_model_for_training)
     # ====================================================
@@ -224,6 +171,62 @@ def main():
             model.config.pad_token_id = tokenizer.eos_token_id
     print(f"Using eos_token: {tokenizer.eos_token} (ID: {tokenizer.eos_token_id})")
     print(f"Using pad_token: {tokenizer.pad_token} (ID: {tokenizer.pad_token_id})")
+
+    # 注册 tokenizer 并初始化奖励函数所需的上下文
+    set_reward_tokenizer(tokenizer)
+    if initialize_reward_functions(num_generations):
+        return
+
+    # ====================================================
+    # 3.1 转换数据集为 Verl 记录（包含 ground_truth token ids）
+    # ====================================================
+    print("Processing Train Dataset (to Verl records)...")
+    train_records = []
+    for ds in train_datasets:
+        if hasattr(ds, "to_verl_records"):
+            train_records.extend(ds.to_verl_records("train", tokenizer=tokenizer))
+
+    train_dataset = HFDataset.from_list(train_records)
+    train_dataset = train_dataset.shuffle(seed=parsed_args.seed)
+
+    test_eval_dataset = None
+    if parsed_args.eval_on_test and test_datasets:
+        print("Processing Test Dataset (to Verl records)...")
+        test_records = []
+        for ds in test_datasets:
+            if hasattr(ds, "to_verl_records"):
+                test_records.extend(ds.to_verl_records("test", tokenizer=tokenizer))
+        test_eval_dataset = HFDataset.from_list(test_records) if test_records else None
+
+    valid_eval_dataset = None
+    if parsed_args.eval_on_valid and valid_datasets:
+        print("Processing Valid Dataset (to Verl records)...")
+        valid_records = []
+        for ds in valid_datasets:
+            if hasattr(ds, "to_verl_records"):
+                valid_records.extend(ds.to_verl_records("valid", tokenizer=tokenizer))
+        valid_eval_dataset = (
+            HFDataset.from_list(valid_records) if valid_records else None
+        )
+
+    combined_eval_dataset = test_eval_dataset
+    if parsed_args.eval_on_valid:
+        if valid_eval_dataset is not None and test_eval_dataset is not None:
+            combined_eval_dataset = {
+                "test": test_eval_dataset,
+                "valid": valid_eval_dataset,
+            }
+        elif valid_eval_dataset is not None:
+            combined_eval_dataset = valid_eval_dataset
+
+    print(f"Train Size: {len(train_dataset)}")
+    print(
+        f"Test Eval Size: {len(test_eval_dataset) if test_eval_dataset is not None else 0}"
+    )
+    if parsed_args.eval_on_valid:
+        print(
+            f"Valid Eval Size: {len(valid_eval_dataset) if valid_eval_dataset is not None else 0}"
+        )
 
     import pdb
 
