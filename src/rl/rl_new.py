@@ -15,7 +15,6 @@ from .reward_fns import (
     initialize_reward_functions,
     ndcg_rule_reward,
     rule_reward,
-    set_reward_tokenizer,
 )
 
 
@@ -173,7 +172,6 @@ def main():
     print(f"Using pad_token: {tokenizer.pad_token} (ID: {tokenizer.pad_token_id})")
 
     # 注册 tokenizer 并初始化奖励函数所需的上下文
-    set_reward_tokenizer(tokenizer)
     if initialize_reward_functions(num_generations):
         return
 
@@ -228,9 +226,6 @@ def main():
             f"Valid Eval Size: {len(valid_eval_dataset) if valid_eval_dataset is not None else 0}"
         )
 
-    import pdb
-
-    pdb.set_trace()
     # if True:
     #     debug_prefix_index(tokenizer, "test")
     #     sys.exit()

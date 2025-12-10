@@ -1152,6 +1152,12 @@ class ReReTrainer(Trainer):
             completions = completions_text
         # import pdb;pdb.set_trace()
 
+        # Extract completion tokens (trimmed to first EOS/pad according to mask) for reward functions
+        completion_token_ids = []
+        for ids, mask in zip(completion_ids, completion_mask, strict=False):
+            trimmed = ids[mask.bool()]
+            completion_token_ids.append(trimmed.tolist())
+
         div_lis = [
             len(set(completions_text[i : i + self.num_generations]))
             / self.num_generations
@@ -1208,7 +1214,10 @@ class ReReTrainer(Trainer):
                     key: [example[key] for example in inputs] for key in keys
                 }
                 output_reward_func = reward_func(
-                    prompts=prompts_text, completions=completions, **reward_kwargs
+                    prompts=prompts_text,
+                    completions=completions,
+                    completion_token_ids=completion_token_ids,
+                    **reward_kwargs,
                 )
                 rewards_per_func[:, i] = torch.tensor(
                     output_reward_func, dtype=torch.float32, device=device
@@ -1220,8 +1229,7 @@ class ReReTrainer(Trainer):
         #         reward_func_name = reward_func.__name__
         #         print(reward_func_name)
         #         print(rewards_per_func[i, j])
-        #         print("-"*50)
-        # import pdb; pdb.set_trace()
+        #         print("-" * 50)
 
         # Gather the reward per function: this part is crucial, because the rewards are normalized per group and the
         # completions may be distributed across processes

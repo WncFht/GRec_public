@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from itertools import repeat
 from typing import Any
 
-from ..utils import clean_text
-
 
 @dataclass
 class _RewardContext:
@@ -17,35 +15,6 @@ class _RewardContext:
 
 
 _REWARD_CONTEXT: _RewardContext | None = None
-_REWARD_TOKENIZER = None
-
-
-def set_reward_tokenizer(tokenizer):
-    """Register tokenizer for token-level matching."""
-    global _REWARD_TOKENIZER
-    _REWARD_TOKENIZER = tokenizer
-
-
-def _get_tokenizer():
-    if _REWARD_TOKENIZER is None:
-        raise RuntimeError("Reward tokenizer not set. Call set_reward_tokenizer().")
-    return _REWARD_TOKENIZER
-
-
-def _tokenize_with_eos(text: str) -> list[int]:
-    tok = _get_tokenizer()
-    try:
-        tokens = tok.encode(text, add_special_tokens=False)
-    except Exception:
-        tokenized = tok(text, add_special_tokens=False, return_tensors=None)
-        tokens = tokenized.get("input_ids", [])
-        if tokens and isinstance(tokens[0], list):
-            tokens = tokens[0]
-    eos_id = getattr(tok, "eos_token_id", None)
-    tokens = list(tokens)
-    if eos_id is not None and (not tokens or tokens[-1] != eos_id):
-        tokens.append(eos_id)
-    return tokens
 
 
 def _extract_gt_tokens(rm: dict[str, Any]) -> list[int]:
@@ -54,10 +23,8 @@ def _extract_gt_tokens(rm: dict[str, Any]) -> list[int]:
         tokens = gt.get("token", []) or []
         if tokens:
             return tokens
-        text = gt.get("text", "")
-    else:
-        text = gt
-    return _tokenize_with_eos(text)
+    msg = "ground_truth must include token ids for reward computation."
+    raise RuntimeError(msg)
 
 
 def initialize_reward_functions(num_generations: int) -> bool:
@@ -73,6 +40,7 @@ def initialize_reward_functions(num_generations: int) -> bool:
 def ndcg_rule_reward(
     reward_model: Iterable[dict[str, Any]],
     completions: Iterable[list[dict[str, str]]],
+    completion_token_ids: Iterable[list[int]] | None = None,
     prompts=None,
     data_source: str | None = None,
     **unused,
@@ -83,15 +51,20 @@ def ndcg_rule_reward(
     flag = False
     lis: list[float] = []
 
-    format_rewards = format_reward(completions, prompts, data_source=data_source)
-    for i, (completion, rm, fr) in enumerate(
-        zip(completions, reward_model, format_rewards, strict=False)
+    format_rewards = format_reward(
+        completions,
+        completion_token_ids=completion_token_ids,
+        prompts=prompts,
+        data_source=data_source,
+    )
+    if completion_token_ids is None:
+        raise RuntimeError("completion_token_ids must be provided for token matching.")
+
+    for i, (tokens, rm, fr) in enumerate(
+        zip(completion_token_ids, reward_model, format_rewards, strict=False)
     ):
-        if _REWARD_TOKENIZER is None:
-            raise RuntimeError("Reward tokenizer not set for token matching.")
         gt_tokens = _extract_gt_tokens(rm)
-        completion_tokens = _tokenize_with_eos(completion[0]["content"])
-        if completion_tokens == gt_tokens and fr != 0:
+        if tokens == gt_tokens and fr != 0:
             flag = True
             lis.append(0.0)
         else:
@@ -108,21 +81,27 @@ def ndcg_rule_reward(
 def rule_reward(
     reward_model: Iterable[dict[str, Any]],
     completions: Iterable[list[dict[str, str]]],
+    completion_token_ids: Iterable[list[int]] | None = None,
     prompts=None,
     data_source: str | None = None,
     **unused,
 ):
     """这里 reward_model 实际上是 ground_truth"""
     rewards: list[float] = []
-    format_rewards = format_reward(completions, prompts, data_source=data_source)
-    for i, (completion, rm, fr) in enumerate(
-        zip(completions, reward_model, format_rewards, strict=False)
+    format_rewards = format_reward(
+        completions,
+        completion_token_ids=completion_token_ids,
+        prompts=prompts,
+        data_source=data_source,
+    )
+    if completion_token_ids is None:
+        raise RuntimeError("completion_token_ids must be provided for token matching.")
+
+    for i, (tokens, rm, fr) in enumerate(
+        zip(completion_token_ids, reward_model, format_rewards, strict=False)
     ):
-        if _REWARD_TOKENIZER is None:
-            raise RuntimeError("Reward tokenizer not set for token matching.")
         gt_tokens = _extract_gt_tokens(rm)
-        completion_tokens = _tokenize_with_eos(completion[0]["content"])
-        if completion_tokens == gt_tokens and fr != 0:
+        if tokens == gt_tokens and fr != 0:
             rewards.append(1.0)
         else:
             rewards.append(0.0)
@@ -136,6 +115,7 @@ _SEQREC_PATTERN = re.compile(
 
 def format_reward(
     completions: Iterable[list[dict[str, str]]],
+    completion_token_ids: Iterable[list[int]] | None = None,
     prompts=None,
     data_source: Iterable[str] | None = None,
     **unused,
