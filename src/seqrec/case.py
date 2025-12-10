@@ -2,14 +2,14 @@ import argparse
 import re
 
 import torch
-
 from src.collator import (
     ChatTemplateTestCollator,
     TestCollator,
     UnifiedTestCollator,
 )
 from src.parser import parse_dataset_args, parse_global_args, parse_test_args
-from src.utils import load_model_for_inference, load_test_dataset
+from src.utils import get_tokenizer, load_model_for_inference, load_test_dataset
+from transformers import GenerationConfig
 
 
 def main(args: argparse.Namespace):
@@ -49,8 +49,8 @@ def main(args: argparse.Namespace):
         "<unk>",
         "<pad>",
         "<|endoftext|>",
-        "<|im_start|>",
-        "<|im_end|>",
+        # "<|im_start|>",
+        # "<|im_end|>"
     }
     # 2. 预编译空白符正则
     WHITE_PAT = re.compile(r"\s+")
@@ -63,8 +63,12 @@ def main(args: argparse.Namespace):
         for tok in FRAMEWORK_SPECIAL:
             text = text.replace(tok, "")
         # 去掉所有空白（空格、换行、制表）
-        text = WHITE_PAT.sub("", text)
+        # text = WHITE_PAT.sub("", text)
         return text.strip()
+
+    tokenizer = get_tokenizer(processor)
+    print(f"Using eos_token: {tokenizer.eos_token} (ID: {tokenizer.eos_token_id})")
+    print(f"Using pad_token: {tokenizer.pad_token} (ID: {tokenizer.pad_token_id})")
 
     # 测试最后5个样本
     for i in range(max(0, length - 5), length):
@@ -82,15 +86,21 @@ def main(args: argparse.Namespace):
 
         # 使用beam search生成
         with torch.no_grad():
+            generation_config = GenerationConfig(
+                max_new_tokens=128,
+                num_beams=10,
+                num_return_sequences=10,
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+                output_scores=True,
+                return_dict_in_generate=True,
+                # temperature=self.temperature,
+                # do_sample=True, # if self.temperature > 1.0 else False,
+            )
             output = model.generate(
                 input_ids=inputs["input_ids"],
                 attention_mask=inputs["attention_mask"],
-                max_new_tokens=1024,
-                num_beams=2,
-                # num_return_sequences=2,
-                output_scores=True,
-                return_dict_in_generate=True,
-                # early_stopping=True,
+                generation_config=generation_config,
             )
 
         output_ids = output["sequences"]
@@ -98,31 +108,33 @@ def main(args: argparse.Namespace):
 
         # 解码所有结果
         tokenizer = (
-            processor.tokenizer
-            if hasattr(processor, "tokenizer")
-            else processor
+            processor.tokenizer if hasattr(processor, "tokenizer") else processor
         )
-        output_texts = tokenizer.batch_decode(
-            output_ids, skip_special_tokens=False
-        )
+        output_texts = tokenizer.batch_decode(output_ids, skip_special_tokens=False)
 
+        input_len = inputs["input_ids"].shape[1]
+        print(f"input 长度: {input_len}")
         print("生成结果:")
         # 提取"Response:"后面的输出
-        for j, (text, score) in enumerate(
-            zip(output_texts, scores, strict=False)
+        for j, (id, text, score) in enumerate(
+            zip(output_ids, output_texts, scores, strict=False)
         ):
-            response = clean_text(text)
+            # response = clean_text(text)
             # response = clean_text(text.split(split_word)[-1])
-            print(
-                f"  {j + 1}. {response} | ",
-                target_text[0],
-                f"分数: {float(score):.4f}",
-            )
+            part = text.split(split_word)[-1]
+            shown = part.encode("unicode_escape").decode("utf-8")
+            print(shown)
+            print(id[input_len:].tolist())
+            print(f"分数: {float(score):.4f}")
+            print("-" * 50)
+            # print(
+            #     f"  {j + 1}. {response} | ",
+            #     target_text[0],
+            #     f"分数: {float(score):.4f}",
+            # )
 
         # 检查是否命中
-        responses = [
-            clean_text(text.split(split_word)[-1]) for text in output_texts
-        ]
+        responses = [clean_text(text.split(split_word)[-1]) for text in output_texts]
         # remove the blank in responses
         if target_text[0] in responses:
             print(f"✓ 命中! 排名: {responses.index(target_text[0]) + 1}")

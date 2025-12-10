@@ -26,13 +26,18 @@ def load_test_dataset_rl(args: argparse.Namespace, logger=None, local_rank=0):
 
     dataset_list = args.dataset.split(",")
     test_task = args.test_task.lower()
+    eval_split = getattr(args, "eval_split", "test").lower()
+    if eval_split not in {"test", "valid"}:
+        raise ValueError(
+            f"Unsupported eval_split '{eval_split}'. Choose from ['test', 'valid']."
+        )
     test_data = None
 
     for dataset in dataset_list:
         if test_task == "seqrec":
             test_data = SeqRecDataset(
                 args,
-                mode="test",
+                mode=eval_split,
                 dataset=dataset,
                 sample_num=args.sample_num,
                 logger=logger,
@@ -41,7 +46,7 @@ def load_test_dataset_rl(args: argparse.Namespace, logger=None, local_rank=0):
         elif test_task == "fusionseqrec":
             test_data = FusionSeqRecDataset(
                 args,
-                mode="test",
+                mode=eval_split,
                 dataset=dataset,
                 sample_num=args.sample_num,
                 logger=logger,
@@ -85,6 +90,7 @@ def test(args: argparse.Namespace):
     set_seed(args.seed)
     print(vars(args))
 
+    eval_split = getattr(args, "eval_split", "test")
     device = torch.device("cuda", args.gpu_id)
 
     print("\n加载模型...")
@@ -112,7 +118,7 @@ def test(args: argparse.Namespace):
 
     test_data = load_test_dataset_rl(args)
     all_items = test_data.get_all_items()
-    print("Num test data:", len(test_data))
+    print(f"Num {eval_split} data:", len(test_data))
 
     if args.model_type == "llama":
         collator = TestCollator(args, tokenizer=processor)
@@ -130,7 +136,7 @@ def test(args: argparse.Namespace):
         pin_memory=True,
     )
 
-    print(f"\n数据集大小: {len(test_data)}")
+    print(f"\n{eval_split} 数据集大小: {len(test_data)}")
     print(f"测试批次大小: {args.test_batch_size}")
     print(f"测试prompt IDs: {prompt_ids}")
 
@@ -244,6 +250,7 @@ def test(args: argparse.Namespace):
     save_data["all_prompt_results"] = all_prompt_results
     save_data["is_lora"] = args.lora
     save_data["base_model"] = args.base_model if args.lora else None
+    save_data["eval_split"] = eval_split
 
     os.makedirs(os.path.dirname(args.results_file), exist_ok=True)
 

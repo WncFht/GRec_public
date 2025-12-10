@@ -51,6 +51,8 @@ def test(args: argparse.Namespace):
     device = torch.device("cuda", local_rank)
 
     set_seed(args.seed)
+    eval_split = getattr(args, "eval_split", "test")
+    eval_split_lower = eval_split.lower()
 
     if rank == 0:
         print(vars(args))
@@ -80,7 +82,7 @@ def test(args: argparse.Namespace):
     all_items = test_data.get_all_items()
 
     if rank == 0:
-        print("Num test data (total):", len(test_data))
+        print(f"Num {eval_split_lower} data (total):", len(test_data))
 
     test_sampler = DistributedSampler(
         test_data, num_replicas=world_size, rank=rank, shuffle=True
@@ -104,7 +106,7 @@ def test(args: argparse.Namespace):
     )
 
     if rank == 0:
-        print(f"\n数据集大小 (total): {len(test_data)}")
+        print(f"\n{eval_split_lower} 数据集大小 (total): {len(test_data)}")
         print(f"每个GPU的测试批次大小: {args.test_batch_size}")
         print(f"测试prompt IDs: {prompt_ids}")
 
@@ -253,6 +255,7 @@ def test(args: argparse.Namespace):
         save_data["all_prompt_results"] = all_prompt_results
         save_data["is_lora"] = args.lora
         save_data["base_model"] = args.base_model if args.lora else None
+        save_data["eval_split"] = eval_split
 
         os.makedirs(os.path.dirname(args.results_file), exist_ok=True)
 

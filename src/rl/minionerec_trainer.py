@@ -33,7 +33,6 @@ from accelerate.utils import (
 )
 from accelerate.utils.other import is_compiled_module
 from datasets import Dataset, IterableDataset
-from .LogitProcessor import ConstrainedLogitsProcessor
 from packaging import version
 from torch import nn
 from torch.utils.data import Sampler
@@ -71,6 +70,8 @@ from trl import (
     is_conversational,
     maybe_apply_chat_template,
 )
+
+from .LogitProcessor import ConstrainedLogitsProcessor
 
 if is_peft_available():
     from peft import PeftConfig, get_peft_model
@@ -1404,17 +1405,15 @@ class ReReTrainer(Trainer):
         self._metrics["kl"].append(
             self.accelerator.gather_for_metrics(mean_kl).mean().item()
         )
-        entropy_per_seq = (
-            per_token_entropy.detach() * completion_mask
-        ).sum(dim=1) / completion_mask.sum(dim=1).clamp(min=1)
+        entropy_per_seq = (per_token_entropy.detach() * completion_mask).sum(
+            dim=1
+        ) / completion_mask.sum(dim=1).clamp(min=1)
         self._metrics["entropy"].append(
             self.accelerator.gather_for_metrics(entropy_per_seq.detach()).mean().item()
         )
         if sft_loss_val is not None:
             self._metrics["sft_loss"].append(
-                self.accelerator.gather_for_metrics(
-                    sft_loss_val.detach()
-                ).mean().item()
+                self.accelerator.gather_for_metrics(sft_loss_val.detach()).mean().item()
             )
 
         return loss

@@ -20,27 +20,29 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3
 TASK=seqrec
 DATASET=Instruments
 RATIO=1
+USE_LORA=false
 
 # CKPT_PATH=ckpt/Instruments/Qwen2-VL-7B-lora-item2index-seqrec-fusionseqrec-nonewtoken/checkpoint-7284
 # BASE_MODEL=./ckpt/base_model/Qwen2-VL-7B-Instruct
 # MODEL_TYPE=qwen2_vl
 
-CKPT_PATH=ckpt/Instruments/Llava-onevision-lora-item2index-index2item-seqrec-fusionseqrec-1-qwen7B-1024/checkpoint-855
+CKPT_PATH=ckpt/Instruments/llava_rl_seqrec-fusionseqrec_ranking_max5_noscale/checkpoint-5310
 BASE_MODEL=./ckpt/base_model/llava-onevision-qwen2-7b-ov-hf
 MODEL_TYPE=llava_onevision
 
 DATA_PATH=./data
 INDEX_FILE=.index_qwen7B.json
-RESULTS_DIR=./results
 BATCH_SIZE=16
 NUM_BEAMS=10
 MAX_NEW_TOKENS=4
 MASTER_PORT=33326
 NUM_GPUS=4
+EVAL_SPLIT=test
+RESULTS_DIR=./results/"${EVAL_SPLIT}"
 
 CHECKPOINT_NAME=$(basename "$CKPT_PATH")
 MODEL_DIR_NAME=$(basename "$(dirname "$CKPT_PATH")")
-RESULTS_FILE=${RESULTS_DIR}/${TASK}-constrained-${MODEL_DIR_NAME}-${CHECKPOINT_NAME}.txt
+RESULTS_FILE=${RESULTS_DIR}/${TASK}-constrained-${MODEL_DIR_NAME}-${CHECKPOINT_NAME}-${EVAL_SPLIT}.txt
 LOG_FILE=${RESULTS_FILE%.txt}_log.txt
 
 mkdir -p "$RESULTS_DIR"
@@ -59,10 +61,13 @@ COMMON_ARGS=(
     --max_new_tokens "$MAX_NEW_TOKENS"
     --index_file "$INDEX_FILE"
     --test_prompt_ids "0"
-    --base_model "$BASE_MODEL"
-    --lora
     --results_file "$RESULTS_FILE"
+    --eval_split "$EVAL_SPLIT"
 )
+
+if $USE_LORA; then
+    COMMON_ARGS+=(--lora --base_model "$BASE_MODEL")
+fi
 
 if $DEBUG; then
     torchrun --nproc_per_node="$NUM_GPUS" --master_port="$MASTER_PORT" \

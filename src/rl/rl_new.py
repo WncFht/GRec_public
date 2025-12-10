@@ -3,6 +3,7 @@ import os
 from collections import defaultdict
 
 from datasets import Dataset as HFDataset
+
 from trl import GRPOConfig
 
 from ..data_rl import FusionSeqRecDataset, SeqRecDataset
@@ -96,11 +97,12 @@ def main():
                     mode="train",
                     dataset=dataset_name,
                 )
-                valid_dataset = SeqRecDataset(
-                    parsed_args,
-                    mode="valid",
-                    dataset=dataset_name,
-                )
+                if parsed_args.eval_on_valid:
+                    valid_dataset = SeqRecDataset(
+                        parsed_args,
+                        mode="valid",
+                        dataset=dataset_name,
+                    )
                 if parsed_args.eval_on_test:
                     test_dataset = SeqRecDataset(
                         parsed_args,
@@ -130,15 +132,15 @@ def main():
                 print(
                     f"Task: {task} - dataset: {dataset_name} - train samples: {len(train_dataset)}"
                 )
-            if valid_dataset is not None:
-                valid_datasets.append(valid_dataset)
-                print(
-                    f"Task: {task} - dataset: {dataset_name} - valid samples: {len(valid_dataset)}"
-                )
             if test_dataset is not None:
                 test_datasets.append(test_dataset)
                 print(
                     f"Task: {task} - dataset: {dataset_name} - test samples: {len(test_dataset)}"
+                )
+            if valid_dataset is not None:
+                valid_datasets.append(valid_dataset)
+                print(
+                    f"Task: {task} - dataset: {dataset_name} - valid samples: {len(valid_dataset)}"
                 )
 
     if not train_datasets:
@@ -155,31 +157,46 @@ def main():
     train_dataset = HFDataset.from_list(train_records)
     train_dataset = train_dataset.shuffle(seed=parsed_args.seed)
 
-    # 转换所有验证集为 Verl 记录并合并
-    print("Processing Eval Dataset (to Verl records)...")
-    eval_records = []
-    for ds in valid_datasets:
-        if hasattr(ds, "to_verl_records"):
-            eval_records.extend(ds.to_verl_records("valid"))
-
-    eval_dataset = HFDataset.from_list(eval_records) if eval_records else None
-    test_dataset = None
+    # 转换测试/验证集为 Verl 记录并合并
+    test_eval_dataset = None
     if parsed_args.eval_on_test and test_datasets:
+        print("Processing Test Dataset (to Verl records)...")
         test_records = []
         for ds in test_datasets:
             if hasattr(ds, "to_verl_records"):
                 test_records.extend(ds.to_verl_records("test"))
-        test_dataset = HFDataset.from_list(test_records) if test_records else None
+        test_eval_dataset = HFDataset.from_list(test_records) if test_records else None
 
-    # 组合验证/测试集，使每次 eval 都同时跑 valid+test（若开启开关且两者存在）
-    combined_eval_dataset = eval_dataset
-    if parsed_args.eval_on_test and eval_dataset is not None and test_dataset is not None:
-        combined_eval_dataset = {"valid": eval_dataset, "test": test_dataset}
+    valid_eval_dataset = None
+    if parsed_args.eval_on_valid and valid_datasets:
+        print("Processing Valid Dataset (to Verl records)...")
+        valid_records = []
+        for ds in valid_datasets:
+            if hasattr(ds, "to_verl_records"):
+                valid_records.extend(ds.to_verl_records("valid"))
+        valid_eval_dataset = (
+            HFDataset.from_list(valid_records) if valid_records else None
+        )
+
+    # 组合测试/验证集，使每次 eval 都同时跑 test + valid（若开启开关且两者存在）
+    combined_eval_dataset = test_eval_dataset
+    if parsed_args.eval_on_valid:
+        if valid_eval_dataset is not None and test_eval_dataset is not None:
+            combined_eval_dataset = {
+                "test": test_eval_dataset,
+                "valid": valid_eval_dataset,
+            }
+        elif valid_eval_dataset is not None:
+            combined_eval_dataset = valid_eval_dataset
 
     print(f"Train Size: {len(train_dataset)}")
-    print(f"Eval Size: {len(eval_dataset) if eval_dataset is not None else 0}")
-    if parsed_args.eval_on_test:
-        print(f"Test Size: {len(test_dataset) if test_dataset is not None else 0}")
+    print(
+        f"Test Eval Size: {len(test_eval_dataset) if test_eval_dataset is not None else 0}"
+    )
+    if parsed_args.eval_on_valid:
+        print(
+            f"Valid Eval Size: {len(valid_eval_dataset) if valid_eval_dataset is not None else 0}"
+        )
 
     # ====================================================
     # 4. 模型加载 (使用 utils.load_model_for_training)
@@ -205,7 +222,12 @@ def main():
         # 某些模型可能需要手动设置 pad_token_id
         if model.config.pad_token_id is None:
             model.config.pad_token_id = tokenizer.eos_token_id
+    print(f"Using eos_token: {tokenizer.eos_token} (ID: {tokenizer.eos_token_id})")
+    print(f"Using pad_token: {tokenizer.pad_token} (ID: {tokenizer.pad_token_id})")
 
+    import pdb
+
+    pdb.set_trace()
     # if True:
     #     debug_prefix_index(tokenizer, "test")
     #     sys.exit()
@@ -248,7 +270,7 @@ def main():
     training_args = GRPOConfig(
         output_dir=parsed_args.output_dir,
         save_steps=0.1,
-        save_total_limit=1,
+        save_total_limit=10,
         save_only_model=True,
         eval_strategy="steps",
         max_completion_length=parsed_args.max_completion_length,
@@ -306,12 +328,18 @@ def main():
     print(f"Saving model to {parsed_args.output_dir}")
     trainer.save_model(parsed_args.output_dir)
 
-    if test_dataset is not None:
+    if test_eval_dataset is not None:
         print("Running evaluation on test split...")
         test_metrics = trainer.evaluate(
-            eval_dataset=test_dataset, metric_key_prefix="test"
+            eval_dataset=test_eval_dataset, metric_key_prefix="test"
         )
         print(f"Test metrics: {test_metrics}")
+    if parsed_args.eval_on_valid and valid_eval_dataset is not None:
+        print("Running evaluation on valid split...")
+        valid_metrics = trainer.evaluate(
+            eval_dataset=valid_eval_dataset, metric_key_prefix="valid"
+        )
+        print(f"Valid metrics: {valid_metrics}")
 
     # 保存最终 checkpoint
     final_dir = os.path.join(parsed_args.output_dir, "final_checkpoint")
