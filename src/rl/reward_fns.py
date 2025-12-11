@@ -18,6 +18,7 @@ class _RewardContext:
 
 _REWARD_CONTEXT: _RewardContext | None = None
 _SEQREC_PATTERN: re.Pattern[str] | None = None
+_PRM_TOKEN_LIMIT = 4
 
 
 def _build_seqrec_pattern(pad_token: str | None) -> re.Pattern[str]:
@@ -65,20 +66,30 @@ def _strip_padding_tokens(tokens: Iterable[int], pad_token_id: int | None) -> li
     return [tok for tok in tokens if tok != pad_token_id]
 
 
+def _prm_compare_length(
+    tokens: list[int], gt_tokens: list[int], limit: int = _PRM_TOKEN_LIMIT
+) -> int:
+    if not tokens or not gt_tokens or limit <= 0:
+        return 0
+    return min(limit, len(tokens), len(gt_tokens))
+
+
 def ndcg_rule_reward(
     reward_model: Iterable[dict[str, Any]],
     completions: Iterable[list[dict[str, str]]],
     completion_token_ids: Iterable[list[int]] | None = None,
     prompts=None,
     data_source: str | None = None,
+    use_prm: bool = False,
     **unused,
 ):
     ctx = _ensure_context()
     repeat = ctx.num_generations
     pad_token_id = ctx.pad_token_id
-    rewards: list[float] = []
+    rewards: list[float] | list[list[float]] = []
     flag = False
     lis: list[float] = []
+    group_records: list[dict[str, Any]] = []
 
     format_rewards = format_reward(
         completions,
@@ -89,12 +100,57 @@ def ndcg_rule_reward(
     if completion_token_ids is None:
         raise RuntimeError("completion_token_ids must be provided for token matching.")
 
+    if use_prm:
+        for i, (tokens, rm, fr) in enumerate(
+            zip(completion_token_ids, reward_model, format_rewards, strict=False)
+        ):
+            gt_tokens = _strip_padding_tokens(_extract_gt_tokens(rm), pad_token_id)
+            norm_tokens = _strip_padding_tokens(tokens, pad_token_id)
+            group_records.append(
+                {
+                    "norm_tokens": norm_tokens,
+                    "gt_tokens": gt_tokens,
+                    "format_reward": float(fr),
+                    "is_correct": fr > 0 and norm_tokens == gt_tokens,
+                    "ndcg_value": ctx.ndcg_rewards[i % repeat],
+                }
+            )
+
+            is_group_end = (i + 1) % repeat == 0
+            is_last_item = i == len(format_rewards) - 1
+            if not (is_group_end or is_last_item):
+                continue
+
+            any_correct = any(rec["is_correct"] for rec in group_records)
+            for rec in group_records:
+                fr_val: float = rec["format_reward"]
+                norm_tokens = rec["norm_tokens"]
+                gt_tokens = rec["gt_tokens"]
+                if fr_val <= 0:
+                    length = max(len(norm_tokens), 1)
+                    rewards.append([fr_val] * length)
+                    continue
+
+                compare_len = _prm_compare_length(norm_tokens, gt_tokens)
+                length = max(len(norm_tokens), compare_len)
+                base_reward = (
+                    0.0 if rec["is_correct"] or not any_correct else rec["ndcg_value"]
+                )
+                token_rewards = [0.0] * length
+                for idx in range(compare_len):
+                    if norm_tokens[idx] != gt_tokens[idx]:
+                        token_rewards[idx] = base_reward
+                rewards.append(token_rewards)
+
+            group_records = []
+        return rewards
+
     for i, (tokens, rm, fr) in enumerate(
         zip(completion_token_ids, reward_model, format_rewards, strict=False)
     ):
         gt_tokens = _strip_padding_tokens(_extract_gt_tokens(rm), pad_token_id)
         norm_tokens = _strip_padding_tokens(tokens, pad_token_id)
-        if norm_tokens == gt_tokens and fr != 0:
+        if norm_tokens == gt_tokens and fr > 0:
             flag = True
             lis.append(0.0)
         else:
@@ -114,12 +170,13 @@ def rule_reward(
     completion_token_ids: Iterable[list[int]] | None = None,
     prompts=None,
     data_source: str | None = None,
+    use_prm: bool = False,
     **unused,
 ):
     """这里 reward_model 实际上是 ground_truth"""
     ctx = _ensure_context()
     pad_token_id = ctx.pad_token_id
-    rewards: list[float] = []
+    rewards: list[float] | list[list[float]] = []
     format_rewards = format_reward(
         completions,
         completion_token_ids=completion_token_ids,
@@ -133,14 +190,28 @@ def rule_reward(
         zip(completion_token_ids, reward_model, format_rewards, strict=False)
     ):
         gt_tokens = _extract_gt_tokens(rm)
-        if (
-            _strip_padding_tokens(tokens, pad_token_id)
-            == _strip_padding_tokens(gt_tokens, pad_token_id)
-            and fr != 0
-        ):
-            rewards.append(1.0)
+        norm_gt = _strip_padding_tokens(gt_tokens, pad_token_id)
+        norm_tokens = _strip_padding_tokens(tokens, pad_token_id)
+
+        if use_prm:
+            if fr <= 0:
+                length = max(len(norm_tokens), 1)
+                rewards.append([float(fr)] * length)
+                continue
+
+            compare_len = _prm_compare_length(norm_tokens, norm_gt)
+            length = max(len(norm_tokens), compare_len, 1)
+            token_rewards = [0.0] * length
+            for idx in range(compare_len):
+                token_rewards[idx] = (
+                    1.0 if norm_tokens[idx] == norm_gt[idx] else 0.0
+            )
+            rewards.append(token_rewards)
         else:
-            rewards.append(0.0)
+            if norm_tokens == norm_gt and fr > 0:
+                rewards.append(1.0)
+            else:
+                rewards.append(0.0)
     return rewards
 
 
@@ -220,7 +291,7 @@ if __name__ == "__main__":
     data_source = ["seqrec"] * (2 * ctx.num_generations)
 
     format_scores = format_reward(completions, data_source=data_source)
-    expected_format = [1.0] * ctx.num_generations + [0.0] * ctx.num_generations
+    expected_format = [1.0] * ctx.num_generations + [-1.0] * ctx.num_generations
 
     rule_scores = rule_reward(
         reward_model,

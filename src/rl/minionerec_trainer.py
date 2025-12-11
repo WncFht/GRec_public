@@ -238,6 +238,7 @@ class ReReTrainer(Trainer):
         dapo: bool = False,
         gspo: bool = False,
         noscale: bool = False,
+        use_prm: bool = False,
         use_sft_loss: bool = False,
         sft_loss_coef: float = 1e-3,
         # * others
@@ -272,6 +273,7 @@ class ReReTrainer(Trainer):
         # Trained model
         self.base_model = base_model
         self.noscale = noscale
+        self.use_prm = use_prm
         model_init_kwargs = args.model_init_kwargs or {}
         if isinstance(model, str):
             model_id = model
@@ -1157,6 +1159,7 @@ class ReReTrainer(Trainer):
         for ids, mask in zip(completion_ids, completion_mask, strict=False):
             trimmed = ids[mask.bool()]
             completion_token_ids.append(trimmed.tolist())
+        mask_lengths = completion_mask.sum(dim=1).to(torch.int)
 
         div_lis = [
             len(set(completions_text[i : i + self.num_generations]))
@@ -1175,9 +1178,8 @@ class ReReTrainer(Trainer):
         num_unique_tokens = len(total_ids)
         token_diversity = num_unique_tokens / num_tokens if num_tokens > 0 else 0.0
 
-        rewards_per_func = torch.zeros(
-            len(prompts_text), len(self.reward_funcs), device=device
-        )
+        max_completion_tokens = completion_ids.size(1)
+        reward_outputs: list[list[Any] | torch.Tensor] = []
         for i, (reward_func, reward_processing_class) in enumerate(
             zip(self.reward_funcs, self.reward_processing_classes, strict=False)
         ):
@@ -1204,7 +1206,7 @@ class ReReTrainer(Trainer):
                 )
                 reward_inputs = super()._prepare_inputs(reward_inputs)
                 with torch.inference_mode():
-                    rewards_per_func[:, i] = reward_func(**reward_inputs).logits[
+                    output_reward_func = reward_func(**reward_inputs).logits[
                         :, 0
                     ]  # Shape (B*G,)
             else:
@@ -1217,11 +1219,66 @@ class ReReTrainer(Trainer):
                     prompts=prompts_text,
                     completions=completions,
                     completion_token_ids=completion_token_ids,
+                    use_prm=self.use_prm,
                     **reward_kwargs,
                 )
-                rewards_per_func[:, i] = torch.tensor(
-                    output_reward_func, dtype=torch.float32, device=device
-                )
+            reward_outputs.append(output_reward_func)
+
+        if self.use_prm:
+            rewards_per_func_token = torch.zeros(
+                len(prompts_text),
+                max_completion_tokens,
+                len(self.reward_funcs),
+                device=device,
+            )
+            for func_idx, output_reward_func in enumerate(reward_outputs):
+                if isinstance(output_reward_func, torch.Tensor):
+                    output_iter = output_reward_func.detach().to(device)
+                else:
+                    output_iter = output_reward_func
+
+                for sample_idx in range(len(prompts_text)):
+                    mask_len = int(mask_lengths[sample_idx].item())
+                    fill_len = min(mask_len, max_completion_tokens)
+                    if fill_len <= 0:
+                        continue
+
+                    current_val = (
+                        output_iter[sample_idx]
+                        if isinstance(output_iter, torch.Tensor)
+                        else output_iter[sample_idx]
+                    )
+                    if isinstance(current_val, (list, tuple)):
+                        vals = torch.tensor(
+                            current_val, dtype=torch.float32, device=device
+                        )
+                        use_len = min(fill_len, vals.numel())
+                        if use_len > 0:
+                            rewards_per_func_token[
+                                sample_idx, :use_len, func_idx
+                            ] = vals[:use_len]
+                    elif isinstance(current_val, torch.Tensor) and current_val.dim() > 0:
+                        vals = current_val.to(device).float()
+                        use_len = min(fill_len, vals.numel())
+                        if use_len > 0:
+                            rewards_per_func_token[
+                                sample_idx, :use_len, func_idx
+                            ] = vals[:use_len]
+                    else:
+                        rewards_per_func_token[
+                            sample_idx, :fill_len, func_idx
+                        ] = float(current_val)
+        else:
+            rewards_per_func = torch.zeros(
+                len(prompts_text), len(self.reward_funcs), device=device
+            )
+            for func_idx, output_reward_func in enumerate(reward_outputs):
+                if isinstance(output_reward_func, torch.Tensor):
+                    rewards_per_func[:, func_idx] = output_reward_func.to(device).float()
+                else:
+                    rewards_per_func[:, func_idx] = torch.tensor(
+                        output_reward_func, dtype=torch.float32, device=device
+                    )
 
         # for i, completion in enumerate(completions):
         #     print(completion)
@@ -1231,29 +1288,66 @@ class ReReTrainer(Trainer):
         #         print(rewards_per_func[i, j])
         #         print("-" * 50)
 
-        # Gather the reward per function: this part is crucial, because the rewards are normalized per group and the
-        # completions may be distributed across processes
-        rewards_per_func = gather(rewards_per_func)
+        if self.use_prm:
+            # Gather token-level rewards across processes
+            rewards_per_func_token = gather(rewards_per_func_token)
+            gathered_mask = gather(completion_mask).to(device)
+            mask_float = gathered_mask.float().clamp(min=0)
 
-        # Apply weights to each reward function's output and sum
-        rewards = (rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).sum(
-            dim=1
-        )
+            # Weighted sum per token across reward functions
+            token_reward_weights = self.reward_weights.to(device).view(1, 1, -1)
+            token_rewards = (rewards_per_func_token * token_reward_weights).sum(dim=2)
 
-        # Compute grouped-wise rewards
-        mean_grouped_rewards = rewards.view(-1, self.num_generations).mean(dim=1)
-        std_grouped_rewards = rewards.view(-1, self.num_generations).std(dim=1)
+            # Group-wise normalization per token position
+            token_rewards_grouped = token_rewards.view(
+                -1, self.num_generations, max_completion_tokens
+            )
+            mean_grouped_token = token_rewards_grouped.mean(dim=1)
+            std_grouped_token = token_rewards_grouped.std(dim=1)
 
-        # Normalize the rewards to compute the advantages
-        mean_grouped_rewards = mean_grouped_rewards.repeat_interleave(
-            self.num_generations, dim=0
-        )
-        std_grouped_rewards = std_grouped_rewards.repeat_interleave(
-            self.num_generations, dim=0
-        )
-        advantages = rewards - mean_grouped_rewards
-        if not getattr(self, "noscale", False):
-            advantages = advantages / (std_grouped_rewards + 1e-4)
+            mean_grouped_token = mean_grouped_token.repeat_interleave(
+                self.num_generations, dim=0
+            )
+            std_grouped_token = std_grouped_token.repeat_interleave(
+                self.num_generations, dim=0
+            )
+
+            advantages = token_rewards - mean_grouped_token
+            if not getattr(self, "noscale", False):
+                advantages = advantages / (std_grouped_token + 1e-4)
+
+            rewards = (token_rewards * mask_float).sum(dim=1) / mask_float.sum(
+                dim=1
+            ).clamp(min=1)
+            rewards_per_func = (
+                (rewards_per_func_token * mask_float.unsqueeze(-1)).sum(dim=1)
+                / mask_float.sum(dim=1, keepdim=True).clamp(min=1)
+            )
+            std_grouped_rewards = std_grouped_token.mean(dim=1)
+        else:
+            # Gather the reward per function: this part is crucial, because the rewards are normalized per group and the
+            # completions may be distributed across processes
+            rewards_per_func = gather(rewards_per_func)
+
+            # Apply weights to each reward function's output and sum
+            rewards = (
+                rewards_per_func * self.reward_weights.to(device).unsqueeze(0)
+            ).sum(dim=1)
+
+            # Compute grouped-wise rewards
+            mean_grouped_rewards = rewards.view(-1, self.num_generations).mean(dim=1)
+            std_grouped_rewards = rewards.view(-1, self.num_generations).std(dim=1)
+
+            # Normalize the rewards to compute the advantages
+            mean_grouped_rewards = mean_grouped_rewards.repeat_interleave(
+                self.num_generations, dim=0
+            )
+            std_grouped_rewards = std_grouped_rewards.repeat_interleave(
+                self.num_generations, dim=0
+            )
+            advantages = rewards - mean_grouped_rewards
+            if not getattr(self, "noscale", False):
+                advantages = advantages / (std_grouped_rewards + 1e-4)
         # print(f"rewards: {rewards}")
         # print(f"advantages: {advantages}")
 
@@ -1360,9 +1454,18 @@ class ReReTrainer(Trainer):
 
         advantages = inputs["advantages"]
 
-        per_token_loss = torch.exp(
-            per_token_logps - per_token_logps.detach()
-        ) * advantages.unsqueeze(1)
+        if advantages.dim() == 1:
+            advantage_term = advantages.unsqueeze(1)
+            advantage_scalar = advantages
+        else:
+            advantage_term = advantages
+            advantage_scalar = (advantages * completion_mask).sum(dim=1) / (
+                completion_mask.sum(dim=1).clamp(min=1)
+            )
+
+        per_token_loss = torch.exp(per_token_logps - per_token_logps.detach()) * (
+            advantage_term
+        )
         per_token_loss = -(per_token_loss - self.beta * per_token_kl)
         sft_loss_val = None
 
@@ -1378,7 +1481,7 @@ class ReReTrainer(Trainer):
             sequence_kl = (per_token_kl * completion_mask).sum(
                 dim=1
             ) / completion_mask.sum(dim=1)
-            loss = -(s_score * advantages - self.beta * sequence_kl).mean()
+            loss = -(s_score * advantage_scalar - self.beta * sequence_kl).mean()
         else:
             loss = (
                 (per_token_loss * completion_mask).sum(dim=1)

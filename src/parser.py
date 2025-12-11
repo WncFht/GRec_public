@@ -177,6 +177,12 @@ def parse_rl_args(
         help="Reward type: rule|ranking|ranking_only|semantic|sasrec.",
     )
     rl_parser.add_argument(
+        "--use_prm",
+        action="store_true",
+        default=False,
+        help="If set, use per-token PRM-style rewards for rule/ndcg.",
+    )
+    rl_parser.add_argument(
         "--sample_train",
         action="store_true",
         default=False,
