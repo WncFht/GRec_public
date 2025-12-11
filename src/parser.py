@@ -117,6 +117,36 @@ def parse_rl_args(
         help="Beta coefficient in GRPO loss.",
     )
     rl_parser.add_argument(
+        "--clip",
+        action="store_true",
+        default=False,
+        help="Enable PPO-style ratio clipping (dual clip).",
+    )
+    rl_parser.add_argument(
+        "--clip_ratio",
+        type=float,
+        default=0.2,
+        help="Base epsilon for PPO clipping.",
+    )
+    rl_parser.add_argument(
+        "--clip_ratio_low",
+        type=float,
+        default=0.2,
+        help="Lower epsilon for clipping; defaults to clip_ratio when unset.",
+    )
+    rl_parser.add_argument(
+        "--clip_ratio_high",
+        type=float,
+        default=0.28,
+        help="Upper epsilon for clipping; defaults to clip_ratio when unset.",
+    )
+    rl_parser.add_argument(
+        "--clip_ratio_c",
+        type=float,
+        default=3.0,
+        help="Dual-clip threshold; set to None to disable dual clipping.",
+    )
+    rl_parser.add_argument(
         "--beam_search",
         action="store_true",
         default=False,

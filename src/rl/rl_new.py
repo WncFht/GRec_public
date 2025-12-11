@@ -300,13 +300,16 @@ def main():
                     f"Unknown reward_func '{name}'. 可选: {list(registry.keys())}"
                 )
             reward_fun.append(registry[name])
+        print("Using reward_funcs from CLI:", parsed_funcs)
         if parsed_weights:
             if len(parsed_weights) != len(reward_fun):
                 raise ValueError(
                     f"reward_weights 长度 {len(parsed_weights)} 必须与 reward_funcs {len(reward_fun)} 相同"
                 )
             reward_weights_list = parsed_weights
+            print("Using reward_weights from CLI:", reward_weights_list)
     else:
+        print("Failed to parse reward_funcs from CLI, using --reward_type instead.")
         reward_type = parsed_args.reward_type
         if reward_type == "rule":
             reward_fun = [format_reward, rule_reward]
@@ -347,6 +350,11 @@ def main():
         report_to="wandb",
     )
     training_args.completion_log_interval = parsed_args.completion_log_interval
+    training_args.clip = parsed_args.clip
+    training_args.clip_ratio = parsed_args.clip_ratio
+    training_args.clip_ratio_low = parsed_args.clip_ratio_low
+    training_args.clip_ratio_high = parsed_args.clip_ratio_high
+    training_args.clip_ratio_c = parsed_args.clip_ratio_c
     training_args.reward_weights = reward_weights_list
 
     # 初始化自定义 Trainer

@@ -442,6 +442,11 @@ class ReReTrainer(Trainer):
         self.test_beam = test_beam
         self.dynamic_sampling = dynamic_sampling
         self.dapo = dapo
+        self.clip = getattr(args, "clip", False) or dapo
+        self.clip_ratio = getattr(args, "clip_ratio", 0.2)
+        self.clip_ratio_low = getattr(args, "clip_ratio_low", None)
+        self.clip_ratio_high = getattr(args, "clip_ratio_high", None)
+        self.clip_ratio_c = getattr(args, "clip_ratio_c", None)
         self.gspo = gspo
         self.use_sft_loss = use_sft_loss
         self.sft_loss_coef = sft_loss_coef
@@ -1334,11 +1339,14 @@ class ReReTrainer(Trainer):
         #         print(rewards_per_func[i, j])
         #         print("-" * 50)
 
+        mask_for_adv: torch.Tensor | None = None
+
         if self.use_prm:
             # Gather token-level rewards across processes
             rewards_per_func_token = gather(rewards_per_func_token)
             gathered_mask = gather(completion_mask).to(device)
             mask_float = gathered_mask.float().clamp(min=0)
+            mask_for_adv = mask_float
 
             # Weighted sum per token across reward functions
             token_reward_weights = self.reward_weights.to(device).view(1, 1, -1)
@@ -1396,6 +1404,17 @@ class ReReTrainer(Trainer):
         # print(f"rewards: {rewards}")
         # print(f"advantages: {advantages}")
 
+        # Advantage statistics (global tensors here)
+        if mask_for_adv is not None:
+            adv_valid = advantages.masked_select(mask_for_adv.bool())
+        else:
+            adv_valid = advantages
+        if adv_valid.numel() > 0:
+            self._metrics["adv/mean"].append(adv_valid.mean().item())
+            self._metrics["adv/min"].append(adv_valid.min().item())
+            self._metrics["adv/max"].append(adv_valid.max().item())
+            self._metrics["adv/std"].append(adv_valid.std(unbiased=False).item())
+
         # import pdb; pdb.set_trace()
         # Slice to keep only the local part of the data
         process_slice = slice(
@@ -1406,14 +1425,27 @@ class ReReTrainer(Trainer):
         sliced_rewards = rewards[process_slice]
 
         # Log the metrics
-        reward_per_func = rewards_per_func.mean(0)
+        reward_per_func_mean = rewards_per_func.mean(0)
+        reward_per_func_std = rewards_per_func.std(dim=0, unbiased=False)
         for i, reward_func_name in enumerate(self.reward_func_names):
-            self._metrics[f"rewards/{reward_func_name}"].append(
-                reward_per_func[i].item()
+            self._metrics[f"rewards/{reward_func_name}/mean"].append(
+                reward_per_func_mean[i].item()
+            )
+            self._metrics[f"rewards/{reward_func_name}/std"].append(
+                reward_per_func_std[i].item()
             )
 
-        self._metrics["reward"].append(rewards.mean().item())
-        self._metrics["reward_std"].append(std_grouped_rewards.mean().item())
+        format_idx = None
+        for i, reward_func_name in enumerate(self.reward_func_names):
+            if reward_func_name == "format_reward":
+                format_idx = i
+                break
+        if format_idx is not None:
+            wrong_format_num = (rewards_per_func[:, format_idx] != 1).sum().item()
+            self._metrics["wrong_format_num"].append(wrong_format_num)
+
+        self._metrics["reward/mean"].append(rewards.mean().item())
+        self._metrics["reward/std"].append(std_grouped_rewards.mean().item())
         self._metrics["categorical_diversity"].append(cate_diversity)
         self._metrics["token_diversity"].append(token_diversity)
 
@@ -1454,6 +1486,16 @@ class ReReTrainer(Trainer):
             if wandb.run is not None and self.accelerator.is_main_process:
                 wandb.log({"completions": wandb.Table(dataframe=df)})
 
+        old_log_probs = None
+        if self.clip:
+            with torch.no_grad():
+                old_log_probs = self._get_per_token_logps(
+                    self.model,
+                    prompt_completion_ids,
+                    attention_mask,
+                    logits_to_keep=completion_ids.size(1),
+                ).detach()
+
         result = {
             "prompt_ids": prompt_ids,
             "prompt_mask": prompt_mask,
@@ -1463,6 +1505,8 @@ class ReReTrainer(Trainer):
             "advantages": advantages,
             "sliced_rewards": sliced_rewards,
         }
+        if old_log_probs is not None:
+            result["old_log_probs"] = old_log_probs
         if gt_input_ids is not None:
             result["gt_input_ids"] = gt_input_ids
             result["gt_attention_mask"] = gt_attention_mask
@@ -1511,10 +1555,70 @@ class ReReTrainer(Trainer):
                 completion_mask.sum(dim=1).clamp(min=1)
             )
 
-        per_token_loss = torch.exp(per_token_logps - per_token_logps.detach()) * (
-            advantage_term
-        )
-        per_token_loss = -(per_token_loss - self.beta * per_token_kl)
+        use_clip = self.clip and not self.gspo
+        mask_float = completion_mask.float()
+        mask_denom = mask_float.sum().clamp(min=1)
+        pg_clipfrac_val = None
+        pg_clipfrac_lower_val = None
+        ppo_kl_val = None
+
+        if use_clip:
+            old_log_probs = inputs.get("old_log_probs")
+            if old_log_probs is None:
+                old_log_probs = per_token_logps.detach()
+            clip_low = (
+                self.clip_ratio_low
+                if self.clip_ratio_low is not None
+                else self.clip_ratio
+            )
+            clip_high = (
+                self.clip_ratio_high
+                if self.clip_ratio_high is not None
+                else self.clip_ratio
+            )
+            clip_c = self.clip_ratio_c
+
+            negative_approx_kl = torch.clamp(
+                per_token_logps - old_log_probs, min=-20.0, max=20.0
+            )
+            ratio = torch.exp(negative_approx_kl)
+            pg_losses1 = -advantage_term * ratio
+            pg_losses2 = -advantage_term * torch.clamp(
+                ratio, 1 - clip_low, 1 + clip_high
+            )
+            clip_pg_losses1 = torch.maximum(pg_losses1, pg_losses2)
+            pg_clipfrac_val = (pg_losses2 > pg_losses1).float()
+
+            pg_losses = clip_pg_losses1
+            pg_clipfrac_lower_val = torch.zeros(
+                1, device=per_token_logps.device, dtype=torch.float32
+            )
+            if clip_c is not None:
+                pg_losses3 = -advantage_term * clip_c
+                clip_pg_losses2 = torch.min(pg_losses3, clip_pg_losses1)
+                pg_losses = torch.where(
+                    advantage_term < 0, clip_pg_losses2, clip_pg_losses1
+                )
+                clipfrac_lower_mask = (clip_pg_losses1 > pg_losses3) & (
+                    advantage_term < 0
+                )
+                pg_clipfrac_lower_val = (
+                    (clipfrac_lower_mask.float() * mask_float).sum() / mask_denom
+                ).unsqueeze(0)
+
+            pg_clipfrac_val = (
+                (pg_clipfrac_val * mask_float).sum() / mask_denom
+            ).unsqueeze(0)
+            ppo_kl_val = (
+                ((-negative_approx_kl) * mask_float).sum() / mask_denom
+            ).unsqueeze(0)
+
+            per_token_loss = pg_losses + self.beta * per_token_kl
+        else:
+            per_token_loss = torch.exp(per_token_logps - per_token_logps.detach()) * (
+                advantage_term
+            )
+            per_token_loss = -(per_token_loss - self.beta * per_token_kl)
         sft_loss_val = None
 
         # import pdb; pdb.set_trace()
@@ -1582,6 +1686,23 @@ class ReReTrainer(Trainer):
         self._metrics["entropy"].append(
             self.accelerator.gather_for_metrics(entropy_per_seq.detach()).mean().item()
         )
+        if pg_clipfrac_val is not None:
+            self._metrics["pg_clipfrac"].append(
+                self.accelerator.gather_for_metrics(pg_clipfrac_val.detach())
+                .mean()
+                .item()
+            )
+            self._metrics["pg_clipfrac_lower"].append(
+                self.accelerator.gather_for_metrics(pg_clipfrac_lower_val.detach())
+                .mean()
+                .item()
+            )
+            if ppo_kl_val is not None:
+                self._metrics["ppo_kl"].append(
+                    self.accelerator.gather_for_metrics(ppo_kl_val.detach())
+                    .mean()
+                    .item()
+                )
         if sft_loss_val is not None:
             self._metrics["sft_loss"].append(
                 self.accelerator.gather_for_metrics(sft_loss_val.detach()).mean().item()
