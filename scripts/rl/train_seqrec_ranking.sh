@@ -39,6 +39,8 @@ MODEL_TYPE=llava_onevision
 CHECKPOINT_NAME=$(basename "$BASE_MODEL")
 MODEL_DIR_NAME=$(basename "$(dirname "$BASE_MODEL")")
 LOG_FILE="log/${MODEL_DIR_NAME}-${CHECKPOINT_NAME}-${TASK}-${TIMESTAMP}.log"
+REWARD_FUNCS="format,rule,ndcg"
+REWARD_WEIGHTS="1,1,1"
 
 COMMON_ARGS=(
     --model_type "$MODEL_TYPE"
@@ -66,6 +68,8 @@ COMMON_ARGS=(
     --bf16
     --log_completions
     --completion_log_interval 100
+    --reward_funcs "$REWARD_FUNCS"
+    --reward_weights "$REWARD_WEIGHTS"
 )
 
 RUN_ARGS=("${COMMON_ARGS[@]}")

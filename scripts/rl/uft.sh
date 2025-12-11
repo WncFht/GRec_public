@@ -35,6 +35,8 @@ TASK=seqrec
 BASE_MODEL=ckpt/Instruments/llava_rl/checkpoint-1593
 MODEL_TYPE=llava_onevision
 SFT_LOSS_COEF=1e-3
+REWARD_FUNCS="format,rule,ndcg"
+REWARD_WEIGHTS="1,1,1"
 
 CHECKPOINT_NAME=$(basename "$BASE_MODEL")
 MODEL_DIR_NAME=$(basename "$(dirname "$BASE_MODEL")")
@@ -65,6 +67,8 @@ COMMON_ARGS=(
     --bf16
     --use_sft_loss
     --sft_loss_coef "$SFT_LOSS_COEF"
+    --reward_funcs "$REWARD_FUNCS"
+    --reward_weights "$REWARD_WEIGHTS"
 )
 
 RUN_ARGS=("${COMMON_ARGS[@]}")

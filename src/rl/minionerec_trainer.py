@@ -384,7 +384,11 @@ class ReReTrainer(Trainer):
             if isinstance(reward_func, nn.Module):
                 reward_func_name = reward_func.config._name_or_path.split("/")[-1]
             else:
-                reward_func_name = reward_func.__name__
+                reward_func_name = getattr(reward_func, "__name__", None)
+                if reward_func_name is None and hasattr(reward_func, "func"):
+                    reward_func_name = getattr(reward_func.func, "__name__", None)
+                if reward_func_name is None:
+                    reward_func_name = reward_func.__class__.__name__
             self.reward_func_names.append(reward_func_name)
 
         # Data collator
@@ -931,14 +935,19 @@ class ReReTrainer(Trainer):
                     ]
                     max_token_slots = 4  # 默认4个 item token
                     token_hit_counters = {
-                        idx: {k: 0 for k in hitk_positions} for idx in range(max_token_slots)
+                        idx: {k: 0 for k in hitk_positions}
+                        for idx in range(max_token_slots)
                     }
                     # import pdb; pdb.set_trace()
                     for i, comp_lis in enumerate(test_comp_lis):
                         target = dedup_target[i]
-                        target_tokens = token_pattern.findall(target.strip().replace(" ", ""))
+                        target_tokens = token_pattern.findall(
+                            target.strip().replace(" ", "")
+                        )
                         current_token_len = (
-                            min(len(target_tokens), max_token_slots) if target_tokens else max_token_slots
+                            min(len(target_tokens), max_token_slots)
+                            if target_tokens
+                            else max_token_slots
                         )
                         target_clean = target.strip('\n"').replace(" ", "")
                         found_full = False
@@ -953,7 +962,10 @@ class ReReTrainer(Trainer):
                             comp_tokens = token_pattern.findall(comp_clean)
                             if target_tokens and comp_tokens:
                                 for idx in range(current_token_len):
-                                    if idx < len(comp_tokens) and comp_tokens[idx] == target_tokens[idx]:
+                                    if (
+                                        idx < len(comp_tokens)
+                                        and comp_tokens[idx] == target_tokens[idx]
+                                    ):
                                         for k in hitk_positions:
                                             if j < k:
                                                 token_hit_counters[idx][k] += 1

@@ -177,6 +177,18 @@ def parse_rl_args(
         help="Reward type: rule|ranking|ranking_only|semantic|sasrec.",
     )
     rl_parser.add_argument(
+        "--reward_funcs",
+        type=str,
+        default="",
+        help="自定义 reward function 列表，逗号分隔或 JSON 列表，例如 'format,accuracy,brier' 或 \"['format','accuracy']\"。",
+    )
+    rl_parser.add_argument(
+        "--reward_weights",
+        type=str,
+        default="",
+        help="自定义 reward 权重列表，长度需与 reward_funcs 一致，逗号分隔或 JSON 列表。",
+    )
+    rl_parser.add_argument(
         "--use_prm",
         action="store_true",
         default=False,

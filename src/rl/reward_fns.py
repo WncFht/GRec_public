@@ -203,9 +203,7 @@ def rule_reward(
             length = max(len(norm_tokens), compare_len, 1)
             token_rewards = [0.0] * length
             for idx in range(compare_len):
-                token_rewards[idx] = (
-                    1.0 if norm_tokens[idx] == norm_gt[idx] else 0.0
-            )
+                token_rewards[idx] = 1.0 if norm_tokens[idx] == norm_gt[idx] else 0.0
             rewards.append(token_rewards)
         else:
             if norm_tokens == norm_gt and fr > 0:

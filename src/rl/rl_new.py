@@ -1,4 +1,5 @@
 import argparse
+import ast
 import os
 from collections import defaultdict
 
@@ -45,6 +46,8 @@ def main():
 
     parsed_args = parser.parse_args()  # 扁平对象，传给 utils.* 使用
     num_generations = parsed_args.num_generations
+    reward_funcs_cli = parsed_args.reward_funcs
+    reward_weights_cli = parsed_args.reward_weights
 
     print(parsed_args)
     # ====================================================
@@ -255,15 +258,62 @@ def main():
 
     hash_dict = {k: sorted(list(v)) for k, v in merged_hash_dict.items()}
     print(f"Built hash_dict entries: {len(hash_dict)} with prefix_index={prefix_index}")
+
     # print("10th of the hash_dict")
     # import pprint; pprint.pprint(dict(list(hash_dict.items())[:10]))
-    reward_type = parsed_args.reward_type
-    if reward_type == "rule":
-        reward_fun = [format_reward, rule_reward]
-    elif reward_type == "ranking":
-        reward_fun = [format_reward, rule_reward, ndcg_rule_reward]
-    elif reward_type == "ranking_only":
-        reward_fun = [format_reward, ndcg_rule_reward]
+    def _parse_list_arg(val, cast=None):
+        if not val:
+            return []
+        if isinstance(val, (list, tuple)):
+            items = list(val)
+        else:
+            try:
+                lit = ast.literal_eval(val)
+                if isinstance(lit, (list, tuple)):
+                    items = list(lit)
+                else:
+                    items = [lit]
+            except Exception:
+                items = [v for v in str(val).split(",") if v != ""]
+        if cast:
+            items = [cast(x) for x in items]
+        return items
+
+    def _build_reward_registry(fmt_pattern: str | None):
+        registry = {
+            "format": format_reward,
+            "rule": rule_reward,
+            "ndcg": ndcg_rule_reward,
+        }
+        return registry
+
+    reward_fun: list = []
+    reward_weights_list: list[float] | None = None
+    parsed_funcs = _parse_list_arg(reward_funcs_cli)
+    parsed_weights = _parse_list_arg(reward_weights_cli, cast=float)
+
+    if parsed_funcs:
+        registry = _build_reward_registry(None)
+        for name in parsed_funcs:
+            if name not in registry:
+                raise ValueError(
+                    f"Unknown reward_func '{name}'. 可选: {list(registry.keys())}"
+                )
+            reward_fun.append(registry[name])
+        if parsed_weights:
+            if len(parsed_weights) != len(reward_fun):
+                raise ValueError(
+                    f"reward_weights 长度 {len(parsed_weights)} 必须与 reward_funcs {len(reward_fun)} 相同"
+                )
+            reward_weights_list = parsed_weights
+    else:
+        reward_type = parsed_args.reward_type
+        if reward_type == "rule":
+            reward_fun = [format_reward, rule_reward]
+        elif reward_type == "ranking":
+            reward_fun = [format_reward, rule_reward, ndcg_rule_reward]
+        elif reward_type == "ranking_only":
+            reward_fun = [format_reward, ndcg_rule_reward]
 
     # ====================================================
     # 6. 配置 Trainer
@@ -297,6 +347,7 @@ def main():
         report_to="wandb",
     )
     training_args.completion_log_interval = parsed_args.completion_log_interval
+    training_args.reward_weights = reward_weights_list
 
     # 初始化自定义 Trainer
     trainer = ReReTrainer(
