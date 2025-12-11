@@ -14,6 +14,7 @@
 
 import math
 import os
+import re
 import textwrap
 import warnings
 from collections import defaultdict
@@ -870,9 +871,12 @@ class ReReTrainer(Trainer):
             with unwrap_model_for_generation(
                 self.model, self.accelerator
             ) as unwrapped_model:
-                topk = [1, 3, 5, 10, 20]
-                ndcg = [0, 0, 0, 0, 0]
-                hr = [0, 0, 0, 0, 0]
+                topk = [1, 3, 5, 10, 16, 20]
+                hitk_positions = [1, 5, 10, 16]
+                ndcg = [0, 0, 0, 0, 0, 0]
+                hr = [0, 0, 0, 0, 0, 0]
+                token_hit_metrics: dict[int, list[float]] = {}
+                token_pattern = re.compile(r"<[abcd]_([^<>]+)>")
 
                 if self.test_during_training:
                     dedup_prompt = []
@@ -925,18 +929,44 @@ class ReReTrainer(Trainer):
                         test_completions[i : i + self.test_beam]
                         for i in range(0, len(test_completions), self.test_beam)
                     ]
+                    max_token_slots = 4  # 默认4个 item token
+                    token_hit_counters = {
+                        idx: {k: 0 for k in hitk_positions} for idx in range(max_token_slots)
+                    }
                     # import pdb; pdb.set_trace()
                     for i, comp_lis in enumerate(test_comp_lis):
                         target = dedup_target[i]
+                        target_tokens = token_pattern.findall(target.strip().replace(" ", ""))
+                        current_token_len = (
+                            min(len(target_tokens), max_token_slots) if target_tokens else max_token_slots
+                        )
+                        target_clean = target.strip('\n"').replace(" ", "")
+                        found_full = False
                         for j in range(len(comp_lis)):
-                            if comp_lis[j].strip('\n"') == target.strip('\n"'):
+                            comp_clean = comp_lis[j].strip('\n"').replace(" ", "")
+                            if (not found_full) and comp_clean == target_clean:
                                 for index, k in enumerate(topk):
                                     if j < k:
                                         hr[index] += 1
                                         ndcg[index] += 1 / math.log2(j + 2)
-                                break
+                                found_full = True
+                            comp_tokens = token_pattern.findall(comp_clean)
+                            if target_tokens and comp_tokens:
+                                for idx in range(current_token_len):
+                                    if idx < len(comp_tokens) and comp_tokens[idx] == target_tokens[idx]:
+                                        for k in hitk_positions:
+                                            if j < k:
+                                                token_hit_counters[idx][k] += 1
                     hr = [elm / len(dedup_target) for elm in hr]
                     ndcg = [elm / len(dedup_target) for elm in ndcg]
+                    if len(dedup_target) > 0:
+                        token_hit_metrics = {
+                            k: [
+                                token_hit_counters[idx][k] / len(dedup_target)
+                                for idx in range(max_token_slots)
+                            ]
+                            for k in hitk_positions
+                        }
 
                 if self.beam_search:
                     dedup_prompt = []
@@ -1254,27 +1284,31 @@ class ReReTrainer(Trainer):
                         )
                         use_len = min(fill_len, vals.numel())
                         if use_len > 0:
-                            rewards_per_func_token[
-                                sample_idx, :use_len, func_idx
-                            ] = vals[:use_len]
-                    elif isinstance(current_val, torch.Tensor) and current_val.dim() > 0:
+                            rewards_per_func_token[sample_idx, :use_len, func_idx] = (
+                                vals[:use_len]
+                            )
+                    elif (
+                        isinstance(current_val, torch.Tensor) and current_val.dim() > 0
+                    ):
                         vals = current_val.to(device).float()
                         use_len = min(fill_len, vals.numel())
                         if use_len > 0:
-                            rewards_per_func_token[
-                                sample_idx, :use_len, func_idx
-                            ] = vals[:use_len]
+                            rewards_per_func_token[sample_idx, :use_len, func_idx] = (
+                                vals[:use_len]
+                            )
                     else:
-                        rewards_per_func_token[
-                            sample_idx, :fill_len, func_idx
-                        ] = float(current_val)
+                        rewards_per_func_token[sample_idx, :fill_len, func_idx] = float(
+                            current_val
+                        )
         else:
             rewards_per_func = torch.zeros(
                 len(prompts_text), len(self.reward_funcs), device=device
             )
             for func_idx, output_reward_func in enumerate(reward_outputs):
                 if isinstance(output_reward_func, torch.Tensor):
-                    rewards_per_func[:, func_idx] = output_reward_func.to(device).float()
+                    rewards_per_func[:, func_idx] = output_reward_func.to(
+                        device
+                    ).float()
                 else:
                     rewards_per_func[:, func_idx] = torch.tensor(
                         output_reward_func, dtype=torch.float32, device=device
@@ -1319,10 +1353,9 @@ class ReReTrainer(Trainer):
             rewards = (token_rewards * mask_float).sum(dim=1) / mask_float.sum(
                 dim=1
             ).clamp(min=1)
-            rewards_per_func = (
-                (rewards_per_func_token * mask_float.unsqueeze(-1)).sum(dim=1)
-                / mask_float.sum(dim=1, keepdim=True).clamp(min=1)
-            )
+            rewards_per_func = (rewards_per_func_token * mask_float.unsqueeze(-1)).sum(
+                dim=1
+            ) / mask_float.sum(dim=1, keepdim=True).clamp(min=1)
             std_grouped_rewards = std_grouped_token.mean(dim=1)
         else:
             # Gather the reward per function: this part is crucial, because the rewards are normalized per group and the
@@ -1376,6 +1409,9 @@ class ReReTrainer(Trainer):
             for i in range(len(topk)):
                 self._metrics[f"NDCG@{topk[i]}"].append(ndcg[i])
                 self._metrics[f"HR@{topk[i]}"].append(hr[i])
+            for k, vals in token_hit_metrics.items():
+                for idx, val in enumerate(vals, start=1):
+                    self._metrics[f"Hit@{k}/token_{idx}"].append(val)
 
         should_log_completions = (
             self.log_completions

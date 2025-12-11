@@ -257,9 +257,13 @@ def _ensure_context() -> _RewardContext:
 
 
 if __name__ == "__main__":
-    initialize_reward_functions(num_generations=4)
-    """Quick helper that runs the reward funcs on known-valid/invalid seqrec outputs."""
+    # ===== 基础初始化：带上 pad_token_id 方便正则忽略结尾填充 =====
+    initialize_reward_functions(
+        num_generations=4, pad_token_id=0, pad_token="<|endoftext|>"
+    )
+    """快速自检：覆盖格式/匹配/PRM 的典型场景，便于本地 sanity check。"""
     ctx = _ensure_context()
+    # ===== 场景 1：格式 + 整体匹配/不匹配 =====
     valid_samples = [
         "<a_54><b_41><c_94><d_175><|im_end|>",
         "<a_93><b_150><c_157><d_155><|im_end|>",
@@ -311,17 +315,12 @@ if __name__ == "__main__":
         + [0.0] * ctx.num_generations
     )
 
-    print("Completions tested:", completions)
-    print("Ground truths tested:", reward_model)
+    print("场景1 Completions:", completions)
+    print("场景1 Ground truths:", reward_model)
     print("-" * 40)
-    print("Format scores:", format_scores)
-    print("Expected format scores:", expected_format)
-    print("-" * 40)
-    print("Rule scores:", rule_scores)
-    print("Expected rule scores:", expected_rule)
-    print("-" * 40)
-    print("NDCG scores:", ndcg_scores)
-    print("Expected NDCG scores:", expected_ndcg)
+    print("Format:", format_scores)
+    print("Rule:", rule_scores)
+    print("NDCG:", ndcg_scores)
 
     mismatches = []
     if format_scores != expected_format:
@@ -337,8 +336,71 @@ if __name__ == "__main__":
             f"ndcg_rule_reward mismatch: expected {expected_ndcg}, got {ndcg_scores}"
         )
 
+    # ===== 场景 2：PRM token 级别测试（含 pad、格式错误） =====
+    prm_gt_tokens = [10, 20, 30, 40, 0]  # 最后一个 0 视为 pad
+    prm_reward_model = [
+        {"ground_truth": {"text": "gt", "token": prm_gt_tokens}}
+        for _ in range(ctx.num_generations)
+    ]
+    prm_completions = [
+        [{"content": "<a_1><b_1><c_1><d_1><|im_end|>"}],  # 全部匹配
+        [{"content": "<a_1><b_2><c_1><d_1><|im_end|>"}],  # 第2个 token 错
+        [{"content": "<a_9><b_1><c_1><d_1><|im_end|>"}],  # 第1个 token 错
+        [{"content": "<a_1><b_1><c_1><d_1><|im_start|>"}],  # 格式非法
+    ]
+    prm_completion_tokens = [
+        [10, 20, 30, 40, 0],
+        [10, 99, 30, 40, 0],
+        [99, 20, 30, 40, 0],
+        [10, 20, 30, 40, 0],
+    ]
+    prm_data_source = ["seqrec"] * ctx.num_generations
+
+    prm_format = format_reward(prm_completions, data_source=prm_data_source)
+    prm_rule = rule_reward(
+        prm_reward_model,
+        prm_completions,
+        completion_token_ids=prm_completion_tokens,
+        data_source=prm_data_source,
+        use_prm=True,
+    )
+    prm_ndcg = ndcg_rule_reward(
+        prm_reward_model,
+        prm_completions,
+        completion_token_ids=prm_completion_tokens,
+        data_source=prm_data_source,
+        use_prm=True,
+    )
+
+    expected_prm_format = [1.0, 1.0, 1.0, -1.0]
+    expected_prm_rule = [
+        [1.0, 1.0, 1.0, 1.0],  # 完全匹配
+        [1.0, 0.0, 1.0, 1.0],  # 第二位错误
+        [0.0, 1.0, 1.0, 1.0],  # 第一位错误
+        [-1.0, -1.0, -1.0, -1.0],  # 格式错误 -> 直接格式分
+    ]
+    expected_prm_ndcg = [
+        [0.0, 0.0, 0.0, 0.0],
+        [0.0, ctx.ndcg_rewards[1], 0.0, 0.0],
+        [ctx.ndcg_rewards[2], 0.0, 0.0, 0.0],
+        [-1.0, -1.0, -1.0, -1.0],
+    ]
+
+    if prm_format != expected_prm_format:
+        mismatches.append(
+            f"PRM format mismatch: expected {expected_prm_format}, got {prm_format}"
+        )
+    if prm_rule != expected_prm_rule:
+        mismatches.append(
+            f"PRM rule mismatch: expected {expected_prm_rule}, got {prm_rule}"
+        )
+    if prm_ndcg != expected_prm_ndcg:
+        mismatches.append(
+            f"PRM ndcg mismatch: expected {expected_prm_ndcg}, got {prm_ndcg}"
+        )
+
     if mismatches:
         msg = "\n".join(mismatches)
         raise AssertionError(f"Reward sanity check failed:\n{msg}")
 
-    print("Reward sanity check passed with provided seqrec samples.")
+    print("Reward sanity check passed with seqrec + PRM samples.")
