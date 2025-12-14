@@ -1,24 +1,14 @@
-"""
-统一的多任务训练脚本，支持全量微调和LoRA微调两种模式。
-
-使用方法：
-- 全量微调：python unified_multitask_train.py --base_model xxx ...
-- LoRA微调：python unified_multitask_train.py --base_model xxx --use_lora ...
-"""
-
 import argparse
 import os
 import sys
-from typing import Any
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-import pickle
 
 import torch
 import transformers
 from transformers import TrainingArguments
 
-from ..collator import MultiModalCollator
+from ..collator import ChatTemplateCollator, MultiModalCollator
 from ..logger import (
     configure_tqdm_for_file_output,
     get_tqdm_compatible_logger,
@@ -75,9 +65,7 @@ class UnifiedTrainer:
         configure_tqdm_for_file_output(use_file_output=not debug_mode)
 
         # 记录训练模式
-        train_mode = (
-            "LoRA finetuning" if self.args.use_lora else "Full finetuning"
-        )
+        train_mode = "LoRA finetuning" if self.args.use_lora else "Full finetuning"
         self.logger.info(f"Starting multitask {train_mode}")
         self.logger.info(f"RUN_NAME: {self.args.run_name}")
 
@@ -109,6 +97,12 @@ class UnifiedTrainer:
 
         self.logger.info(f"Report to: {report_to}")
 
+        # 只保留模型权重，不保存中间 optimizer / scheduler / rng 等训练状态
+        # 注意：在使用 DeepSpeed 时，save_only_model 需要关闭 load_best_model_at_end
+        use_deepspeed = bool(getattr(self.args, "deepspeed", None))
+        save_only_model = True
+        load_best_model_at_end = not use_deepspeed
+
         return TrainingArguments(
             seed=self.args.seed,
             per_device_train_batch_size=self.args.per_device_batch_size,
@@ -129,16 +123,17 @@ class UnifiedTrainer:
             eval_steps=self.args.save_and_eval_steps,
             save_steps=self.args.save_and_eval_steps,
             output_dir=self.args.output_dir,
-            load_best_model_at_end=True,
+            load_best_model_at_end=load_best_model_at_end,
+            save_only_model=save_only_model,
             deepspeed=self.args.deepspeed,
             ddp_find_unused_parameters=False if self.ddp else None,
             dataloader_num_workers=self.args.num_workers,
+            dataloader_pin_memory=True,
+            accelerator_config={"non_blocking": True},
             remove_unused_columns=False,
             report_to=report_to,
             run_name=self.args.run_name,
-            eval_delay=1
-            if self.args.save_and_eval_strategy == "epoch"
-            else 2000,
+            eval_delay=1 if self.args.save_and_eval_strategy == "epoch" else 2000,
         )
 
     def _load_model_and_data(self) -> tuple:
@@ -159,9 +154,7 @@ class UnifiedTrainer:
         )
 
         # 加载数据集
-        train_data, valid_data = load_datasets(
-            self.args, self.logger, self.local_rank
-        )
+        train_data, valid_data = load_datasets(self.args, self.logger, self.local_rank)
 
         # 记录统计信息
         self._log_statistics(train_data, original_vocab_size, new_vocab_size)
@@ -188,9 +181,7 @@ class UnifiedTrainer:
                 self.logger.info(
                     f"LoRA config: r={self.args.lora_r}, alpha={self.args.lora_alpha}, dropout={self.args.lora_dropout}"
                 )
-                self.logger.info(
-                    f"Target modules: {self.args.lora_target_modules}"
-                )
+                self.logger.info(f"Target modules: {self.args.lora_target_modules}")
                 if (
                     hasattr(self.args, "lora_modules_to_save")
                     and self.args.lora_modules_to_save
@@ -199,9 +190,7 @@ class UnifiedTrainer:
                         f"Modules to save: {self.args.lora_modules_to_save}"
                     )
 
-            self.logger.info(
-                f"Added {new_vocab_size - original_vocab_size} new tokens"
-            )
+            self.logger.info(f"Added {new_vocab_size - original_vocab_size} new tokens")
             self.logger.info(f"Original vocab size: {original_vocab_size}")
             self.logger.info(f"New vocab size: {new_vocab_size}")
             self.logger.info(f"Train samples: {len(train_data)}")
@@ -217,9 +206,7 @@ class UnifiedTrainer:
                     * self.world_size
                 )
             else:
-                effective_batch_size = (
-                    self.args.per_device_batch_size * self.world_size
-                )
+                effective_batch_size = self.args.per_device_batch_size * self.world_size
 
             self.logger.info(f"Effective batch size: {effective_batch_size}")
             self.logger.info(
@@ -288,48 +275,6 @@ class UnifiedTrainer:
             f"Saved processor and config ({updated} vocab_size field(s) updated) to {out_dir}"
         )
 
-    def _save_new_token_embeddings(
-        self,
-        model: Any,
-        original_vocab_size: int,
-        new_vocab_size: int,
-        new_tokens: list[str],
-    ) -> None:
-        """保存新token的embedding用于后续可视化"""
-        # 对于LoRA模型，需要从base model获取embedding
-        if hasattr(model, "get_base_model"):
-            base_model = model.get_base_model()
-        else:
-            base_model = model
-
-        new_token_embeddings = (
-            base_model.get_input_embeddings()
-            .weight[original_vocab_size:]
-            .detach()
-            .cpu()
-        )
-
-        # 转换为 float32 类型，避免 BFloat16 的兼容性问题
-        new_token_embeddings = new_token_embeddings.float()
-
-        # 保存 embedding 和 token 名称
-        embedding_info = {
-            "embeddings": new_token_embeddings,
-            "token_names": new_tokens,
-            "original_vocab_size": original_vocab_size,
-            "new_vocab_size": new_vocab_size,
-        }
-
-        embedding_save_path = os.path.join(
-            self.args.output_dir, "new_token_embeddings.pkl"
-        )
-        with open(embedding_save_path, "wb") as f:
-            pickle.dump(embedding_info, f)
-
-        self.logger.info(
-            f"New token embeddings saved to: {embedding_save_path}"
-        )
-
     def train(self):
         """执行训练流程"""
         # 加载模型和数据
@@ -348,8 +293,11 @@ class UnifiedTrainer:
         if self.args.use_lora and self.local_rank == 0:
             model.print_trainable_parameters()
 
-        # 创建数据collator
-        collator = MultiModalCollator(self.args, processor)
+        # 创建数据collator：文本模型使用 ChatTemplateCollator，多模态模型使用 MultiModalCollator
+        if self.args.model_type in ["qwen", "qwen2", "qwen2_5", "llama"]:
+            collator = ChatTemplateCollator(self.args, processor)
+        else:
+            collator = MultiModalCollator(self.args, processor)
 
         # 设置模型并行（如果需要）
         if not self.ddp and torch.cuda.device_count() > 1:
@@ -383,17 +331,7 @@ class UnifiedTrainer:
         if embedding_hooks:
             for hook in embedding_hooks:
                 hook.remove()
-            self.logger.info(
-                f"Removed {len(embedding_hooks)} embedding gradient hooks"
-            )
-
-        # 保存新token embeddings
-        self._save_new_token_embeddings(
-            model,
-            original_vocab_size,
-            new_vocab_size,
-            new_tokens,
-        )
+            self.logger.info(f"Removed {len(embedding_hooks)} embedding gradient hooks")
 
         # 保存模型和状态
         self.logger.info("Saving model and training state...")

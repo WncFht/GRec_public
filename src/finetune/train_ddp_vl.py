@@ -65,9 +65,7 @@ class UnifiedTrainer:
         configure_tqdm_for_file_output(use_file_output=not debug_mode)
 
         # 记录训练模式
-        train_mode = (
-            "LoRA finetuning" if self.args.use_lora else "Full finetuning"
-        )
+        train_mode = "LoRA finetuning" if self.args.use_lora else "Full finetuning"
         self.logger.info(f"Starting multitask {train_mode}")
         self.logger.info(f"RUN_NAME: {self.args.run_name}")
 
@@ -135,9 +133,7 @@ class UnifiedTrainer:
             remove_unused_columns=False,
             report_to=report_to,
             run_name=self.args.run_name,
-            eval_delay=1
-            if self.args.save_and_eval_strategy == "epoch"
-            else 2000,
+            eval_delay=1 if self.args.save_and_eval_strategy == "epoch" else 2000,
         )
 
     def _load_model_and_data(self) -> tuple:
@@ -158,9 +154,7 @@ class UnifiedTrainer:
         )
 
         # 加载数据集
-        train_data, valid_data = load_datasets(
-            self.args, self.logger, self.local_rank
-        )
+        train_data, valid_data = load_datasets(self.args, self.logger, self.local_rank)
 
         # 记录统计信息
         self._log_statistics(train_data, original_vocab_size, new_vocab_size)
@@ -187,9 +181,7 @@ class UnifiedTrainer:
                 self.logger.info(
                     f"LoRA config: r={self.args.lora_r}, alpha={self.args.lora_alpha}, dropout={self.args.lora_dropout}"
                 )
-                self.logger.info(
-                    f"Target modules: {self.args.lora_target_modules}"
-                )
+                self.logger.info(f"Target modules: {self.args.lora_target_modules}")
                 if (
                     hasattr(self.args, "lora_modules_to_save")
                     and self.args.lora_modules_to_save
@@ -198,9 +190,7 @@ class UnifiedTrainer:
                         f"Modules to save: {self.args.lora_modules_to_save}"
                     )
 
-            self.logger.info(
-                f"Added {new_vocab_size - original_vocab_size} new tokens"
-            )
+            self.logger.info(f"Added {new_vocab_size - original_vocab_size} new tokens")
             self.logger.info(f"Original vocab size: {original_vocab_size}")
             self.logger.info(f"New vocab size: {new_vocab_size}")
             self.logger.info(f"Train samples: {len(train_data)}")
@@ -216,9 +206,7 @@ class UnifiedTrainer:
                     * self.world_size
                 )
             else:
-                effective_batch_size = (
-                    self.args.per_device_batch_size * self.world_size
-                )
+                effective_batch_size = self.args.per_device_batch_size * self.world_size
 
             self.logger.info(f"Effective batch size: {effective_batch_size}")
             self.logger.info(
@@ -340,9 +328,7 @@ class UnifiedTrainer:
         if embedding_hooks:
             for hook in embedding_hooks:
                 hook.remove()
-            self.logger.info(
-                f"Removed {len(embedding_hooks)} embedding gradient hooks"
-            )
+            self.logger.info(f"Removed {len(embedding_hooks)} embedding gradient hooks")
 
         # 保存模型和状态
         self.logger.info("Saving model and training state...")

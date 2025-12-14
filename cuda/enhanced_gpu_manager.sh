@@ -1,7 +1,7 @@
 #!/bin/bash
 # enhanced_gpu_manager.sh
 
-PYTHON_SCRIPT="enhanced_gpu_stress.py"
+PYTHON_SCRIPT="train.py"
 SCRIPT_PID_FILE="./tmp/gpu_stress.pid"
 LOG_DIR="./tmp/gpu_stress_logs"
 LOG_FILE="$LOG_DIR/gpu_manager.log"

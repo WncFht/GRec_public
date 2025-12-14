@@ -1518,6 +1518,23 @@ class ReReTrainer(Trainer):
         if return_outputs:
             raise ValueError("The GRPOTrainer does not support returning outputs")
 
+        def _pad_right(
+            tensor: torch.Tensor, target_len: int, pad_value: int | float
+        ) -> torch.Tensor:
+            if tensor.size(1) == target_len:
+                return tensor
+            if tensor.size(1) > target_len:
+                return tensor[:, :target_len]
+            pad_len = target_len - tensor.size(1)
+            pad_shape = (tensor.size(0), pad_len) + tuple(tensor.shape[2:])
+            pad_tensor = torch.full(
+                pad_shape,
+                pad_value,
+                dtype=tensor.dtype,
+                device=tensor.device,
+            )
+            return torch.cat([tensor, pad_tensor], dim=1)
+
         prompt_ids, prompt_mask = inputs["prompt_ids"], inputs["prompt_mask"]
         completion_ids, completion_mask = (
             inputs["completion_ids"],
@@ -1527,24 +1544,77 @@ class ReReTrainer(Trainer):
         gt_attention_mask = (
             inputs.get("gt_attention_mask") if self.use_sft_loss else None
         )
-        input_ids = torch.cat([prompt_ids, completion_ids], dim=1)
-        attention_mask = torch.cat([prompt_mask, completion_mask], dim=1)
-        logits_to_keep = completion_ids.size(
-            1
-        )  # we only need to compute the logits for the completion tokens
-
-        per_token_logps, per_token_entropy = self._get_per_token_logps(
-            model, input_ids, attention_mask, logits_to_keep, return_entropy=True
-        )
-
+        sft_loss_val = None
         ref_per_token_logps = inputs["ref_per_token_logps"]
+        old_log_probs = inputs.get("old_log_probs")
+
+        if self.use_sft_loss:
+            if gt_input_ids is None or gt_attention_mask is None:
+                raise ValueError(
+                    "SFT loss is enabled but ground-truth tensors are missing."
+                )
+
+            target_len = max(completion_ids.size(1), gt_input_ids.size(1))
+            pad_token_id = self.processing_class.pad_token_id
+
+            completion_ids = _pad_right(completion_ids, target_len, pad_token_id)
+            completion_mask = _pad_right(completion_mask, target_len, 0)
+            gt_input_ids = _pad_right(gt_input_ids, target_len, pad_token_id)
+            gt_attention_mask = _pad_right(gt_attention_mask, target_len, 0)
+            ref_per_token_logps = _pad_right(ref_per_token_logps, target_len, 0.0)
+            if old_log_probs is not None:
+                old_log_probs = _pad_right(old_log_probs, target_len, 0.0)
+
+            input_ids = torch.cat([prompt_ids, completion_ids], dim=1)
+            attention_mask = torch.cat([prompt_mask, completion_mask], dim=1)
+            sft_input_ids = torch.cat([prompt_ids, gt_input_ids], dim=1)
+            sft_attention_mask = torch.cat([prompt_mask, gt_attention_mask], dim=1)
+
+            combined_input_ids = torch.cat([input_ids, sft_input_ids], dim=0)
+            combined_attention_mask = torch.cat(
+                [attention_mask, sft_attention_mask], dim=0
+            )
+            combined_logits = model(
+                input_ids=combined_input_ids,
+                attention_mask=combined_attention_mask,
+                logits_to_keep=target_len + 1,
+            ).logits
+            combined_logits = combined_logits[:, :-1, :]
+            combined_logits = combined_logits[:, -target_len:, :]
+
+            batch_size = prompt_ids.size(0)
+            logits_rl = combined_logits[:batch_size]
+            logits_sft = combined_logits[batch_size:]
+
+            per_token_logps = selective_log_softmax(logits_rl, completion_ids)
+            log_probs = torch.log_softmax(logits_rl, dim=-1)
+            per_token_entropy = -(log_probs.exp() * log_probs).sum(dim=-1)
+
+            masked_labels = gt_input_ids.masked_fill(gt_attention_mask == 0, -100)
+            sft_loss_val = self._sft_loss_fct(
+                logits_sft.reshape(-1, logits_sft.size(-1)),
+                masked_labels.reshape(-1),
+            )
+        else:
+            input_ids = torch.cat([prompt_ids, completion_ids], dim=1)
+            attention_mask = torch.cat([prompt_mask, completion_mask], dim=1)
+            logits_to_keep = completion_ids.size(
+                1
+            )  # we only need to compute the logits for the completion tokens
+            per_token_logps, per_token_entropy = self._get_per_token_logps(
+                model, input_ids, attention_mask, logits_to_keep, return_entropy=True
+            )
+
         per_token_kl = (
             torch.exp(ref_per_token_logps - per_token_logps)
             - (ref_per_token_logps - per_token_logps)
             - 1
         )
+        per_token_kl = per_token_kl.masked_fill(completion_mask == 0, 0.0)
 
         advantages = inputs["advantages"]
+        if advantages.dim() == 2 and advantages.size(1) != completion_mask.size(1):
+            advantages = _pad_right(advantages, completion_mask.size(1), 0.0)
 
         if advantages.dim() == 1:
             advantage_term = advantages.unsqueeze(1)
@@ -1563,7 +1633,6 @@ class ReReTrainer(Trainer):
         ppo_kl_val = None
 
         if use_clip:
-            old_log_probs = inputs.get("old_log_probs")
             if old_log_probs is None:
                 old_log_probs = per_token_logps.detach()
             clip_low = (
@@ -1619,7 +1688,6 @@ class ReReTrainer(Trainer):
                 advantage_term
             )
             per_token_loss = -(per_token_loss - self.beta * per_token_kl)
-        sft_loss_val = None
 
         # import pdb; pdb.set_trace()
         if self.dapo:
@@ -1640,29 +1708,7 @@ class ReReTrainer(Trainer):
                 / completion_mask.sum(dim=1)
             ).mean()
 
-        if self.use_sft_loss:
-            if gt_input_ids is None or gt_attention_mask is None:
-                raise ValueError(
-                    "SFT loss is enabled but ground-truth tensors are missing."
-                )
-
-            sft_input_ids = torch.cat([prompt_ids, gt_input_ids], dim=1)
-            sft_attention_mask = torch.cat([prompt_mask, gt_attention_mask], dim=1)
-            sft_logits = model(
-                input_ids=sft_input_ids,
-                attention_mask=sft_attention_mask,
-            ).logits
-
-            shift_logits = sft_logits[:, :-1, :].contiguous()
-            shift_labels = sft_input_ids[:, 1:].contiguous()
-            label_mask = torch.cat(
-                [torch.zeros_like(prompt_mask[:, 1:]), gt_attention_mask], dim=1
-            )
-            masked_labels = shift_labels.masked_fill(label_mask == 0, -100)
-            sft_loss_val = self._sft_loss_fct(
-                shift_logits.view(-1, shift_logits.size(-1)),
-                masked_labels.view(-1),
-            )
+        if sft_loss_val is not None:
             loss = loss + self.sft_loss_coef * sft_loss_val
         # Log the metrics
 
