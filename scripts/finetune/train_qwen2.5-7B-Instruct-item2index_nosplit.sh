@@ -76,7 +76,7 @@ COMMON_ARGS=(
     --deepspeed ./config/ds_z2_bf16.json
     --bf16
     --only_train_response
-    --tasks item2index_nosplit,seqrec,fusionseqrec
+    --tasks seqrec,item2index_nosplit,fusionseqrec
     --train_prompt_sample_num 1,1,1
     --train_data_sample_num 0,0,0
     --ratio_dataset 1
