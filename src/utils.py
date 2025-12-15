@@ -687,7 +687,12 @@ def load_datasets(args: argparse.Namespace, logger=None, local_rank=0):
                     logger=logger,
                     local_rank=local_rank,
                 )
-            elif task.lower() in ["item2index", "index2item"]:
+            elif task.lower() in [
+                "item2index",
+                "index2item",
+                "item2index_nosplit",
+                "index2item_nosplit",
+            ]:
                 train_dataset = ItemFeatDataset(
                     args,
                     task=task.lower(),
@@ -795,6 +800,8 @@ def load_datasets(args: argparse.Namespace, logger=None, local_rank=0):
                     logger=logger,
                     local_rank=local_rank,
                 )
+            # 只对做 8:1:1 split 的 item2index / index2item 任务构建 valid，
+            # *_nosplit 任务不加入 valid，避免把全量数据塞进验证集
             elif task.lower() in ["item2index", "index2item"]:
                 valid_dataset = ItemFeatDataset(
                     args,
@@ -869,7 +876,12 @@ def load_test_dataset(args: argparse.Namespace, logger=None, local_rank=0):
                 logger=logger,
                 local_rank=local_rank,
             )
-        elif args.test_task.lower() in ["item2index", "index2item"]:
+        elif args.test_task.lower() in [
+            "item2index",
+            "index2item",
+            "item2index_nosplit",
+            "index2item_nosplit",
+        ]:
             test_data = ItemFeatDataset(
                 args,
                 task=args.test_task.lower(),

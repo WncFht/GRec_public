@@ -864,6 +864,7 @@ class ItemFeatDataset(BaseDataset):
     ):
         super().__init__(args, dataset, logger, local_rank)
 
+        # 支持 *_nosplit 任务：不做 8:1:1 划分，所有 item 都可用于当前模式
         self.task = task.lower()
         self.mode = mode
         self.prompt_sample_num = prompt_sample_num
@@ -871,7 +872,12 @@ class ItemFeatDataset(BaseDataset):
         self.sample_num = sample_num
         self.args = args
 
-        self.prompts = all_prompt[self.task]
+        # 基础任务名用于选择 prompt；例如 item2index_nosplit 复用 item2index 的 prompt
+        self.base_task = self.task.replace("_nosplit", "")
+        if self.base_task not in all_prompt:
+            raise ValueError(f"Unsupported task: {self.task}")
+        self.prompts = all_prompt[self.base_task]
+        self.nosplit = self.task.endswith("_nosplit")
 
         # 加载数据并处理
         self._load_data()
@@ -898,10 +904,14 @@ class ItemFeatDataset(BaseDataset):
             self.item_feat = json.load(f)
 
     def _process_data(self):
-        # 根据 8:1:1 规则获取当前模式下的物品ID列表
+        # 根据 8:1:1 规则获取当前模式下的物品ID列表；
+        # *_nosplit 任务则直接使用全部物品ID，不做划分
         all_item_ids = list(self.indices.keys())
-        split_map = _split_item_ids(all_item_ids, self.args.seed)
-        item_ids_for_mode = split_map[self.mode]
+        if getattr(self, "nosplit", False):
+            item_ids_for_mode = all_item_ids
+        else:
+            split_map = _split_item_ids(all_item_ids, self.args.seed)
+            item_ids_for_mode = split_map[self.mode]
 
         if self.local_rank == 0:
             self.log_func(
