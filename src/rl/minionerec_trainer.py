@@ -98,14 +98,6 @@ class RepeatRandomSampler(Sampler):
             Number of times to repeat each index.
         seed (`Optional[int]`):
             Random seed for reproducibility (only affects this sampler).
-
-    Example:
-    ```python
-    >>> sampler = RepeatRandomSampler(["a", "b", "c", "d"], repeat_count=2)
-    >>> list(sampler)
-    [2, 2, 0, 0, 3, 3, 1, 1]
-    ```
-
     """
 
     def __init__(self, data_source: Sized, repeat_count: int, seed: int | None = None):
@@ -113,7 +105,7 @@ class RepeatRandomSampler(Sampler):
         self.repeat_count = repeat_count
         self.num_samples = len(data_source)
         self.seed = seed
-        self.generator = torch.Generator()  # Create a local random generator
+        self.generator = torch.Generator()
         if seed is not None:
             self.generator.manual_seed(seed)
 
@@ -667,7 +659,7 @@ class ReReTrainer(Trainer):
         if train_dataset is None:
             train_dataset = self.train_dataset
         return RepeatRandomSampler(
-            self.train_dataset, self.num_generations, seed=self.args.seed
+            train_dataset, self.num_generations, seed=self.args.seed
         )
 
     def _get_eval_sampler(self, eval_dataset) -> Sampler:
@@ -880,10 +872,10 @@ class ReReTrainer(Trainer):
             with unwrap_model_for_generation(
                 self.model, self.accelerator
             ) as unwrapped_model:
-                topk = [1, 3, 5, 10, 16, 20]
+                topk = [1, 3, 5, 10, 16, 20, 32]
                 hitk_positions = [1, 5, 10, 16]
-                ndcg = [0, 0, 0, 0, 0, 0]
-                hr = [0, 0, 0, 0, 0, 0]
+                ndcg = [0, 0, 0, 0, 0, 0, 0]
+                hr = [0, 0, 0, 0, 0, 0, 0]
                 token_hit_metrics: dict[int, list[float]] = {}
                 token_pattern = re.compile(r"<[abcd]_([^<>]+)>")
 
@@ -1342,9 +1334,38 @@ class ReReTrainer(Trainer):
         mask_for_adv: torch.Tensor | None = None
 
         if self.use_prm:
-            # Gather token-level rewards across processes
+            # Debug shapes before cross-process padding/gather (important for diagnosing multi-GPU hangs)
+            if self.state.global_step <= 3 or self.state.global_step % 10 == 0:
+                print(
+                    f"[PRM Debug][rank {self.accelerator.process_index}] step={self.state.global_step} "
+                    f"local completion_ids.shape={tuple(completion_ids.shape)} "
+                    f"completion_mask.shape={tuple(completion_mask.shape)} "
+                    f"rewards_per_func_token.shape={tuple(rewards_per_func_token.shape)}",
+                    flush=True,
+                )
+
+            # Pad across processes on the sequence dimension so that all ranks have
+            # tensors with the same shape before all-gather. Otherwise, multi-GPU
+            # runs can hang when using PRM due to shape mismatch.
+            rewards_per_func_token = self.accelerator.pad_across_processes(
+                rewards_per_func_token, dim=1, pad_index=0.0
+            )
+            completion_mask_padded = self.accelerator.pad_across_processes(
+                completion_mask, dim=1, pad_index=0
+            )
+
+            # Gather token-level rewards and masks across processes
             rewards_per_func_token = gather(rewards_per_func_token)
-            gathered_mask = gather(completion_mask).to(device)
+            gathered_mask = gather(completion_mask_padded).to(device)
+
+            if self.state.global_step <= 3 or self.state.global_step % 10 == 0:
+                print(
+                    f"[PRM Debug][rank {self.accelerator.process_index}] step={self.state.global_step} "
+                    f"after pad+gather rewards_per_func_token.shape={tuple(rewards_per_func_token.shape)} "
+                    f"gathered_mask.shape={tuple(gathered_mask.shape)}",
+                    flush=True,
+                )
+
             mask_float = gathered_mask.float().clamp(min=0)
             mask_for_adv = mask_float
 
@@ -1353,6 +1374,7 @@ class ReReTrainer(Trainer):
             token_rewards = (rewards_per_func_token * token_reward_weights).sum(dim=2)
 
             # Group-wise normalization per token position
+            max_completion_tokens = token_rewards.size(1)
             token_rewards_grouped = token_rewards.view(
                 -1, self.num_generations, max_completion_tokens
             )
@@ -1487,14 +1509,6 @@ class ReReTrainer(Trainer):
                 wandb.log({"completions": wandb.Table(dataframe=df)})
 
         old_log_probs = None
-        if self.clip:
-            with torch.no_grad():
-                old_log_probs = self._get_per_token_logps(
-                    self.model,
-                    prompt_completion_ids,
-                    attention_mask,
-                    logits_to_keep=completion_ids.size(1),
-                ).detach()
 
         result = {
             "prompt_ids": prompt_ids,
@@ -1651,12 +1665,16 @@ class ReReTrainer(Trainer):
                 per_token_logps - old_log_probs, min=-20.0, max=20.0
             )
             ratio = torch.exp(negative_approx_kl)
+            clip_low_mask = (ratio < 1 - clip_low) & (advantage_term < 0)
+            clip_high_mask = (ratio > 1 + clip_high) & (advantage_term > 0)
+            clip_region_mask = clip_low_mask | clip_high_mask
+
             pg_losses1 = -advantage_term * ratio
             pg_losses2 = -advantage_term * torch.clamp(
                 ratio, 1 - clip_low, 1 + clip_high
             )
             clip_pg_losses1 = torch.maximum(pg_losses1, pg_losses2)
-            pg_clipfrac_val = (pg_losses2 > pg_losses1).float()
+            pg_clipfrac_val = clip_region_mask.float()
 
             pg_losses = clip_pg_losses1
             pg_clipfrac_lower_val = torch.zeros(
