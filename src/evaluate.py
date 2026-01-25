@@ -1,21 +1,48 @@
 import math
+from typing import Iterable, List
 
 
-def get_topk_results(predictions, scores, targets, k, all_items=None):
+def clean_prediction_text(text: str) -> str:
+    """
+    Convert a decoded generation (often包含prompt+response) into an item string.
+
+    This is used both by metric computation and rollout cache saving, so keep it
+    lightweight and deterministic.
+    """
+
+    if not isinstance(text, str):
+        text = str(text)
+
+    # Common prompt/response delimiters.
+    if "Response:" in text:
+        text = text.split("Response:")[-1]
+    if "assistant" in text:
+        text = text.split("assistant")[-1]
+
+    text = text.strip().replace(" ", "")
+    text = text.replace("\n", "").replace("assistant", "")
+
+    # add > to the end of the prediction if it is not there,
+    # like <a_1><b_2><c_3><d_12 to <a_1><b_2><c_3><d_12>
+    if text and text[0] == "<" and text[-1] != ">":
+        text += ">"
+
+    return text
+
+
+def clean_predictions(predictions: Iterable[str]) -> List[str]:
+    return [clean_prediction_text(_) for _ in predictions]
+
+
+def get_topk_results(
+    predictions, scores, targets, k, all_items=None, clean: bool = True
+):
     results = []
     B = len(targets)
-    predictions = [_.split("Response:")[-1] for _ in predictions]
-    predictions = [_.strip().replace(" ", "") for _ in predictions]
-
-    # remove \n and assitant
-    predictions = [
-        _.replace("\n", "").replace("assistant", "") for _ in predictions
-    ]
-
-    # add > to the end of the prediction if it is not there, like <a_1><b_2><c_3><d_12 to <a_1><b_2><c_3><d_12>
-    for i, pred in enumerate(predictions):
-        if pred and pred[0] == "<" and pred[-1] != ">":
-            predictions[i] += ">"
+    if clean:
+        predictions = clean_predictions(predictions)
+    else:
+        predictions = list(predictions)
     print()
     print(predictions[: min(k // 2, 5)])
     print([targets[0]] * min(k // 2, 5))

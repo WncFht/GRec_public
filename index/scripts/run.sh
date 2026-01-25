@@ -1,9 +1,9 @@
 DATASET=Instruments
-MODEL_NAME=llama
+MODEL_NAME=qwen3-embedding-4B
 export WANDB_MODE=offline
 # DATA_PATH=./data/$DATASET/$DATASET.emb-$MODEL_NAME.npy
 # DATA_PATH=./data/Instruments/Qwen/Qwen2.5-VL-7B-Instruct_rep.npy
-DATA_PATH=./data/Instruments/Instruments.emb-llama-td.npy
+DATA_PATH=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/data/Instruments/Instruments.emb-qwen-td.npy
 
 LOG_FILE="./log/index/index_$(date +%Y%m%d%H%M%S).log"
 
@@ -22,7 +22,7 @@ WANDB_RUN_NAME="${DATASET}-${MODEL_NAME}${WANDB_SUFFIX}"
 mkdir -p ./log
 
 nohup python3 -u index/main.py \
-  --lr 1e-3 \
+  --lr 1e-4 \
   --epochs 10000 \
   --batch_size 2048 \
   --weight_decay 1e-4 \

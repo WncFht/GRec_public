@@ -67,6 +67,19 @@ class BaseDataset(Dataset):
         self.allowed_tokens = None
         self.all_items = None
 
+    def _format_chat_content(self, input_text: str):
+        """
+        Normalize chat message `content` field for different model chat_templates.
+
+        Some models (e.g. certain Qwen2 chat templates) expect `content` to be a
+        list of content blocks like: [{"type": "text", "text": "..."}], while
+        others expect a plain string.
+        """
+        model_type = getattr(self.args, "model_type", "")
+        if model_type in {"qwen2_instruct"}:
+            return [{"type": "text", "text": input_text}]
+        return input_text
+
     def set_prompt(self, prompt_id):
         # 设置当前使用的prompt ID
         self.prompt_id = prompt_id
@@ -423,7 +436,7 @@ class SeqRecDataset(BaseDataset):
                 "prompt": [
                     {
                         "role": "user",
-                        "content": [{"type": "text", "text": input_text}],
+                        "content": self._format_chat_content(input_text),
                     }
                 ],
                 "ability": "rec",
@@ -670,7 +683,7 @@ class FusionSeqRecDataset(BaseDataset):
                 "prompt": [
                     {
                         "role": "user",
-                        "content": [{"type": "text", "text": input_text}],
+                        "content": self._format_chat_content(input_text),
                     }
                 ],
                 "ability": "rec",
@@ -816,7 +829,7 @@ class ItemFeatDataset(BaseDataset):
                 "prompt": [
                     {
                         "role": "user",
-                        "content": [{"type": "text", "text": input_text}],
+                        "content": self._format_chat_content(input_text),
                     }
                 ],
                 "ability": "item",
@@ -893,13 +906,26 @@ def dataset_to_text_samples(dataset_obj, mode: str = "train") -> list[dict[str, 
         except Exception:
             records = []
 
+        def _content_to_text(content) -> str:
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                parts: list[str] = []
+                for part in content:
+                    if isinstance(part, dict):
+                        if part.get("type") == "text":
+                            parts.append(str(part.get("text", "")))
+                    elif isinstance(part, str):
+                        parts.append(part)
+                return "".join(parts)
+            return ""
+
         for rec in records:
-            # rec['prompt'] is a list with a single role dict in this codebase
             prompt_field = rec.get("prompt")
             if isinstance(prompt_field, list) and len(prompt_field) > 0:
-                prompt = prompt_field[0].get("content", "")
+                prompt = _content_to_text(prompt_field[0].get("content", ""))
             else:
-                prompt = prompt_field if isinstance(prompt_field, str) else ""
+                prompt = _content_to_text(prompt_field)
             completion = rec.get("reward_model", {}).get("ground_truth", "")
             if isinstance(completion, dict):
                 completion = completion.get("text", "")

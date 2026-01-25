@@ -29,7 +29,8 @@ done
 
 export WANDB_MODE=offline
 export CUDA_LAUNCH_BLOCKING=1
-export WANDB_PROJECT=GRec
+export WANDB_ENTITY=generate_rec
+export WANDB_PROJECT=minionerec
 export PYTHONUNBUFFERED=1
 
 export CUDA_VISIBLE_DEVICES=0,1,2,3
@@ -41,11 +42,11 @@ DATASET=Instruments
 # BASE_MODEL=ckpt/base_model/llava-onevision-qwen2-7b-ov-hf
 # MODEL_TYPE=llava_onevision
 
-BASE_MODEL=$HOME_DIR/ckpt/base_model/Qwen2.5-7B-Instruct
-MODEL_TYPE=qwen
+BASE_MODEL=$HOME_DIR/ckpt/base_model/Qwen2.5-3B
+MODEL_TYPE=qwen2_5
 
 DATA_PATH=$HOME_DIR/data
-OUTPUT_DIR=$HOME_DIR/$DATASET/Qwen2.5-7B-Instruct-item2index-seqrec-fusionseqrec-lemb
+OUTPUT_DIR=$HOME_DIR/ckpt/$DATASET/Qwen2.5-3B-sft-index_qwen3-embedding-4B
 
 
 # 确保输出目录存在
@@ -65,17 +66,16 @@ COMMON_ARGS=(
     --output_dir "$OUTPUT_DIR"
     --dataset "$DATASET"
     --data_path "$DATA_PATH"
-    --per_device_batch_size 12
-    --gradient_accumulation_steps 2
+    --per_device_batch_size 8
+    --gradient_accumulation_steps 4
     --use_gradient_checkpointing
     --num_workers 32
     --lr_scheduler_type cosine
     --learning_rate 5e-5
-    --epochs 5
-    --save_and_eval_strategy step
-    --save_and_eval_steps 0.5
+    --epochs 10
+    --save_and_eval_strategy steps
+    --save_and_eval_steps 0.05
     --weight_decay 0.01
-    --save_and_eval_strategy epoch
     --deepspeed ./config/ds_z2_bf16.json
     --bf16
     --only_train_response
@@ -84,7 +84,7 @@ COMMON_ARGS=(
     --train_data_sample_num 0,0,0
     --ratio_dataset 1
     --report_to wandb
-    --index_file .index_lemb.json
+    --index_file .index_qwen3-embedding-4B.json
 )
 
 if $DEBUG; then

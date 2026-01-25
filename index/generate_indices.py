@@ -5,7 +5,7 @@ import os
 
 import numpy as np
 import torch
-from datasets import EmbDataset
+from datasets import EmbDataset, MultiEmbDataset
 from models.rqvae import RQVAE
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -75,7 +75,25 @@ def main(args):
     model_args = ckpt["args"]  # 从检查点中获取训练参数
     state_dict = ckpt["state_dict"]  # 从检查点中获取模型状态字典
 
-    data = EmbDataset(model_args.data_path)  # 加载嵌入数据集
+    # 加载嵌入数据集：优先使用命令行传入的 data_path(s)，否则使用 checkpoint 中保存的 data_path(s)
+    if (
+        getattr(args, "data_paths", None) is not None
+        and getattr(args, "data_path", None) is not None
+    ):
+        raise ValueError("Please use either --data_path or --data_paths, not both.")
+
+    if getattr(args, "data_paths", None) is not None:
+        data_paths = args.data_paths
+    elif getattr(args, "data_path", None) is not None:
+        data_paths = [args.data_path]
+    else:
+        data_paths = getattr(model_args, "data_paths", None) or [model_args.data_path]
+
+    data = (
+        MultiEmbDataset(data_paths)
+        if len(data_paths) > 1
+        else EmbDataset(data_paths[0])
+    )  # 加载嵌入数据集
 
     # 初始化 RQVAE 模型
     model = RQVAE(
@@ -123,18 +141,14 @@ def main(args):
         for index in indices:
             code = []
             for i, ind in enumerate(index):
-                code.append(
-                    prefix[i].format(int(ind))
-                )  # 根据前缀和索引值构建代码
+                code.append(prefix[i].format(int(ind)))  # 根据前缀和索引值构建代码
 
             all_indices.append(code)
             all_indices_str.append(str(code))
         # break
 
     all_indices = np.array(all_indices)  # 将索引列表转换为 NumPy 数组
-    all_indices_str = np.array(
-        all_indices_str
-    )  # 将索引字符串列表转换为 NumPy 数组
+    all_indices_str = np.array(all_indices_str)  # 将索引字符串列表转换为 NumPy 数组
 
     # 设置除最后一层外的 RQ 量化器的 Sinkhorn-Knopp epsilon 为 0
     for vq in model.rq.vq_layers[:-1]:
@@ -153,9 +167,7 @@ def main(args):
         ):  # 如果达到最大迭代次数或没有碰撞，则退出循环
             break
 
-        collision_item_groups = get_collision_item(
-            all_indices_str
-        )  # 获取碰撞的项目组
+        collision_item_groups = get_collision_item(all_indices_str)  # 获取碰撞的项目组
         print(collision_item_groups)
         print(len(collision_item_groups))
         for collision_items in collision_item_groups:
@@ -184,9 +196,7 @@ def main(args):
 
     tot_item = len(all_indices_str)
     tot_indice = len(set(all_indices_str.tolist()))
-    print(
-        "Collision Rate", (tot_item - tot_indice) / tot_item
-    )  # 打印最终碰撞率
+    print("Collision Rate", (tot_item - tot_indice) / tot_item)  # 打印最终碰撞率
 
     all_indices_dict = {}  # 字典，用于存储最终的索引映射
     for item, indices in enumerate(all_indices.tolist()):
@@ -204,11 +214,22 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Generate indices for Multimodal Recommendation Model"
     )
-    parser.add_argument(
-        "--dataset", type=str, required=True, help="Dataset name"
-    )
+    parser.add_argument("--dataset", type=str, required=True, help="Dataset name")
     parser.add_argument(
         "--ckpt_path", type=str, required=True, help="Path to model checkpoint"
+    )
+    parser.add_argument(
+        "--data_path",
+        type=str,
+        default=None,
+        help="Optional override for embedding .npy path (single dataset).",
+    )
+    parser.add_argument(
+        "--data_paths",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Optional override for embedding .npy paths (multiple datasets).",
     )
     parser.add_argument(
         "--output_dir", type=str, default="./data", help="Output directory"

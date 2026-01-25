@@ -3,7 +3,7 @@ import os
 
 import numpy as np
 import torch
-from datasets import EmbDataset
+from datasets import EmbDataset, MultiEmbDataset
 from models.rqvae import RQVAE
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -77,15 +77,28 @@ def main(args):
     state_dict = ckpt["state_dict"]
 
     # 从检查点中保存的参数加载原始数据集
-    if not hasattr(model_args, "data_path") or not os.path.exists(
-        model_args.data_path
-    ):
-        raise ValueError(
-            "The model checkpoint does not contain a valid 'data_path'. "
-            "Cannot run evaluation without the original dataset."
-        )
-    print(f"Loading dataset from: {model_args.data_path}")
-    data = EmbDataset(model_args.data_path)
+    data_paths = getattr(model_args, "data_paths", None)
+    if data_paths:
+        missing = [p for p in data_paths if not os.path.exists(p)]
+        if missing:
+            raise ValueError(
+                "The model checkpoint contains 'data_paths' but some paths are missing: "
+                + ", ".join(missing)
+            )
+        print("Loading dataset from (multi):")
+        for p in data_paths:
+            print(f"  - {p}")
+        data = MultiEmbDataset(data_paths)
+    else:
+        if not hasattr(model_args, "data_path") or not os.path.exists(
+            model_args.data_path
+        ):
+            raise ValueError(
+                "The model checkpoint does not contain a valid 'data_path'. "
+                "Cannot run evaluation without the original dataset."
+            )
+        print(f"Loading dataset from: {model_args.data_path}")
+        data = EmbDataset(model_args.data_path)
 
     # 初始化 RQVAE 模型
     model = RQVAE(

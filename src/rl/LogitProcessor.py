@@ -48,6 +48,18 @@ class ConstrainedLogitsProcessor(LogitsProcessor):
         scores = torch.nn.functional.log_softmax(scores, dim=-1)
         mask = torch.full_like(scores, -1000000)
 
+        if self._num_beams <= 0:
+            raise ValueError(f"`num_beams` must be > 0, got {self._num_beams}.")
+        if input_ids.shape[0] % self._num_beams != 0:
+            raise ValueError(
+                "ConstrainedLogitsProcessor shape mismatch: expected input_ids first "
+                "dimension to be a multiple of `num_beams` (batch_size * num_beams). "
+                f"Got input_ids.shape={tuple(input_ids.shape)} with num_beams={self._num_beams}. "
+                "This usually means the logits processor was built with a different beam "
+                "size than the `generation_config.num_beams` used in `generate()` "
+                "(e.g. `num_generations` vs `test_beam`)."
+            )
+
         for batch_id, beam_sent in enumerate(
             input_ids.view(-1, self._num_beams, input_ids.shape[-1])
         ):

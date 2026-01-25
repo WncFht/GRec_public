@@ -12,12 +12,14 @@
 
 - `datasets.EmbDataset` 期望输入为 `.npy` 格式的二维数组，形状为 `[num_items, dim]`。
 - `--data_path` 指向该文件路径；训练脚本会根据数据文件推断输入维度。
+- 如需**多数据集合并训练**，可使用 `--data_paths path1.npy path2.npy ...`，脚本会自动把多个 `.npy` 视作一个拼接后的大数据集进行训练（内部为 `datasets.MultiEmbDataset`，不需要手动 concat 成一个大文件）。
 
 ## 训练 (`main.py`)
 
 核心参数（括号内为默认值）：
 
 - `--data_path` (`../data/Games/Games.emb-llama-td.npy`): 训练用的嵌入文件。
+- `--data_paths` (无): 多数据集合并训练用的嵌入文件列表；与 `--data_path` 二选一。
 - `--ckpt_dir` (空): 模型检查点输出目录，会在其下创建时间戳文件夹。
 - `--device` (`cuda:0`): 训练设备。
 - `--lr`, `--weight_decay`, `--epochs`, `--batch_size`, `--num_workers`, `--eval_step`: 常规优化参数。
@@ -56,6 +58,7 @@ python3 index/main.py \
 
 - `--dataset`: 数据集名称，仅用于日志和输出文件命名。
 - `--ckpt_path`: 训练得到的模型检查点路径（`.pth`）。脚本会读取其中保存的 `args` 来恢复数据配置。
+- `--data_path` / `--data_paths`（可选）: 覆盖 checkpoint 内保存的数据路径，用于「用同一个 ckpt 给不同数据集生成 index」的场景。
 - `--output_dir` (`./data`): 结果保存目录，若不存在会自动创建。
 - `--output_file`: 输出文件名，例如 `Instruments.index_llama.json`。
 - `--device` (`cuda:0`): 推理设备。

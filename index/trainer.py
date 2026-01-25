@@ -5,6 +5,7 @@ from time import time
 
 import numpy as np
 import torch
+import wandb
 from torch import optim
 from tqdm import tqdm
 from transformers import (
@@ -12,8 +13,6 @@ from transformers import (
     get_linear_schedule_with_warmup,
 )
 from utils import delete_file, ensure_dir, get_local_time, set_color
-
-import wandb
 
 
 class Trainer:
@@ -46,9 +45,7 @@ class Trainer:
                 name=wandb_name,
             )
             # 监控模型参数和梯度，并记录到 WandB
-            wandb.watch(
-                self.model, log="all", log_freq=max(100, data_num // 10)
-            )
+            wandb.watch(self.model, log="all", log_freq=max(100, data_num // 10))
 
         # 优化器和学习率调度器相关参数
         self.lr = args.lr  # 学习率
@@ -70,13 +67,9 @@ class Trainer:
             args.eval_step, self.epochs
         )  # 评估步长，每多少个 epoch 进行一次评估
         self.device = args.device  # 设备 (CPU 或 GPU)
-        self.device = torch.device(
-            self.device
-        )  # 将设备字符串转换为 torch.device 对象
+        self.device = torch.device(self.device)  # 将设备字符串转换为 torch.device 对象
         self.ckpt_dir = args.ckpt_dir  # 检查点保存目录
-        saved_model_dir = (
-            f"{get_local_time()}"  # 根据当前时间生成保存模型的子目录
-        )
+        saved_model_dir = f"{get_local_time()}"  # 根据当前时间生成保存模型的子目录
         self.ckpt_dir = os.path.join(
             self.ckpt_dir, saved_model_dir
         )  # 完整的检查点保存路径
@@ -111,13 +104,9 @@ class Trainer:
         weight_decay = self.weight_decay
 
         if learner.lower() == "adam":
-            optimizer = optim.Adam(
-                params, lr=learning_rate, weight_decay=weight_decay
-            )
+            optimizer = optim.Adam(params, lr=learning_rate, weight_decay=weight_decay)
         elif learner.lower() == "sgd":
-            optimizer = optim.SGD(
-                params, lr=learning_rate, weight_decay=weight_decay
-            )
+            optimizer = optim.SGD(params, lr=learning_rate, weight_decay=weight_decay)
         elif learner.lower() == "adagrad":
             optimizer = optim.Adagrad(
                 params, lr=learning_rate, weight_decay=weight_decay
@@ -132,16 +121,12 @@ class Trainer:
                 params, lr=learning_rate, weight_decay=weight_decay
             )
         elif learner.lower() == "adamw":
-            optimizer = optim.AdamW(
-                params, lr=learning_rate, weight_decay=weight_decay
-            )
+            optimizer = optim.AdamW(params, lr=learning_rate, weight_decay=weight_decay)
         else:
             self.logger.warning(
                 "Received unrecognized optimizer, set default Adam optimizer"
             )
-            optimizer = optim.Adam(
-                params, lr=learning_rate
-            )  # 默认使用 Adam 优化器
+            optimizer = optim.Adam(params, lr=learning_rate)  # 默认使用 Adam 优化器
         return optimizer
 
     def _get_scheduler(self):
@@ -264,9 +249,7 @@ class Trainer:
         # 计算碰撞率
         indices_set = set()  # 存储唯一索引的集合
         for index in all_indices:
-            code = "-".join(
-                [str(int(_)) for _ in index]
-            )  # 将索引转换为字符串表示
+            code = "-".join([str(int(_)) for _ in index])  # 将索引转换为字符串表示
             indices_set.add(code)  # 添加到唯一索引集合中
         collision_rate = (num_sample - len(indices_set)) / num_sample
 
@@ -328,9 +311,7 @@ class Trainer:
 
         return ckpt_path
 
-    def _generate_train_loss_output(
-        self, epoch_idx, s_time, e_time, loss, recon_loss
-    ):
+    def _generate_train_loss_output(self, epoch_idx, s_time, e_time, loss, recon_loss):
         """
         生成训练损失的输出字符串。
 
@@ -375,15 +356,51 @@ class Trainer:
             # 检查模型内部的初始化状态，避免重复执行
             is_initted = all(vq.initted for vq in self.model.rq.vq_layers)
             if not is_initted:
-                self.logger.info(
-                    "Performing LARGE SCALE K-Means initialization..."
-                )
+                self.logger.info("Performing LARGE SCALE K-Means initialization...")
                 # 从 DataLoader 中获取底层数据集，并抽取一个大的固定样本
-                # 使用 EmbDataset 的 .embeddings 属性
-                init_data_tensors = data.dataset.embeddings[
-                    : min(20000, len(data.dataset))
-                ]
-                init_data = torch.FloatTensor(init_data_tensors).to(self.device)
+                # 兼容 EmbDataset（有 .embeddings）与 MultiEmbDataset（无 .embeddings）
+                dataset = getattr(data, "dataset", data)
+                init_size = min(20000, len(dataset))
+
+                init_data = None
+                if hasattr(dataset, "embeddings"):
+                    init_data_tensors = dataset.embeddings[:init_size]
+                    init_data = torch.as_tensor(
+                        init_data_tensors, dtype=torch.float32
+                    ).to(self.device)
+                else:
+                    # 优先尝试 Dataset 的切片读取（MultiEmbDataset 支持 slice / list 索引）
+                    try:
+                        init_batch = dataset[:init_size]
+                        if isinstance(init_batch, torch.Tensor):
+                            init_data = init_batch.to(self.device)
+                        else:
+                            init_data = torch.as_tensor(
+                                init_batch,
+                                dtype=torch.float32,
+                                device=self.device,
+                            )
+                    except Exception:
+                        # 最后兜底：直接从 DataLoader 迭代收集
+                        collected = []
+                        collected_num = 0
+                        for batch in data:
+                            batch_tensor = (
+                                batch
+                                if isinstance(batch, torch.Tensor)
+                                else torch.as_tensor(batch, dtype=torch.float32)
+                            )
+                            collected.append(batch_tensor)
+                            collected_num += batch_tensor.shape[0]
+                            if collected_num >= init_size:
+                                break
+                        if not collected:
+                            raise ValueError(
+                                "Failed to collect init data for K-Means initialization."
+                            )
+                        init_data = torch.cat(collected, dim=0)[:init_size].to(
+                            self.device
+                        )
 
                 # 执行一次前向传播以触发 K-Means 初始化
                 # 使用 no_grad 是因为我们只关心初始化，不需要计算梯度
@@ -470,8 +487,7 @@ class Trainer:
                         {
                             "epoch": epoch_idx,
                             "epoch/train_loss": train_loss / len(data),
-                            "epoch/train_recon_loss": train_recon_loss
-                            / len(data),
+                            "epoch/train_recon_loss": train_recon_loss / len(data),
                             "eval/collision_rate": collision_rate,
                             "eval/avg_codebook_utilization": avg_utilization,
                             "eval/best_loss": self.best_loss,
@@ -501,9 +517,7 @@ class Trainer:
                         bad_save = heapq.heappop(
                             self.best_save_heap
                         )  # 移除堆中最好的（实际是最差的负数）
-                        heapq.heappush(
-                            self.best_save_heap, now_save
-                        )  # 添加新的保存
+                        heapq.heappush(self.best_save_heap, now_save)  # 添加新的保存
 
                         # 如果被移除的旧保存不在最新保存队列中，则删除对应的文件
                         if bad_save not in self.newest_save_queue:

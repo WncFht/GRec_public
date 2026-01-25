@@ -19,6 +19,8 @@ class _RewardContext:
 _REWARD_CONTEXT: _RewardContext | None = None
 _SEQREC_PATTERN: re.Pattern[str] | None = None
 _PRM_TOKEN_LIMIT = 4
+_PRM_MATCH_MODE_POSITION = "position"
+_PRM_MATCH_MODE_PREFIX = "prefix"
 
 
 def _build_seqrec_pattern(pad_token: str | None) -> re.Pattern[str]:
@@ -74,6 +76,47 @@ def _prm_compare_length(
     return min(limit, len(tokens), len(gt_tokens))
 
 
+def _normalize_prm_match_mode(mode: str | None) -> str:
+    if mode is None:
+        return _PRM_MATCH_MODE_POSITION
+    mode_norm = str(mode).strip().lower()
+    if mode_norm in {
+        _PRM_MATCH_MODE_POSITION,
+        "pos",
+        "per_token",
+        "per-position",
+        "token",
+    }:
+        return _PRM_MATCH_MODE_POSITION
+    if mode_norm in {_PRM_MATCH_MODE_PREFIX, "pref"}:
+        return _PRM_MATCH_MODE_PREFIX
+    raise ValueError(
+        f"Unknown prm_match_mode={mode!r}. "
+        f"Expected '{_PRM_MATCH_MODE_POSITION}' or '{_PRM_MATCH_MODE_PREFIX}'."
+    )
+
+
+def _prm_match_mask(
+    tokens: list[int],
+    gt_tokens: list[int],
+    compare_len: int,
+    mode: str | None,
+) -> list[bool]:
+    if compare_len <= 0:
+        return []
+    mode_norm = _normalize_prm_match_mode(mode)
+    if mode_norm == _PRM_MATCH_MODE_POSITION:
+        return [tokens[idx] == gt_tokens[idx] for idx in range(compare_len)]
+    if mode_norm == _PRM_MATCH_MODE_PREFIX:
+        prefix_len = 0
+        for idx in range(compare_len):
+            if tokens[idx] != gt_tokens[idx]:
+                break
+            prefix_len += 1
+        return [True] * prefix_len + [False] * (compare_len - prefix_len)
+    raise AssertionError(f"Unhandled prm_match_mode: {mode_norm}")
+
+
 def ndcg_rule_reward(
     reward_model: Iterable[dict[str, Any]],
     completions: Iterable[list[dict[str, str]]],
@@ -81,6 +124,7 @@ def ndcg_rule_reward(
     prompts=None,
     data_source: str | None = None,
     use_prm: bool = False,
+    prm_match_mode: str = _PRM_MATCH_MODE_POSITION,
     **unused,
 ):
     ctx = _ensure_context()
@@ -111,7 +155,7 @@ def ndcg_rule_reward(
                     "norm_tokens": norm_tokens,
                     "gt_tokens": gt_tokens,
                     "format_reward": float(fr),
-                    "is_correct": fr > 0 and norm_tokens == gt_tokens,
+                    "is_correct": fr >= 0 and norm_tokens == gt_tokens,
                     "ndcg_value": ctx.ndcg_rewards[i % repeat],
                 }
             )
@@ -126,7 +170,7 @@ def ndcg_rule_reward(
                 fr_val: float = rec["format_reward"]
                 norm_tokens = rec["norm_tokens"]
                 gt_tokens = rec["gt_tokens"]
-                if fr_val <= 0:
+                if fr_val < 0:
                     length = max(len(norm_tokens), 1)
                     rewards.append([fr_val] * length)
                     continue
@@ -136,9 +180,15 @@ def ndcg_rule_reward(
                 base_reward = (
                     0.0 if rec["is_correct"] or not any_correct else rec["ndcg_value"]
                 )
+                match_mask = _prm_match_mask(
+                    norm_tokens,
+                    gt_tokens,
+                    compare_len=compare_len,
+                    mode=prm_match_mode,
+                )
                 token_rewards = [0.0] * length
                 for idx in range(compare_len):
-                    if norm_tokens[idx] != gt_tokens[idx]:
+                    if not match_mask[idx]:
                         token_rewards[idx] = base_reward
                 rewards.append(token_rewards)
 
@@ -150,7 +200,7 @@ def ndcg_rule_reward(
     ):
         gt_tokens = _strip_padding_tokens(_extract_gt_tokens(rm), pad_token_id)
         norm_tokens = _strip_padding_tokens(tokens, pad_token_id)
-        if norm_tokens == gt_tokens and fr > 0:
+        if norm_tokens == gt_tokens and fr >= 0:
             flag = True
             lis.append(0.0)
         else:
@@ -171,6 +221,7 @@ def rule_reward(
     prompts=None,
     data_source: str | None = None,
     use_prm: bool = False,
+    prm_match_mode: str = _PRM_MATCH_MODE_POSITION,
     **unused,
 ):
     """这里 reward_model 实际上是 ground_truth"""
@@ -194,19 +245,25 @@ def rule_reward(
         norm_tokens = _strip_padding_tokens(tokens, pad_token_id)
 
         if use_prm:
-            if fr <= 0:
+            if fr < 0:
                 length = max(len(norm_tokens), 1)
                 rewards.append([float(fr)] * length)
                 continue
 
             compare_len = _prm_compare_length(norm_tokens, norm_gt)
             length = max(len(norm_tokens), compare_len, 1)
+            match_mask = _prm_match_mask(
+                norm_tokens,
+                norm_gt,
+                compare_len=compare_len,
+                mode=prm_match_mode,
+            )
             token_rewards = [0.0] * length
             for idx in range(compare_len):
-                token_rewards[idx] = 1.0 if norm_tokens[idx] == norm_gt[idx] else 0.0
+                token_rewards[idx] = 1.0 if match_mask[idx] else 0.0
             rewards.append(token_rewards)
         else:
-            if norm_tokens == norm_gt and fr > 0:
+            if norm_tokens == norm_gt and fr >= 0:
                 rewards.append(1.0)
             else:
                 rewards.append(0.0)
@@ -223,7 +280,7 @@ def format_reward(
     r"""
     如果是 seqrec, 要符合 <a_*><b_*><c*_><d*_><|im_end|> 的格式,总共只能有 5 个 token,不能有 \n.
     否则直接给 -1.0 分.
-    hints: 如果这里错误的给 0.0,不能修复 format, 因为内容错误在 rule_reward 里也会拿到 0.0 分.
+    正确格式给 0.0（不额外加正奖励），格式错误给 -1.0。
     """
     rewards: list[float] = []
     ds_iter = data_source if data_source is not None else repeat(None)
@@ -232,11 +289,11 @@ def format_reward(
             content = completion[0]["content"]
             # import pdb; pdb.set_trace()
             if _is_valid_seqrec_content(content):
-                rewards.append(1.0)
+                rewards.append(0.0)
             else:
                 rewards.append(-1.0)
         else:
-            rewards.append(1.0)
+            rewards.append(0.0)
     return rewards
 
 
@@ -277,27 +334,31 @@ if __name__ == "__main__":
 
     completions = []
     reward_model = []
-    perfect_match = valid_samples[0].split("<|im_end|>")[0]
-    mismatch_gt = "<a_0><b_0><c_0><d_0><|im_end|>"
+    gt_tokens = [10, 20, 30, 40, 0]  # 最后一个 0 视为 pad
+    mismatch_tokens = [99, 98, 97, 96, 0]
+    completion_token_ids = []
 
     for i in range(ctx.num_generations):
         sample = valid_samples[i % len(valid_samples)]
         completions.append([{"content": sample}])
-        reward_model.append({"ground_truth": perfect_match if i == 0 else mismatch_gt})
+        reward_model.append({"ground_truth": {"text": "gt", "token": gt_tokens}})
+        completion_token_ids.append(gt_tokens if i == 0 else mismatch_tokens)
 
     for i in range(ctx.num_generations):
         sample = invalid_samples[i % len(invalid_samples)]
         completions.append([{"content": sample}])
-        reward_model.append({"ground_truth": mismatch_gt})
+        reward_model.append({"ground_truth": {"text": "gt", "token": gt_tokens}})
+        completion_token_ids.append(mismatch_tokens)
 
     data_source = ["seqrec"] * (2 * ctx.num_generations)
 
     format_scores = format_reward(completions, data_source=data_source)
-    expected_format = [1.0] * ctx.num_generations + [-1.0] * ctx.num_generations
+    expected_format = [0.0] * ctx.num_generations + [-1.0] * ctx.num_generations
 
     rule_scores = rule_reward(
         reward_model,
         completions,
+        completion_token_ids=completion_token_ids,
         data_source=data_source,
     )
     expected_rule = [1.0] + [0.0] * (2 * ctx.num_generations - 1)
@@ -305,6 +366,7 @@ if __name__ == "__main__":
     ndcg_scores = ndcg_rule_reward(
         reward_model,
         completions,
+        completion_token_ids=completion_token_ids,
         data_source=data_source,
     )
     expected_ndcg = (
@@ -362,6 +424,14 @@ if __name__ == "__main__":
         data_source=prm_data_source,
         use_prm=True,
     )
+    prm_rule_prefix = rule_reward(
+        prm_reward_model,
+        prm_completions,
+        completion_token_ids=prm_completion_tokens,
+        data_source=prm_data_source,
+        use_prm=True,
+        prm_match_mode="prefix",
+    )
     prm_ndcg = ndcg_rule_reward(
         prm_reward_model,
         prm_completions,
@@ -369,18 +439,43 @@ if __name__ == "__main__":
         data_source=prm_data_source,
         use_prm=True,
     )
+    prm_ndcg_prefix = ndcg_rule_reward(
+        prm_reward_model,
+        prm_completions,
+        completion_token_ids=prm_completion_tokens,
+        data_source=prm_data_source,
+        use_prm=True,
+        prm_match_mode="prefix",
+    )
 
-    expected_prm_format = [1.0, 1.0, 1.0, -1.0]
+    expected_prm_format = [0.0, 0.0, 0.0, -1.0]
     expected_prm_rule = [
         [1.0, 1.0, 1.0, 1.0],  # 完全匹配
         [1.0, 0.0, 1.0, 1.0],  # 第二位错误
         [0.0, 1.0, 1.0, 1.0],  # 第一位错误
         [-1.0, -1.0, -1.0, -1.0],  # 格式错误 -> 直接格式分
     ]
+    expected_prm_rule_prefix = [
+        [1.0, 1.0, 1.0, 1.0],  # 完全匹配
+        [1.0, 0.0, 0.0, 0.0],  # 第二位错误 -> 后续都不给分
+        [0.0, 0.0, 0.0, 0.0],  # 第一位错误
+        [-1.0, -1.0, -1.0, -1.0],  # 格式错误 -> 直接格式分
+    ]
     expected_prm_ndcg = [
         [0.0, 0.0, 0.0, 0.0],
         [0.0, ctx.ndcg_rewards[1], 0.0, 0.0],
         [ctx.ndcg_rewards[2], 0.0, 0.0, 0.0],
+        [-1.0, -1.0, -1.0, -1.0],
+    ]
+    expected_prm_ndcg_prefix = [
+        [0.0, 0.0, 0.0, 0.0],
+        [0.0, ctx.ndcg_rewards[1], ctx.ndcg_rewards[1], ctx.ndcg_rewards[1]],
+        [
+            ctx.ndcg_rewards[2],
+            ctx.ndcg_rewards[2],
+            ctx.ndcg_rewards[2],
+            ctx.ndcg_rewards[2],
+        ],
         [-1.0, -1.0, -1.0, -1.0],
     ]
 
@@ -392,9 +487,19 @@ if __name__ == "__main__":
         mismatches.append(
             f"PRM rule mismatch: expected {expected_prm_rule}, got {prm_rule}"
         )
+    if prm_rule_prefix != expected_prm_rule_prefix:
+        mismatches.append(
+            "PRM(prefix) rule mismatch: "
+            f"expected {expected_prm_rule_prefix}, got {prm_rule_prefix}"
+        )
     if prm_ndcg != expected_prm_ndcg:
         mismatches.append(
             f"PRM ndcg mismatch: expected {expected_prm_ndcg}, got {prm_ndcg}"
+        )
+    if prm_ndcg_prefix != expected_prm_ndcg_prefix:
+        mismatches.append(
+            "PRM(prefix) ndcg mismatch: "
+            f"expected {expected_prm_ndcg_prefix}, got {prm_ndcg_prefix}"
         )
 
     if mismatches:

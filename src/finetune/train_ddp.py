@@ -6,9 +6,9 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import torch
 import transformers
-from transformers import TrainingArguments
+from transformers import EarlyStoppingCallback, TrainingArguments
 
-from ..collator import ChatTemplateCollator, MultiModalCollator
+from ..collator import ChatTemplateCollator, Collator, MultiModalCollator
 from ..logger import (
     configure_tqdm_for_file_output,
     get_tqdm_compatible_logger,
@@ -25,8 +25,6 @@ from ..utils import (
 
 
 class UnifiedTrainer:
-    """统一的训练器类，处理全量微调和LoRA微调"""
-
     def __init__(self, args: argparse.Namespace):
         """
         初始化训练器
@@ -39,14 +37,8 @@ class UnifiedTrainer:
         self.local_rank = int(os.environ.get("LOCAL_RANK", 0))
         self.world_size = int(os.environ.get("WORLD_SIZE", 1))
         self.ddp = self.world_size != 1
-
-        # 生成run_name
         self.args.run_name = make_run_name(self.args)
-
-        # 初始化logger
         self._init_logger()
-
-        # 设置环境
         self._setup_environment()
 
     def _init_logger(self):
@@ -125,6 +117,7 @@ class UnifiedTrainer:
             output_dir=self.args.output_dir,
             load_best_model_at_end=load_best_model_at_end,
             save_only_model=save_only_model,
+            save_total_limit=10,
             deepspeed=self.args.deepspeed,
             ddp_find_unused_parameters=False if self.ddp else None,
             dataloader_num_workers=self.args.num_workers,
@@ -134,6 +127,8 @@ class UnifiedTrainer:
             report_to=report_to,
             run_name=self.args.run_name,
             eval_delay=1 if self.args.save_and_eval_strategy == "epoch" else 2000,
+            metric_for_best_model="eval_loss",
+            greater_is_better=False,
         )
 
     def _load_model_and_data(self) -> tuple:
@@ -295,6 +290,8 @@ class UnifiedTrainer:
 
         # 创建数据collator：文本模型使用 ChatTemplateCollator，多模态模型使用 MultiModalCollator
         if self.args.model_type in ["qwen", "qwen2", "qwen2_5", "llama"]:
+            collator = Collator(self.args, processor)
+        elif self.args.model_type in ["qwen2_instrcut", "qwen2_5_instruct"]:
             collator = ChatTemplateCollator(self.args, processor)
         else:
             collator = MultiModalCollator(self.args, processor)
@@ -315,6 +312,7 @@ class UnifiedTrainer:
             args=training_args,
             processing_class=processor,
             data_collator=collator,
+            callbacks=[EarlyStoppingCallback(early_stopping_patience=3)],
         )
 
         # 编译模型（如果支持）

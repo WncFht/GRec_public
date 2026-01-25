@@ -17,7 +17,8 @@ def parse_global_args(
             "llava_onevision",
             "qwen2",
             "qwen2_5",
-            "qwen",
+            "qwen2_5_instruct",
+            "qwen2_instruct",
             "llama",
         ],
         help="模型类型 (qwen2_vl or qwen2_5_vl, llava_onevision)",
@@ -225,6 +226,15 @@ def parse_rl_args(
         help="If set, use per-token PRM-style rewards for rule/ndcg.",
     )
     rl_parser.add_argument(
+        "--prm_match_mode",
+        type=str,
+        default="position",
+        choices=["position", "prefix"],
+        help=(
+            "PRM token 匹配方式：position=逐位置匹配；prefix=前缀匹配（从第一个错位起，后续都视为不匹配）。"
+        ),
+    )
+    rl_parser.add_argument(
         "--sample_train",
         action="store_true",
         default=False,
@@ -282,6 +292,12 @@ def parse_rl_args(
         action="store_true",
         default=False,
         help="If set, do not divide advantages by std when normalizing rewards.",
+    )
+    rl_parser.add_argument(
+        "--nodemean",
+        action="store_true",
+        default=False,
+        help="If set, do not subtract group mean when computing advantages.",
     )
 
     return parser
@@ -456,7 +472,7 @@ def parse_train_args(
     train_args.add_argument("--warmup_ratio", type=float, default=0.01)
     train_args.add_argument("--lr_scheduler_type", type=str, default="cosine")
     train_args.add_argument("--save_and_eval_strategy", type=str, default="epoch")
-    train_args.add_argument("--save_and_eval_steps", type=int, default=1000)
+    train_args.add_argument("--save_and_eval_steps", type=float, default=1000)
     train_args.add_argument("--fp16", action="store_true", default=False)
     train_args.add_argument("--bf16", action="store_true", default=False)
     train_args.add_argument("--deepspeed", type=str, default="./config/ds_z3_bf16.json")

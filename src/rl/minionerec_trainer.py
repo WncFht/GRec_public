@@ -231,7 +231,9 @@ class ReReTrainer(Trainer):
         dapo: bool = False,
         gspo: bool = False,
         noscale: bool = False,
+        nodemean: bool = False,
         use_prm: bool = False,
+        prm_match_mode: str = "position",
         use_sft_loss: bool = False,
         sft_loss_coef: float = 1e-3,
         # * others
@@ -266,7 +268,9 @@ class ReReTrainer(Trainer):
         # Trained model
         self.base_model = base_model
         self.noscale = noscale
+        self.nodemean = nodemean
         self.use_prm = use_prm
+        self.prm_match_mode = prm_match_mode
         model_init_kwargs = args.model_init_kwargs or {}
         if isinstance(model, str):
             model_id = model
@@ -813,7 +817,10 @@ class ReReTrainer(Trainer):
             prompt_ids = prompt_ids[:, -self.max_prompt_length :]
             prompt_mask = prompt_mask[:, -self.max_prompt_length :]
 
-        ccc = ConstrainedLogitsProcessor(
+        # NOTE: ConstrainedLogitsProcessor is stateful (`count`) and assumes a fixed beam size.
+        # Train generation and test-time beam search may use different beam sizes
+        # (`num_generations` vs `test_beam`), so we keep separate instances.
+        train_lp = ConstrainedLogitsProcessor(
             # guidance_scale=1.0,
             # cf_logits=None,
             prefix_allowed_tokens_fn=self.prefix_allowed_tokens_fn,
@@ -824,9 +831,15 @@ class ReReTrainer(Trainer):
             prefix_index=self.prefix_index,
         )
         self.logits_processor = LogitsProcessorList(
-            [TemperatureLogitsWarper(temperature=self.temperature), ccc]
+            [TemperatureLogitsWarper(temperature=self.temperature), train_lp]
         )
-        self.test_lp_list = LogitsProcessorList([ccc])
+        test_lp = ConstrainedLogitsProcessor(
+            prefix_allowed_tokens_fn=self.prefix_allowed_tokens_fn,
+            num_beams=self.test_beam if self.test_during_training else 1,
+            base_model=self.base_model,
+            prefix_index=self.prefix_index,
+        )
+        self.test_lp_list = LogitsProcessorList([test_lp])
 
         # Generate completions using either vLLM or regular generation
         if self.args.use_vllm:
@@ -1259,6 +1272,7 @@ class ReReTrainer(Trainer):
                     completions=completions,
                     completion_token_ids=completion_token_ids,
                     use_prm=self.use_prm,
+                    prm_match_mode=self.prm_match_mode,
                     **reward_kwargs,
                 )
             reward_outputs.append(output_reward_func)
@@ -1335,14 +1349,14 @@ class ReReTrainer(Trainer):
 
         if self.use_prm:
             # Debug shapes before cross-process padding/gather (important for diagnosing multi-GPU hangs)
-            if self.state.global_step <= 3 or self.state.global_step % 10 == 0:
-                print(
-                    f"[PRM Debug][rank {self.accelerator.process_index}] step={self.state.global_step} "
-                    f"local completion_ids.shape={tuple(completion_ids.shape)} "
-                    f"completion_mask.shape={tuple(completion_mask.shape)} "
-                    f"rewards_per_func_token.shape={tuple(rewards_per_func_token.shape)}",
-                    flush=True,
-                )
+            # if self.state.global_step <= 3 or self.state.global_step % 10 == 0:
+            #     print(
+            #         f"[PRM Debug][rank {self.accelerator.process_index}] step={self.state.global_step} "
+            #         f"local completion_ids.shape={tuple(completion_ids.shape)} "
+            #         f"completion_mask.shape={tuple(completion_mask.shape)} "
+            #         f"rewards_per_func_token.shape={tuple(rewards_per_func_token.shape)}",
+            #         flush=True,
+            #     )
 
             # Pad across processes on the sequence dimension so that all ranks have
             # tensors with the same shape before all-gather. Otherwise, multi-GPU
@@ -1358,13 +1372,13 @@ class ReReTrainer(Trainer):
             rewards_per_func_token = gather(rewards_per_func_token)
             gathered_mask = gather(completion_mask_padded).to(device)
 
-            if self.state.global_step <= 3 or self.state.global_step % 10 == 0:
-                print(
-                    f"[PRM Debug][rank {self.accelerator.process_index}] step={self.state.global_step} "
-                    f"after pad+gather rewards_per_func_token.shape={tuple(rewards_per_func_token.shape)} "
-                    f"gathered_mask.shape={tuple(gathered_mask.shape)}",
-                    flush=True,
-                )
+            # if self.state.global_step <= 3 or self.state.global_step % 10 == 0:
+            #     print(
+            #         f"[PRM Debug][rank {self.accelerator.process_index}] step={self.state.global_step} "
+            #         f"after pad+gather rewards_per_func_token.shape={tuple(rewards_per_func_token.shape)} "
+            #         f"gathered_mask.shape={tuple(gathered_mask.shape)}",
+            #         flush=True,
+            #     )
 
             mask_float = gathered_mask.float().clamp(min=0)
             mask_for_adv = mask_float
@@ -1388,7 +1402,11 @@ class ReReTrainer(Trainer):
                 self.num_generations, dim=0
             )
 
-            advantages = token_rewards - mean_grouped_token
+            advantages = (
+                token_rewards
+                if getattr(self, "nodemean", False)
+                else token_rewards - mean_grouped_token
+            )
             if not getattr(self, "noscale", False):
                 advantages = advantages / (std_grouped_token + 1e-4)
 
@@ -1420,7 +1438,11 @@ class ReReTrainer(Trainer):
             std_grouped_rewards = std_grouped_rewards.repeat_interleave(
                 self.num_generations, dim=0
             )
-            advantages = rewards - mean_grouped_rewards
+            advantages = (
+                rewards
+                if getattr(self, "nodemean", False)
+                else rewards - mean_grouped_rewards
+            )
             if not getattr(self, "noscale", False):
                 advantages = advantages / (std_grouped_rewards + 1e-4)
         # print(f"rewards: {rewards}")
@@ -1463,7 +1485,7 @@ class ReReTrainer(Trainer):
                 format_idx = i
                 break
         if format_idx is not None:
-            wrong_format_num = (rewards_per_func[:, format_idx] != 1).sum().item()
+            wrong_format_num = (rewards_per_func[:, format_idx] < 0).sum().item()
             self._metrics["wrong_format_num"].append(wrong_format_num)
 
         self._metrics["reward/mean"].append(rewards.mean().item())

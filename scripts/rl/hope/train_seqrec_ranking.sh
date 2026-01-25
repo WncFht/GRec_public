@@ -6,6 +6,9 @@ export CC=$CONDA_PREFIX/bin/conda-cc-with-crypt.sh
 export CXX=$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-c++
 export TRITON_CACHE_DIR=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/.cache/triton
 
+export TORCH_NCCL_TRACE_BUFFER_SIZE=100000
+export TORCH_NCCL_DUMP_ON_TIMEOUT=1
+
 nvidia-smi -L
 
 DEBUG=false
@@ -40,11 +43,11 @@ export NCCL_IB_DISABLE=1        # 完全禁用 IB/RoCE
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
 DATASET=Instruments
-CKPT_DIR=/home/hadoop-hmart-poistar/dolphinfs_hdd_hadoop-hmart-poistar/fanghaotian/ckpt
-DATA_PATH=/home/hadoop-hmart-poistar/dolphinfs_hdd_hadoop-hmart-poistar/fanghaotian/data
+CKPT_DIR=$HOME_DIR/ckpt
+DATA_PATH=$HOME_DIR/data
 
-OUTPUT_DIR=$CKPT_DIR/$DATASET/qwen2.5_instruct_seqrec_ranking_useprm_noformat_kl5e-3_epoch10-prefix
-export WANDB_NAME=qwen2.5_instruct_seqrec_ranking_useprm_noformat_kl5e-3_epoch10-prefix
+OUTPUT_DIR=$CKPT_DIR/$DATASET/qwen2.5_instruct_seqrec_ranking_noformat_kl1e-3_epoch4_rollout32
+export WANDB_NAME=qwen2.5_instruct_seqrec_ranking_noformat_kl1e-3_epoch4_rollout32
 INDEX_FILE=.index_qwen3-embedding-4B.json
 TASK=seqrec
 
@@ -60,14 +63,14 @@ REWARD_WEIGHTS="0.0000001,1,1"
 COMMON_ARGS=(
     --model_type "$MODEL_TYPE"
     --base_model "$BASE_MODEL"
-    --train_batch_size 64
+    --train_batch_size 128
     --eval_batch_size 128
-    --num_train_epochs 10
-    --gradient_accumulation_steps 4
-    --eval_step 0.05
+    --num_train_epochs 4
+    --gradient_accumulation_steps 2
+    --eval_step 0.125
     --eval_on_test
     --test_during_training
-    --num_generations 16
+    --num_generations 32
     --beam_search
     --temperature 1.0
     --max_completion_length 128
@@ -106,4 +109,5 @@ else
     # echo "To stop training: kill $PID"
     # echo "$LOG_FILE"
     # wait "$PID"
+    tail -f /dev/null
 fi
