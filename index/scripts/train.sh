@@ -45,17 +45,23 @@ done
 : "${DATA_PATH:=${ROOT_DIR}/data/$DATASET/${DATASET}.emb-${MODEL_NAME}-td.npy}"
 
 # 多数据集合并训练（需要时手动修改数组）
-DATASETS=(Arts Automotive Cell Games Pet Sports Tools Toys Instruments)   # 例如：(Arts Games Instruments)
+# DATASETS=(Arts Automotive Cell Games Pet Sports Tools Toys Instruments)   # 例如：(Arts Games Instruments)
+DATASETS=(Arts Games Instruments)
 DATA_PATHS=() # 可选：手动指定多个 .npy 路径；留空则按默认规则拼接
-TRAIN_DATASET=Multi
+TRAIN_DATASET=$(IFS=-; echo "${DATASETS[*]}")
 
 # =========================
 # Train config
 # =========================
 : "${DEVICE:=cuda:0}"
-: "${LR:=1e-3}"
+: "${NPROC_PER_NODE:=4}"          # >1 时使用 torchrun 多卡训练（DDP）
+: "${MASTER_PORT:=29500}"         # torchrun 用端口（单机多卡可随意换个空闲端口）
 : "${EPOCHS:=10000}"
-: "${BATCH_SIZE:=4096}"
+: "${BATCH_SIZE:=256}"           # per-GPU batch size; global batch = BATCH_SIZE * NPROC_PER_NODE
+: "${AUTO_LR:=true}"              # true: 按 global batch 线性缩放 LR（未显式设置 LR 时生效）
+: "${BASE_LR:=1e-3}"
+: "${BASE_BATCH_SIZE:=1024}"
+: "${BASE_NPROC_PER_NODE:=1}"
 : "${WEIGHT_DECAY:=1e-4}"
 : "${LR_SCHEDULER_TYPE:=linear}"
 : "${DROPOUT_PROB:=0.0}"
@@ -71,6 +77,21 @@ TRAIN_DATASET=Multi
 
 : "${USE_WANDB:=False}"
 : "${WANDB_PROJECT:=unifymmgrec}"
+
+BASE_GLOBAL_BATCH=$((BASE_BATCH_SIZE * BASE_NPROC_PER_NODE))
+GLOBAL_BATCH=$((BATCH_SIZE * NPROC_PER_NODE))
+
+if [ "${AUTO_LR,,}" = "true" ] && [ -z "${LR:-}" ]; then
+  LR="$(python3 - <<PY
+base_lr=float("${BASE_LR}")
+gb=int("${GLOBAL_BATCH}")
+base_gb=int("${BASE_GLOBAL_BATCH}")
+print(f"{base_lr * gb / base_gb:.10g}")
+PY
+)"
+fi
+: "${LR:=$BASE_LR}"
+echo "Train config: NPROC_PER_NODE=${NPROC_PER_NODE}, BATCH_SIZE=${BATCH_SIZE} (global=${GLOBAL_BATCH}), LR=${LR}, AUTO_LR=${AUTO_LR}"
 
 mkdir -p ./log
 LOG_FILE="${LOG_FILE:-./log/index_train_$(date +%Y%m%d%H%M%S).log}"
@@ -103,7 +124,27 @@ RUN_NAME="${RUN_NAME}-${CKPT_TAG}"
 
 WANDB_RUN_NAME="${WANDB_RUN_NAME:-$RUN_NAME}"
 
-nohup python3 -u index/main.py \
+LAUNCH_CMD=(python3 -u index/main.py)
+if [ "${NPROC_PER_NODE}" -gt 1 ]; then
+  if [ -z "${CUDA_VISIBLE_DEVICES:-}" ]; then
+    CUDA_VISIBLE_DEVICES=""
+    for ((i = 0; i < NPROC_PER_NODE; i++)); do
+      if [ -n "${CUDA_VISIBLE_DEVICES}" ]; then
+        CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES},${i}"
+      else
+        CUDA_VISIBLE_DEVICES="${i}"
+      fi
+    done
+    export CUDA_VISIBLE_DEVICES
+  fi
+  TORCHRUN_ARGS=(--nproc_per_node "${NPROC_PER_NODE}" --master_port "${MASTER_PORT}")
+  if [ -z "${MASTER_ADDR:-}" ]; then
+    TORCHRUN_ARGS=(--standalone "${TORCHRUN_ARGS[@]}")
+  fi
+  LAUNCH_CMD=(torchrun "${TORCHRUN_ARGS[@]}" index/main.py)
+fi
+
+nohup "${LAUNCH_CMD[@]}" \
   --lr "$LR" \
   --epochs "$EPOCHS" \
   --batch_size "$BATCH_SIZE" \

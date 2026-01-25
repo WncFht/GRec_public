@@ -5,6 +5,15 @@ import torch
 from torch.utils import data
 
 
+def _as_float_tensor(x: np.ndarray) -> torch.Tensor:
+    arr = np.asarray(x, dtype=np.float32)
+    # np.load(..., mmap_mode="r") returns a read-only memmap; converting it to a tensor without
+    # copying may lead to undefined behavior if any in-place op happens on that tensor.
+    if (not arr.flags.writeable) or (not arr.flags.c_contiguous):
+        arr = np.array(arr, dtype=np.float32, copy=True)
+    return torch.from_numpy(arr)
+
+
 class EmbDataset(data.Dataset):
     def __init__(self, data_path):
         self.data_path = data_path
@@ -14,8 +23,7 @@ class EmbDataset(data.Dataset):
 
     def __getitem__(self, index):
         emb = self.embeddings[index]
-        tensor_emb = torch.FloatTensor(emb)
-        return tensor_emb
+        return _as_float_tensor(emb)
 
     def __len__(self):
         return len(self.embeddings)
@@ -72,7 +80,7 @@ class MultiEmbDataset(data.Dataset):
             embs_list = [self._get_np_single(i) for i in idxs]
             if not embs_list:
                 return torch.empty((0, self.dim), dtype=torch.float32)
-            return torch.FloatTensor(np.stack(embs_list, axis=0))
+            return _as_float_tensor(np.stack(embs_list, axis=0))
 
         if isinstance(index, torch.Tensor):
             index = index.cpu().numpy()
@@ -82,7 +90,7 @@ class MultiEmbDataset(data.Dataset):
             if not idxs:
                 return torch.empty((0, self.dim), dtype=torch.float32)
             embs = np.stack([self._get_np_single(i) for i in idxs], axis=0)
-            return torch.FloatTensor(embs)
+            return _as_float_tensor(embs)
 
         emb = self._get_np_single(index)
-        return torch.FloatTensor(emb)
+        return _as_float_tensor(emb)

@@ -1,12 +1,15 @@
 import argparse
 import logging
+import os
 import random
 
 import numpy as np
 import torch
+import torch.distributed as dist
 from datasets import EmbDataset, MultiEmbDataset
 from models.rqvae import RQVAE
 from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 from trainer import Trainer
 
 
@@ -134,6 +137,32 @@ def parse_args():
     return parser.parse_args()
 
 
+def _init_distributed(args):
+    if not dist.is_available():
+        return {"enabled": False, "rank": 0, "world_size": 1, "local_rank": 0}
+
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    if world_size <= 1:
+        return {"enabled": False, "rank": 0, "world_size": 1, "local_rank": 0}
+
+    backend = "nccl" if torch.cuda.is_available() else "gloo"
+    dist.init_process_group(backend=backend, init_method="env://")
+
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    if torch.cuda.is_available():
+        torch.cuda.set_device(local_rank)
+        args.device = f"cuda:{local_rank}"
+    else:
+        args.device = "cpu"
+
+    return {
+        "enabled": True,
+        "rank": dist.get_rank(),
+        "world_size": dist.get_world_size(),
+        "local_rank": local_rank,
+    }
+
+
 if __name__ == "__main__":
     """fix the random seed"""
     seed = 2024
@@ -145,13 +174,16 @@ if __name__ == "__main__":
     torch.backends.cudnn.benchmark = False
 
     args = parse_args()
+    ddp = _init_distributed(args)
+    is_main_process = (not ddp["enabled"]) or ddp["rank"] == 0
     # 将字符串参数转换为布尔值
     args.kmeans_init = args.kmeans_init.lower() == "true"
     args.large_scale_kmeans = args.large_scale_kmeans.lower() == "true"
 
-    print("=================================================")
-    print(args)
-    print("=================================================")
+    if is_main_process:
+        print("=================================================")
+        print(args)
+        print("=================================================")
 
     logging.basicConfig(level=logging.DEBUG)
 
@@ -177,16 +209,33 @@ if __name__ == "__main__":
         sk_epsilons=args.sk_epsilons,
         sk_iters=args.sk_iters,
     )
-    print(model)
+
+    if ddp["enabled"]:
+        device = torch.device(args.device)
+        model = model.to(device)
+        model = torch.nn.parallel.DistributedDataParallel(
+            model,
+            device_ids=[ddp["local_rank"]] if device.type == "cuda" else None,
+        )
+
+    if is_main_process:
+        print(model)
+
+    sampler = DistributedSampler(data, shuffle=True) if ddp["enabled"] else None
     data_loader = DataLoader(
         data,
         num_workers=args.num_workers,
         batch_size=args.batch_size,
-        shuffle=True,
+        sampler=sampler,
+        shuffle=(sampler is None),
         pin_memory=True,
     )
     trainer = Trainer(args, model, len(data_loader))
     best_loss, best_collision_rate = trainer.fit(data_loader)
 
-    print("Best Loss", best_loss)
-    print("Best Collision Rate", best_collision_rate)
+    if is_main_process:
+        print("Best Loss", best_loss)
+        print("Best Collision Rate", best_collision_rate)
+
+    if ddp["enabled"]:
+        dist.destroy_process_group()
