@@ -1,87 +1,202 @@
-# Index 模块说明
+# SID（离散索引）构建指南
 
-> 注意所有脚本要在项目根目录下进行
+> 注意：所有命令默认在 `src/GRec/` 项目根目录下运行（即包含 `index/`、`tokenizer/`、`src/` 的目录）。
 
-该目录实现了使用残差向量量化自编码器（RQVAE）对物品向量做压缩建索引的完整流程，包含训练、索引生成与指标评估脚本。数据默认存放在 `./data/{DATASET}/`，模型权重输出在 `./data/{DATASET}/index/{MODEL_NAME}/`。
+SID（Semantic/Structured Indexing）在 GRec 里指：把连续的 item embedding（`.npy`）量化成**离散 token 序列**，
+并导出 `Dataset.index_*.json`，供下游 **SFT / RL / 测试**阶段通过 `--index_file` 加载。
 
-- 训练入口：`main.py`（可直接调用或通过 `run.sh` / `Kmeans_test.sh` 包装脚本）
-- 索引生成：`generate_indices.py`（可通过 `generate.sh` 调用）
-- 评估指标：`evaluate_index.py`（可通过 `evaluate.sh` 调用）
+目前 SID 有两套实现（你提到的两种方式）：
 
-## 数据准备
+- **方式 A：`index/`（RQVAE / 深度模型）**：训练一个 Encoder→ResidualVQ→Decoder，把 embedding 映射到 codes，适合追求更强表达能力（训练更重）。
+- **方式 B：`tokenizer/`（Residual K-Means / OpenOneRec-style）**：逐层 residual KMeans 学 codebook，轻量、稳定，且天然适合“多数据集共享同一个 tokenizer/codebook”。
 
-- `datasets.EmbDataset` 期望输入为 `.npy` 格式的二维数组，形状为 `[num_items, dim]`。
-- `--data_path` 指向该文件路径；训练脚本会根据数据文件推断输入维度。
-- 如需**多数据集合并训练**，可使用 `--data_paths path1.npy path2.npy ...`，脚本会自动把多个 `.npy` 视作一个拼接后的大数据集进行训练（内部为 `datasets.MultiEmbDataset`，不需要手动 concat 成一个大文件）。
+下游数据加载逻辑对两者完全一致：都输出 `Dataset.index_*.json`（key=item_id，value=token list）。
 
-## 训练 (`main.py`)
+---
 
-核心参数（括号内为默认值）：
+## 0. 输出格式与命名约定（非常关键）
 
-- `--data_path` (`../data/Games/Games.emb-llama-td.npy`): 训练用的嵌入文件。
-- `--data_paths` (无): 多数据集合并训练用的嵌入文件列表；与 `--data_path` 二选一。
-- `--ckpt_dir` (空): 模型检查点输出目录，会在其下创建时间戳文件夹。
-- `--device` (`cuda:0`): 训练设备。
-- `--lr`, `--weight_decay`, `--epochs`, `--batch_size`, `--num_workers`, `--eval_step`: 常规优化参数。
-- `--learner` (`AdamW`), `--lr_scheduler_type` (`constant`), `--warmup_epochs` (`50`): 优化器及学习率调度策略。
-- `--layers` (`2048 1024 512 256 128 64`), `--e_dim` (`32`): 编码器/解码器 MLP 结构及低维潜空间大小。
-- `--num_emb_list` (`256 256 256`): 每个量化层的码本大小；列表长度决定残差量化层数。
-- `--quant_loss_weight` (`1.0`), `--beta` (`0.25`), `--loss_type` (`mse`): 损失函数配置。
-- `--kmeans_init` (`True|False`), `--large_scale_kmeans` (`True|False`), `--kmeans_iters` (`100`): 控制码本初始化方式。
-- `--sk_epsilons` (`0.0 0.0 0.0`), `--sk_iters` (`50`): Sinkhorn-Knopp 参数，决定冲突消解时的软分配强度。
-- `--save_limit` (`5`): 保留的最近模型数量，脚本会自动清理旧检查点。
-- `--use_wandb`, `--wandb_project`, `--wandb_name`: 可选的 Weights & Biases 记录。
+### 0.1 输出 JSON 结构
 
-日志和模型文件默认写入 `./log/index/` 和 `--ckpt_dir` 指定目录。
+两种 SID 都导出形如：
 
-### 快速启动脚本
+```json
+{
+  "0": ["<a_12>", "<b_7>", "<c_1024>"],
+  "1": ["<a_88>", "<b_3>", "<c_2047>"]
+}
+```
 
-- `run.sh`: 默认训练脚本，设置 `DATASET`、`MODEL_NAME`、`DATA_PATH`、`KMEANS_MODE` 等变量后执行。脚本使用 `nohup` 后台训练，日志输出到 `./log/index/index_YYYYMMDDHHMMSS.log`。
-- `Kmeans_test.sh`: 针对 K-Means 初始化的 A/B 测试脚本，通过 `KMEANS_MODE` 在 `large` / `small` / `none` 三种配置间切换，并自动拼接 WandB 运行名称。
+- key：`item_id`（字符串）
+- value：token 列表，训练时会用 `''.join(tokens)` 得到最终的 item token 串（例如 `"<a_12><b_7><c_1024>"`）
 
-如需自定义参数，可直接调用：
+### 0.2 `--index_file` 的拼接规则
+
+GRec 读取索引文件的路径是：
+
+`{data_path}/{dataset}/{dataset}{index_file}`
+
+因此：
+
+- 你传 `--data_path ./data --dataset Instruments --index_file .index_xxx.json`
+- 则文件必须存在：`./data/Instruments/Instruments.index_xxx.json`
+
+常见坑：`--index_file` 要带开头的点 `.`，并且要以 `.json` 结尾（脚本里多数都默认这样命名）。
+
+---
+
+## 1. 输入准备：embedding 与 id 对齐
+
+SID 的输入是一个二维 `.npy`，形状 `[num_items, dim]`。重要的是 **npy 的第 i 行代表哪个 item_id**：
+
+- 如果你的数据集 item_id 本身就是 `0..N-1` 且与 `.inter.json/.item.json` 的 ID 体系一致，那么直接用行号即可；
+- 如果你的 item_id 不是连续整数（或来自原始 asin/pid），强烈建议同时保存一份 `*.ids.json`，明确每一行对应的 item_id。
+
+### 1.1 用 `index/text2emb.py` 生成 text embedding（推荐有 ids）
+
+`index/text2emb.py` 会从 `data/<DATASET>/<DATASET>.item.json` 读取文本字段（title/description），抽取 embedding，并输出：
+
+- `data/<DATASET>/<DATASET>.emb-<PLM_NAME>-td.npy`
+- `data/<DATASET>/<DATASET>.emb-<PLM_NAME>-td.ids.json`
+
+常用批处理脚本：`index/scripts/text2emb.sh`（accelerate 多进程 + 文件方式 merge）。
+
+---
+
+## 2. 方式 A：`index/`（RQVAE / 深度 SID）
+
+入口与脚本：
+
+- 训练：`index/main.py`（可用 `index/scripts/run.sh`/`train.sh` 包装）
+- 生成 index json：`index/generate_indices.py`（可用 `index/scripts/generate.sh`）
+- 评估：`index/evaluate_index.py`（可用 `index/scripts/evaluate.sh`）
+- 详细架构说明：`index/README.md`
+
+### 2.1 数据要求
+
+- 输入 `.npy` 必须是二维数组 `[num_items, dim]`
+- 支持单数据集 `--data_path`，也支持多数据集合并训练 `--data_paths a.npy b.npy ...`（内部 `MultiEmbDataset` 会把它们视作一个大 dataset）
+
+### 2.2 训练 RQVAE
+
+最常用的几个参数：
+
+- `--data_path` / `--data_paths`：embedding 文件
+- `--ckpt_dir`：输出目录（脚本会在其下创建时间戳子目录）
+- `--num_emb_list`：每层 codebook 大小（列表长度=量化层数）
+- `--layers`、`--e_dim`：Encoder/Decoder 结构与 latent 维度
+- `--kmeans_init`、`--large_scale_kmeans`：是否用 KMeans 初始化 codebook（`index/` 使用 sklearn KMeans，CPU）
+
+示例（请按实际路径改）：
 
 ```bash
 python3 index/main.py \
-	--data_path ./data/Instruments/Instruments.emb-llama-td.npy \
-	--ckpt_dir ./data/Instruments/index/llama/ \
-	--num_emb_list 256 256 256 256 \
-	--layers 2048 1024 512 256 128 64 \
-	--kmeans_init True --large_scale_kmeans True
+  --data_path ./data/Instruments/Instruments.emb-qwen3-embedding-4B-td.npy \
+  --ckpt_dir  ./data/Instruments/index/rqvae_qwen3-embedding-4B \
+  --num_emb_list 8192 8192 8192 \
+  --layers 2048 1024 512 256 128 64 \
+  --e_dim 32 \
+  --device cuda:0
 ```
 
-## 索引生成 (`generate_indices.py`)
+### 2.3 生成 `Dataset.index_*.json`
 
-该脚本从训练得到的检查点生成可部署的离散索引，并在检测到碰撞时按需启用 Sinkhorn-Knopp 以迭代消解。输出 JSON 形如 `{item_id: ["<a_0>", "<b_12>", ...]}`。
+```bash
+python3 index/generate_indices.py \
+  --dataset Instruments \
+  --ckpt_path  ./data/Instruments/index/rqvae_qwen3-embedding-4B/<TIMESTAMP>/best_collision_model.pth \
+  --output_dir ./data/Instruments \
+  --output_file Instruments.index_rqvae_qwen3-embedding-4B.json \
+  --device cuda:0 \
+  --batch_size 64
+```
 
-命令行参数：
+脚本会检测碰撞（不同 item 被编码成同一串 codes），必要时对碰撞组启用 Sinkhorn-Knopp 做迭代重编码（最多 20 轮）。
 
-- `--dataset`: 数据集名称，仅用于日志和输出文件命名。
-- `--ckpt_path`: 训练得到的模型检查点路径（`.pth`）。脚本会读取其中保存的 `args` 来恢复数据配置。
-- `--data_path` / `--data_paths`（可选）: 覆盖 checkpoint 内保存的数据路径，用于「用同一个 ckpt 给不同数据集生成 index」的场景。
-- `--output_dir` (`./data`): 结果保存目录，若不存在会自动创建。
-- `--output_file`: 输出文件名，例如 `Instruments.index_llama.json`。
-- `--device` (`cuda:0`): 推理设备。
-- `--batch_size` (`64`): 推理批大小。
+### 2.4 重要限制（务必看）
 
-辅助脚本 `generate.sh` 演示了常见调用方式，请按需修改 `CKPT_PATH`、`OUTPUT_DIR`、`OUTPUT_FILE` 等变量后执行。
+`index/generate_indices.py` 当前**直接用行号 `0..N-1` 作为 item_id key**，不读取 `*.ids.json`。
 
-## 模型评估 (`evaluate_index.py`)
+这意味着：
 
-用于离线评估训练好的检查点，输出碰撞率及各量化层的码本利用率。
+- 如果你的数据集内部的 item_id 就是 `0..N-1` 且与 `.inter.json/.item.json` 完全一致：没问题；
+- 如果你需要保留原始 item_id：建议用下方的 `tokenizer/` 方式（支持 `--ids_path`），或自行改造 `generate_indices.py` 的 key 写入逻辑。
 
-参数说明：
+---
 
-- `--ckpt_path`: 需要评估的模型权重文件。
-- `--device` (`cuda:0`): 推理设备。
-- `--batch_size` (`2048`): 评估批大小。
+## 3. 方式 B：`tokenizer/`（Residual K-Means / OpenOneRec-style）
 
-`evaluate.sh` 提供了可直接运行的示例，只需更新 `DATASET`、`MODEL_NAME`、`TIMESTAMP` 和 `MODEL_FILE` 与实际目录一致即可。
+入口与脚本：
 
-## 其它文件
+- 训练 tokenizer：`tokenizer/train_res_kmeans.py`
+- 导出 index json：`tokenizer/build_index_json.py`（支持 `--ids_path`）
+- 一键脚本（Amazon 多数据集 shared tokenizer）：`tokenizer/amazon_train_and_export_index.sh`
+- 详细说明：`tokenizer/README.md`
 
-- `trainer.py`: 封装训练循环，负责保存多种最优模型（最低损失、最低碰撞率、最高码本利用率），并在 `--large_scale_kmeans` 为真时执行一次性大规模 K-Means 初始化。
-- `models/`: 包含 RQVAE 主体、残差量化器与支持的 K-Means、Sinkhorn 实现。
-- `utils.py`: 提供日志着色、目录创建和文件清理等通用工具。
+### 3.1 训练 tokenizer（支持多 `.npy` 合并）
 
-请根据具体实验需求调整脚本中的路径与参数，运行前确保所需数据及依赖已就绪。
+```bash
+python3 tokenizer/train_res_kmeans.py \
+  --data_paths \
+    ./data/Arts/Arts.emb-qwen3-embedding-4B-td.npy \
+    ./data/Automotive/Automotive.emb-qwen3-embedding-4B-td.npy \
+  --model_path ./data/_shared_tokenizer/reskmeans_qwen3-embedding-4B \
+  --n_layers 3 \
+  --codebook_size 8192 \
+  --dim 4096 \
+  --niter 20 \
+  --max_train_points 200000
+```
+
+输出默认是：`<model_path>/model.pt`（包含每层 codebook）。
+
+### 3.2 导出每个数据集的 `Dataset.index_*.json`（可保留原始 item_id）
+
+```bash
+python3 tokenizer/build_index_json.py \
+  --model_path  ./data/_shared_tokenizer/reskmeans_qwen3-embedding-4B/model.pt \
+  --emb_path    ./data/Arts/Arts.emb-qwen3-embedding-4B-td.npy \
+  --ids_path    ./data/Arts/Arts.emb-qwen3-embedding-4B-td.ids.json \
+  --output_path ./data/Arts/Arts.index_qwen3-embedding-4B.json \
+  --device cuda \
+  --batch_size 10000
+```
+
+如果不提供 `--ids_path`，脚本会退化为用 `0..N-1` 做 item_id（不推荐）。
+
+---
+
+## 4. 两种方式怎么选？
+
+| 维度 | `index/`（RQVAE） | `tokenizer/`（Residual KMeans） |
+|---|---|---|
+| 方法 | 深度模型学习非线性映射 | 逐层 KMeans residual 量化 |
+| 训练成本 | 高（PyTorch 训练，建议 GPU） | 低（Faiss KMeans，可 CPU/单卡 GPU） |
+| 多数据集共享 codebook | 不自然（需合并训练且仍要处理 id） | 天然支持（一个 tokenizer，多数据集导出） |
+| item_id 映射 | 默认用行号 `0..N-1` | 支持 `--ids_path` 保留原始 id |
+| 适用场景 | 追求更强表达能力/更低碰撞 | 快速、稳定、可复用 tokenizer |
+
+---
+
+## 5. 下游使用（SFT / RL / Test）
+
+索引生成后，在训练/评测阶段统一通过 `--index_file` 指定：
+
+```bash
+--data_path ./data \
+--dataset Instruments \
+--index_file .index_qwen3-embedding-4B.json
+```
+
+请确保文件存在：`./data/Instruments/Instruments.index_qwen3-embedding-4B.json`。
+
+---
+
+## 6. 常见问题（FAQ）
+
+1. **报错找不到 index 文件**
+   - 多半是 `--index_file` 拼接规则没对上：确认文件名是 `{dataset}{index_file}`，且在 `{data_path}/{dataset}/` 下。
+2. **训练时新增 token 数量不对 / 推理时 tokenizer 大小不一致**
+   - 训练会从 `index_file` 里收集 `<a_*>` 等 token 并 `tokenizer.add_tokens(...)`；推理加载 LoRA 时也会根据 `adapter_config.json` 处理词表扩展。请确保 `index_file` 与训练时一致。
+3. **`index/` 导出的 key 和 `.item.json`/`.inter.json` 对不上**
+   - 这是 `generate_indices.py` 用行号写 key 导致的；如果你的 item_id 不是 `0..N-1`，建议改用 `tokenizer/build_index_json.py` 或自行改造生成逻辑。

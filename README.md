@@ -1,107 +1,83 @@
 # GRec 项目总览
 
-GRec 聚焦多模态生成式推荐，核心流程为 **离散索引构建（SID） → 指导式微调（SFT） → 评测与回归测试**。本 README 整合 `docs/` 目录的说明，突出完整流水线，方便快速落地实验。
+GRec 聚焦**多模态生成式推荐**。整体流水线是：
 
-## 环境准备
+**Embedding → SID（离散索引）→ SFT（监督微调）→（可选）RL（排序优化）→ Test（评测/回归）**
 
-- `setup.sh`: 使用 Conda 建立并安装基础依赖。
-- `Dockerfile`: 预置 CUDA/PyTorch 环境，可配合 `docker-compose.yml` 复现容器化部署。
-- `requirements.txt`、`pyproject.toml`: 记录 Python 依赖，若手动创建环境请按需安装。
+文档入口：
 
-## 数据与预处理（概览）
+- SID：`docs/sid_readme.md`（包含两种 SID 构建方式：`index/` 与 `tokenizer/`）
+- SFT：`docs/finetune_readme.md`
+- RL：`docs/rl_readme.md`
+- 测试：`docs/test_readme.md`
+- 数据处理：`docs/dataprocess_readme.md`
+- Notebook：`docs/notebook_readme.md`
 
-`docs/dataprocess_readme.md` 记录了数据增强与表征提取脚本的要点：
+---
 
-- `data_process/` 下提供文本增强、图片下载、多模态向量提取等工具（推荐使用 `qwen_embeddings.py`）。
-- `scripts/extract_rep.py` 可批量生成多模态表示，为后续 SID 阶段的 `.npy` 输入做准备。
+## 项目结构（你需要知道的目录）
 
-## 流程总览：SID → SFT → Test
+- `data_process/`：数据增强、图片下载、embedding 抽取等工具
+- `index/`：SID 方式 A（RQVAE，深度离散化）+ `text2emb.py`（文本 embedding 抽取）
+- `tokenizer/`：SID 方式 B（Residual KMeans，OpenOneRec-style tokenizer）
+- `src/`：训练/评测核心代码（SFT、RL、SeqRec metric、Text generation 等）
+- `scripts/`：一键/模板脚本（finetune、seqrec、text_generate、rl…）
+- `config/`：deepspeed/accelerate 配置与 benchmark 配置
 
-### 1. SID：生成离散索引
+---
 
-参考 `docs/sid_readme.md` 与 `index/README.md`。
+## 环境准备（简版）
 
-1. **准备输入向量**：确保 `./data/{DATASET}/{DATASET}.emb-*.npy` 可用，可来自数据预处理阶段的多模态向量。
-2. **训练 RQVAE**（构建索引编码器）：
-	- 快速启动：编辑 `index/run.sh` 或 `index/Kmeans_test.sh`，设置 `DATASET`、`MODEL_NAME`、`DATA_PATH`、`KMEANS_MODE` 等变量。
-	- 核心 Python 接口：`python3 index/main.py --data_path ... --ckpt_dir ... --num_emb_list ... --layers ...`。
-	- 关键参数：
-	  - 优化相关：`--lr`、`--epochs`、`--batch_size`、`--weight_decay`、`--warmup_epochs`、`--lr_scheduler_type`。
-	  - 模型结构：`--layers`（编码器/解码器宽度）、`--e_dim`（潜空间维度）、`--num_emb_list`（残差量化层及码本大小）。
-	  - 量化设置：`--quant_loss_weight`、`--beta`、`--loss_type`、`--kmeans_init`、`--large_scale_kmeans`、`--kmeans_iters`、`--sk_epsilons`、`--sk_iters`。
-	  - 输出与日志：`--ckpt_dir`、`--save_limit`、`--use_wandb`、`--device`。
-3. **生成索引 JSON**：
-	- 使用 `index/generate.sh` 或直接运行 `python3 index/generate_indices.py --dataset ... --ckpt_path ... --output_dir ... --output_file ... --device cuda:0 --batch_size 64`。
-	- 输出示例：`./data/{DATASET}/index/{MODEL_NAME}/{DATASET}.index_{MODEL_NAME}.json`，格式为 `{item_id: ["<a_0>", "<b_12>", ...]}`。
-	- 若存在冲突，脚本会自动启用 Sinkhorn-Knopp 迭代缓解。
-4. **可选评估**：`python3 index/evaluate_index.py --ckpt_path ... --batch_size 2048`，关注碰撞率与各层码本利用率。
+- 依赖：`pip install -r requirements.txt`
+- RL 额外依赖（若你要跑 `docs/rl_readme.md`）：`pip install trl bitsandbytes`
+- DeepSpeed 配置：`config/ds_z2_*.json` / `config/ds_z3_*.json`
+- accelerate 配置（RL 常用）：`config/zero2_opt.yaml`
 
-生成的索引文件将在 SFT 阶段通过 `--index_file` 使用，是后续任务的离散化桥梁。
+> `setup.sh` / `Dockerfile` 提供了环境搭建参考，但可能需要按你的 CUDA/Python 版本做调整。
 
-### 2. SFT：多任务监督微调
+---
+
+## 快速开始：从 0 跑通一条链路
+
+### 1) 准备 embedding（可选但常用）
+
+- 纯文本 embedding：`index/scripts/text2emb.sh`（读取 `data/<DATASET>/<DATASET>.item.json`，产出 `*.emb-*.npy` + `*.ids.json`）
+- 多模态 embedding：`scripts/extract_rep.py`（包装 `data_process/qwen_embeddings.py`，可批量跑多种 mode）
+
+### 2) SID：生成离散索引（两种方式）
+
+现在 SID 有两套实现（建议先看 `docs/sid_readme.md`）：
+
+- **方式 A：`index/`（RQVAE）**：`index/main.py` 训练 → `index/generate_indices.py` 导出 `Dataset.index_*.json`
+- **方式 B：`tokenizer/`（Residual KMeans）**：`tokenizer/train_res_kmeans.py` 训练 tokenizer → `tokenizer/build_index_json.py` 导出 `Dataset.index_*.json`
+
+导出的索引文件最终通过 `--index_file` 在训练/评测阶段加载（拼接规则见 `docs/sid_readme.md`）。
+
+### 3) SFT：多任务监督微调
 
 详见 `docs/finetune_readme.md` 与 `scripts/finetune/`。
 
-1. **脚本选择**：
-	- `train_ddp_vl.py`: 多模态 VLM（会添加新 token）。
-	- `train_ddp_vl_nonewtoken.py`: 不新增 token。
-	- `train_ddp.py`: 纯 LLM（如 Qwen2.5、LLaMA）。
-	- `train_muon.py`: Muon 优化器
-2. **多卡训练示例**（VL + LoRA，新索引用于推荐任务）：
+核心点：
 
-	```bash
-	nohup torchrun --nproc_per_node=4 --master_port=33325 -m src.finetune.train_ddp_vl \
-	  --seed 42 \
-	  --base_model $BASE_MODEL \
-	  --model_type $MODEL_TYPE \
-	  --output_dir $OUTPUT_DIR \
-	  --dataset $DATASET \
-	  --data_path $DATA_PATH \
-	  --per_device_batch_size 12 \
-	  --gradient_accumulation_steps 2 \
-	  --use_gradient_checkpointing \
-	  --num_workers 32 \
-	  --learning_rate 5e-5 \
-	  --epochs 4 \
-	  --weight_decay 0.01 \
-	  --save_and_eval_strategy epoch \
-	  --deepspeed ./config/ds_z2_bf16.json \
-	  --bf16 \
-	  --use_lora \
-	  --lora_modules_to_save "embed_tokens,lm_head" \
-	  --only_train_response \
-	  --tasks item2index,seqrec,fusionseqrec \
-	  --train_prompt_sample_num 1,1,1 \
-	  --train_data_sample_num 0,0,0 \
-	  --ratio_dataset 1 \
-	  --report_to wandb \
-	  --index_file ./data/$DATASET/index/$MODEL_NAME/${DATASET}.index_${MODEL_NAME}.json
-	```
+- `train_ddp_vl.py` / `train_ddp.py` 会从 `index_file` 收集 `<a_*>` 等 token 并扩词表（推荐主线）
+- LoRA 场景建议 `--lora_modules_to_save "embed_tokens,lm_head"`，否则新增 token 的 embedding/head 可能无法正确保存
 
-	- 批量大小 = `nproc_per_node * per_device_batch_size * gradient_accumulation_steps`。
-	- `--tasks` 对应多任务训练（如 `item2index`, `seqrec`, `fusionseqrec`等）。
-	- `--index_file` 指向 SID 阶段产出的离散索引。
-	- LoRA 仅更新注意力与 FFN，`lora_modules_to_save` 可额外保留嵌入或 LM Head 全量参数。
-3. **产出物**：LoRA 适配器、额外 token embedding。若使用 Zero3，请参考脚本注释在训练结束后执行合并。
+### 4)（可选）RL：排序优化
 
-### 3. Test：序列推荐与文本生成评测
+详见 `docs/rl_readme.md` 与 `scripts/rl/`。
 
-参考 `docs/test_readme.md` 与 `scripts/seqrec/`、`scripts/text_generate/`。
+当前 RL 入口为 `python -m src.rl.rl`（部分脚本仍写 `src.rl.rl_new`，运行前需确认）。
 
-1. **序列推荐 / Fusion 评测**：
-	- 主要脚本：`scripts/seqrec/case_seqrec.sh`、`scripts/seqrec/metric_ddp.sh`。
-	- 核心参数：`--test_task`（`seqrec`、`fusionseqrec`、`item2index` 等）、`--lora`、`--base_model`、`--ckpt_model`。
-	- LoRA 推理需提供基座模型与 LoRA 权重；纯全量模型仅需 `--ckpt_model`。
-	- `metric_ddp.sh` 支持多卡评测并改进结果落盘逻辑。
-2. **文本生成任务**：
-	- 入口在 `scripts/text_generate/`，无 LoRA 使用 `evaluate*.sh`，LoRA 使用 `evaluate_lora.sh`。
-	- 关注 text_enrich (Task9) 任务，指标包括 BLEU、ROUGE 等（参见 `text_generation/evaluate.py`）。
-3. **测试数据与基线**：
-	- 序列推荐基线：TIGER、LC-Rec（使用文本向量），以及项目内离散化后的多模态向量。
-	- 文本生成基线：原始 Qwen-VL、BLIP2、InstructBLIP 等（加载即用）。
+### 5) Test：序列推荐与文本生成评测
 
-## 附加资源
+详见 `docs/test_readme.md`，常用脚本：
 
-- `docs/notebook_readme.md`: 说明 `notebook/` 内的探索性分析，包含数据洞察、Embedding 对比、Beam Search 结果等。
-- 具体可以参考 `docs` 下的各个文档
+- 序列推荐：`scripts/seqrec/case_seqrec.sh`、`scripts/seqrec/metric_ddp.sh`
+- 文本生成：`scripts/text_generate/evaluate*.sh`、`scripts/text_generate/evaluate_lora.sh`
+
+---
+
+## 备注
+
+- SID 输出文件的命名与 `--index_file` 的拼接规则是全流程最常见的踩坑点；强烈建议先通读 `docs/sid_readme.md`。
 
