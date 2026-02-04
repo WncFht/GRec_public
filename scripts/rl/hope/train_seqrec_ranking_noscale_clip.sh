@@ -104,13 +104,13 @@ COMMON_ARGS=(
 RUN_ARGS=("${COMMON_ARGS[@]}")
 
 if $DEBUG; then
-    python -m src.rl.rl_new "${RUN_ARGS[@]}"
+    python -m src.rl.rl "${RUN_ARGS[@]}"
 else
     mkdir -p log
     nohup accelerate launch \
         --config_file ./config/zero2_opt.yaml \
         --num_processes 4 --main_process_port 29503 \
-        --module src.rl.rl_new "${RUN_ARGS[@]}" \
+        --module src.rl.rl "${RUN_ARGS[@]}" \
         > >(tee "$LOG_FILE") 2>&1 &
 
     PID=$!

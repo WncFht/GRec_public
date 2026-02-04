@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${DATA_ROOT:=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/data}"
 : "${PLM_NAME:=qwen}"
 
-# Datasets should match src/GRec/index/amazon_text2emb.sh by default.
+# Datasets should match `index/scripts/text2emb.sh` by default.
 : "${DATASETS_STR:=Arts Automotive Cell Games Instruments Pet Sports Tools Toys}"
 read -r -a DATASETS <<< "$DATASETS_STR"
 

@@ -11,7 +11,7 @@
 
 ## 1. 训练入口与脚本选择
 
-代码入口在 `src/GRec/src/finetune/`，常用脚本：
+代码入口在 `src/finetune/`，常用脚本：
 
 1. `src.finetune.train_ddp_vl.py`
    - 面向多模态 VLM（`qwen2_vl` / `qwen2_5_vl` / `llava_onevision`）
@@ -43,7 +43,7 @@ data/Instruments/
   images/                       # 多模态任务可能需要（由 --image_path 控制）
 ```
 
-不同任务需要的文件不同（以 `src/GRec/src/data.py` 的实现为准）：
+不同任务需要的文件不同（以 `src/data.py` 的实现为准）：
 
 - `seqrec`：`<DATASET>.inter.json` + `<DATASET><index_file>`
 - `fusionseqrec`：`<DATASET>.inter.json` + `<DATASET>.item.json` + `<DATASET><index_file>`
@@ -95,7 +95,7 @@ torchrun --nproc_per_node=4 --master_port=33325 -m src.finetune.train_ddp_vl \
 
 ## 4. 关键参数解释（与代码一一对应）
 
-参数解析集中在 `src/GRec/src/parser.py`：
+参数解析集中在 `src/parser.py`：
 
 ### 4.1 全局参数
 
@@ -142,21 +142,21 @@ torchrun --nproc_per_node=4 --master_port=33325 -m src.finetune.train_ddp_vl \
 如果你用的是 ZeRO3，checkpoint 可能是分片形式（依赖具体 deepspeed 配置），可参考：
 
 - `convert/convert.sh`（调用 `convert/zero_to_fp32.py` 等脚本，把 ZeRO 分片转换为可加载的权重）
-- LoRA 合并：`src/GRec/src/merge_lora.py`（把 adapter 合并进 base model，便于单模型推理）
+- LoRA 合并：`src/merge_lora.py`（把 adapter 合并进 base model，便于单模型推理）
 
 ### 5.3 推理/评测怎么加载
 
 序列推荐评测脚本在 `scripts/seqrec/`，并在 `docs/test_readme.md` 有说明：
 
-- **LoRA 推理**：通常需要同时提供 `--base_model` 与 `--ckpt_model`（adapter 路径），并传 `--lora`
-- **全量模型推理**：通常只需提供 `--ckpt_model`
+- **LoRA 推理**：通常需要同时提供 `--base_model` 与 `--ckpt_path`（adapter/checkpoint 路径），并传 `--lora`
+- **全量模型推理**：通常只需提供 `--ckpt_path`
 
 ---
 
 ## 6. 常见问题（FAQ）
 
 1. **`train_prompt_sample_num/train_data_sample_num` 报长度不匹配**
-   - 这两个参数必须与 `--tasks` 一一对应，逗号分隔后的元素个数要相同（见 `src/GRec/src/utils.py::load_datasets` 的 assert）。
+   - 这两个参数必须与 `--tasks` 一一对应，逗号分隔后的元素个数要相同（见 `src/utils.py::load_datasets` 的 assert）。
 2. **`index_file` 找不到**
    - 检查拼接规则：文件名应为 `data/<DATASET>/<DATASET><index_file>`（例如 `Instruments.index_xxx.json`）。
 3. **LoRA 训练后推理发现新增 token 不生效**

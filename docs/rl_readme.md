@@ -14,18 +14,18 @@ GRec 的 RL 阶段用于在 SFT 之后，进一步用“规则/排序”类 rewa
 
 RL 主入口：
 
-- `src/GRec/src/rl/rl.py`：训练入口（参数解析、数据集构建、训练循环、保存与评估）
+- `src/rl/rl.py`：训练入口（参数解析、数据集构建、训练循环、保存与评估）
 
 相关组件：
 
-- `src/GRec/src/data_rl.py`：RL 专用 Dataset（把 `seqrec/fusionseqrec` 转成“Verl-style records”，并提供 ground_truth token ids）
-- `src/GRec/src/rl/reward_fns.py`：reward 实现（`format_reward` / `rule_reward` / `ndcg_rule_reward`）
-- `src/GRec/src/rl/minionerec_trainer.py`：自定义 Trainer（封装 GRPO 训练逻辑与生成/评估）
-- `src/GRec/src/rl/LogitProcessor.py`：前缀约束用的 `ConstrainedLogitsProcessor`（避免生成非法 token）
+- `src/data_rl.py`：RL 专用 Dataset（把 `seqrec/fusionseqrec` 转成“Verl-style records”，并提供 ground_truth token ids）
+- `src/rl/reward_fns.py`：reward 实现（`format_reward` / `rule_reward` / `ndcg_rule_reward`）
+- `src/rl/minionerec_trainer.py`：自定义 Trainer（封装 GRPO 训练逻辑与生成/评估）
+- `src/rl/LogitProcessor.py`：前缀约束用的 `ConstrainedLogitsProcessor`（避免生成非法 token）
 
 脚本示例：
 
-- `scripts/rl/*.sh`：accelerate/单卡启动模板（注意：部分脚本仍指向 `src.rl.rl_new`，仓库当前主入口是 `src.rl.rl`）
+- `scripts/rl/*.sh`：accelerate/单卡启动模板（默认入口为 `src.rl.rl`）
 
 ---
 
@@ -111,7 +111,7 @@ CUDA_VISIBLE_DEVICES=0 python -m src.rl.rl \
 
 ## 4. 关键参数解释（按功能分组）
 
-参数由 `src/GRec/src/parser.py::parse_rl_args/parse_dataset_args/parse_global_args` 定义。
+参数由 `src/parser.py::parse_rl_args/parse_dataset_args/parse_global_args` 定义。
 
 ### 4.1 基础（模型/数据）
 
@@ -180,16 +180,14 @@ RL 训练会在 `--output_dir` 下保存 checkpoint（具体结构与 Trainer/ac
 
 ## 6. 常见坑与排查建议
 
-1. **脚本里写的是 `src.rl.rl_new`**
-   - 仓库当前主入口是 `src.rl.rl`（即 `src/GRec/src/rl/rl.py`）。如果你直接跑 `scripts/rl/rl.sh` 等脚本，可能需要把 `rl_new` 改成 `rl`。
-2. **`format_reward` 认为输出格式不合法**
-   - `src/GRec/src/rl/reward_fns.py::format_reward` 对 `seqrec/fusionseqrec` 会做正则校验：
+1. **`format_reward` 认为输出格式不合法**
+   - `src/rl/reward_fns.py::format_reward` 对 `seqrec/fusionseqrec` 会做正则校验：
      - 不允许换行
      - 目前默认按 `<a_?><b_?><c_?><d_?><|im_end|>` 的形式检查
    - 如果你的 SID 层数不是 4（例如只有 3 层 `<a><b><c>`），需要调整该正则/逻辑，否则大部分 completion 会被打负分。
-3. **`num_generations` 与测试 beam 不一致导致 shape 报错**
+2. **`num_generations` 与测试 beam 不一致导致 shape 报错**
    - `ConstrainedLogitsProcessor` 会检查 `input_ids.shape[0]` 是否是 `num_beams` 的整数倍。
    - 如果训练时 `num_generations=16`、测试时 `test_beam=20`，要确保 Trainer 内部生成配置与 logits processor 的 beam 参数一致，否则会抛异常。
-4. **prefix_index 不对导致前缀约束失效**
+3. **prefix_index 不对导致前缀约束失效**
    - `src/rl/rl.py` 里会根据 `base_model` 名字粗略设置 `prefix_index`（llava=7，gpt2=4，其他=3）。
    - 如果你换了模型/chat template，可以用 `rl.py` 里的 `debug_prefix_index()` 打印 tokenization 结果，手动调整 `prefix_index` 更稳。

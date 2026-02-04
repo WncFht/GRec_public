@@ -89,12 +89,12 @@ $DATA_ROOT/Automotive/
 
 ### 1) 先抽取 embedding（amazon_text2emb）
 
-脚本在 `src/GRec/index/scripts/text2emb.sh`，默认会为每个数据集生成：
+脚本在 `index/scripts/text2emb.sh`，默认会为每个数据集生成：
 
 - `$DATA_ROOT/<DATASET>/<DATASET>.emb-${PLM_NAME}-td.npy`
 - `$DATA_ROOT/<DATASET>/<DATASET>.emb-${PLM_NAME}-td.ids.json`（用于保持 item_id 与 embedding 行对齐，强烈建议保留）
 
-示例（在 `src/GRec/` 下执行）：
+示例（在项目根目录下执行）：
 
 ```bash
 export HOME_DIR=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian

@@ -6,6 +6,7 @@ GRec 聚焦**多模态生成式推荐**。整体流水线是：
 
 文档入口：
 
+- 环境安装：`docs/install.md`
 - SID：`docs/sid_readme.md`（包含两种 SID 构建方式：`index/` 与 `tokenizer/`）
 - SFT：`docs/finetune_readme.md`
 - RL：`docs/rl_readme.md`
@@ -28,6 +29,7 @@ GRec 聚焦**多模态生成式推荐**。整体流水线是：
 
 ## 环境准备（简版）
 
+- Python：建议 `3.10`（训练/flash-attn/deepspeed 兼容性更稳，详见 `docs/install.md`）
 - 依赖：`pip install -r requirements.txt`
 - RL 额外依赖（若你要跑 `docs/rl_readme.md`）：`pip install trl bitsandbytes`
 - DeepSpeed 配置：`config/ds_z2_*.json` / `config/ds_z3_*.json`
@@ -66,7 +68,7 @@ GRec 聚焦**多模态生成式推荐**。整体流水线是：
 
 详见 `docs/rl_readme.md` 与 `scripts/rl/`。
 
-当前 RL 入口为 `python -m src.rl.rl`（部分脚本仍写 `src.rl.rl_new`，运行前需确认）。
+当前 RL 入口为 `python -m src.rl.rl`（脚本模板见 `scripts/rl/`）。
 
 ### 5) Test：序列推荐与文本生成评测
 
@@ -80,4 +82,3 @@ GRec 聚焦**多模态生成式推荐**。整体流水线是：
 ## 备注
 
 - SID 输出文件的命名与 `--index_file` 的拼接规则是全流程最常见的踩坑点；强烈建议先通读 `docs/sid_readme.md`。
-

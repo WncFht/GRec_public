@@ -1,6 +1,6 @@
 # SID（离散索引）构建指南
 
-> 注意：所有命令默认在 `src/GRec/` 项目根目录下运行（即包含 `index/`、`tokenizer/`、`src/` 的目录）。
+> 注意：所有命令默认在**项目根目录**下运行（即包含 `index/`、`tokenizer/`、`src/` 的目录）。
 
 SID（Semantic/Structured Indexing）在 GRec 里指：把连续的 item embedding（`.npy`）量化成**离散 token 序列**，
 并导出 `Dataset.index_*.json`，供下游 **SFT / RL / 测试**阶段通过 `--index_file` 加载。

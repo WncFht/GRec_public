@@ -5,7 +5,7 @@
 对比对象：
 
 - OpenOneRec 预训练：`src/OpenOneRec/pretrain/`（核心入口 `recipes/train_qwen3.py`）
-- GRec 微调：`src/GRec/src/finetune/train_ddp.py`
+- GRec 微调：`src/finetune/train_ddp.py`
 
 > 说明：两边都基于 causal LM，但**训练目标与数据组织方式**差异很大：OpenOneRec 更偏“foundation model 的长上下文预训练/共训”，GRec 更偏“下游任务 SFT（prompt+answer）微调”。
 
@@ -44,7 +44,7 @@
 
 入口脚本是：
 
-- `src/GRec/src/finetune/train_ddp.py`
+- `src/finetune/train_ddp.py`
 
 特征：
 
@@ -54,7 +54,7 @@
   - 见 `UnifiedTrainer.__init__` / `_setup_environment`
 - 分布式由 `transformers.Trainer` 接管；配置通过 `TrainingArguments` 传入：
   - `ddp_find_unused_parameters=False if self.ddp else None`
-  - `deepspeed=self.args.deepspeed`（`src/GRec/src/parser.py` 默认给了一个 ds config 路径）
+  - `deepspeed=self.args.deepspeed`（`src/parser.py` 默认给了一个 ds config 路径）
 
 **关键差异：**
 
@@ -82,13 +82,13 @@ OpenOneRec 依赖 **itemic tokens**（`<s_a_i>`、`<s_b_i>`、`<s_c_i>`、`<|sid
 
 GRec 的 token 扩展在 `load_model_for_training()` 里完成：
 
-- 位置：`src/GRec/src/utils.py`
+- 位置：`src/utils.py`
 - `_extend_vocabulary()`：
   - 若 `new_tokens` 为空，会先 `load_datasets(...)`，再取 `train_data.datasets[0].get_new_tokens()`
   - `tokenizer.add_tokens(new_tokens)` + `model.resize_token_embeddings(new_vocab_size)`
   - 同时写入 `output_dir/token_meta.json`
 - `train_ddp.py` 额外会保存 processor 与更新后的 config（递归更新 `vocab_size`），见：
-  - `src/GRec/src/finetune/train_ddp.py` 的 `_save_configs()`
+  - `src/finetune/train_ddp.py` 的 `_save_configs()`
 
 **关键差异：**
 
@@ -127,13 +127,13 @@ OpenOneRec 的 dataloader 最终只关心每行至少包含：
 
 GRec 的数据加载不是“统一 parquet schema”，而是“多个任务各自 Dataset 类读项目约定的数据文件”：
 
-- 数据加载入口：`src/GRec/src/utils.py` 的 `load_datasets()`
-- Dataset 类示例：`src/GRec/src/data.py`（如 `SeqRecDataset`）
+- 数据加载入口：`src/utils.py` 的 `load_datasets()`
+- Dataset 类示例：`src/data.py`（如 `SeqRecDataset`）
   - 常见依赖文件（按 dataset 目录组织）：
     - `<Dataset>.inter.json`（用户交互序列）
     - `<Dataset><index_file>`（item → token 序列映射）
 - 每个 `__getitem__` 返回统一结构 `TrainingSample`：
-  - 定义：`src/GRec/src/type.py`（`input_text`、`label_text`、可选 `image_path`）
+  - 定义：`src/type.py`（`input_text`、`label_text`、可选 `image_path`）
 
 `load_datasets()` 会按：
 
@@ -252,9 +252,9 @@ GRec 的 collator 策略是：
 
 实现位置：
 
-- 纯文本：`src/GRec/src/collator.py:Collator`
-- chat template（无图）：`src/GRec/src/collator.py:ChatTemplateCollator`
-- 多模态：`src/GRec/src/collator.py:MultiModalCollator`
+- 纯文本：`src/collator.py:Collator`
+- chat template（无图）：`src/collator.py:ChatTemplateCollator`
+- 多模态：`src/collator.py:MultiModalCollator`
 
 **关键差异：**
 
@@ -282,7 +282,7 @@ GRec 的 collator 策略是：
 
 ### 8.2 GRec：Transformers Trainer（有 eval + early stopping）
 
-`src/GRec/src/finetune/train_ddp.py` 特征：
+`src/finetune/train_ddp.py` 特征：
 
 - 通过 `TrainingArguments` 配置训练：
   - `num_train_epochs`
@@ -387,9 +387,8 @@ GRec 的 collator 策略是：
 - OpenOneRec 数据格式规范：`src/OpenOneRec/data/README.md`
 - OpenOneRec split 脚本：`src/OpenOneRec/data/scripts/split_data.py`
 - OpenOneRec vocab 扩展：`src/OpenOneRec/pretrain/tools/model_converter/expand_qwen3_vocab.py`
-- GRec 训练入口：`src/GRec/src/finetune/train_ddp.py`
-- GRec 数据加载：`src/GRec/src/utils.py`（`load_datasets`, `load_model_for_training`）
-- GRec Dataset 示例：`src/GRec/src/data.py`
-- GRec Collator：`src/GRec/src/collator.py`
-- GRec 参数定义：`src/GRec/src/parser.py`
-
+- GRec 训练入口：`src/finetune/train_ddp.py`
+- GRec 数据加载：`src/utils.py`（`load_datasets`, `load_model_for_training`）
+- GRec Dataset 示例：`src/data.py`
+- GRec Collator：`src/collator.py`
+- GRec 参数定义：`src/parser.py`

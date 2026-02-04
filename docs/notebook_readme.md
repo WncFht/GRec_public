@@ -1,5 +1,17 @@
-主要含有一些测试文件：
-1. data.ipynb 来看数据集信息
-2. instruments_i2i_experiments.ipynb 来看不同的 emb 在协同信息的维度上哪个更好
-3. output.ipynb 来看不同的 base_model 和 训练后的模型 beamsearch 时候，一般的 score 情况是怎么样的
-4. dataset 中用来测试当前硬件情况下，开多少的 num_worker 比较合适
+# Notebook 说明
+
+Notebook 主要用于数据检查、离线分析与小规模实验，集中在仓库的 `notebook/` 目录。
+
+建议使用你自己的虚拟环境安装：
+
+```bash
+pip install jupyter notebook
+```
+
+当前常用 notebook：
+
+1. `notebook/data.ipynb`：查看数据集结构/字段、简单 sanity check
+2. `notebook/instruments_i2i_experiments.ipynb`：对比不同 embedding 在协同信息维度的表现（I2I 分析）
+3. `notebook/output.ipynb`：对比不同 `base_model` / 微调后模型在 beam search 下的输出与分数分布
+4. `notebook/dataset/`：与 DataLoader/num_workers 相关的性能测试与调参记录
+

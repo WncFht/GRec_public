@@ -3,7 +3,7 @@ import gc
 import json
 import logging
 import os
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 import torch
@@ -494,7 +494,9 @@ class ItemMultimodalBatchExtractor:
         # single-process: return all items unchanged
         return all_items
 
-    def run(self, dataset_path: str, output_path: str):
+    def run(
+        self, dataset_path: str, output_path: str, limit: Optional[int] = None
+    ):
         # If outputs already exist, skip to avoid recomputation.
         try:
             npy_path = output_path.replace(".json", ".npy")
@@ -516,6 +518,8 @@ class ItemMultimodalBatchExtractor:
             num_id = int(num_id_str)
             all_items.append((num_id, item_data))
         all_items.sort(key=lambda x: x[0])
+        if limit is not None:
+            all_items = all_items[:limit]
 
         # single-process: process all items
         my_items = all_items
@@ -605,6 +609,12 @@ def main():
         "--mode", type=str, default="orig", help="orig, enhanced, orig_enhanced"
     )
     parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Only process the first N items (debug).",
+    )
+    parser.add_argument(
         "--no-image",
         action="store_true",
         help="If set, do not include images in the extractor inputs (force text-only).",
@@ -628,8 +638,10 @@ def main():
         mode_tag = "image_only"
     else:
         mode_tag = args.mode
+    limit_tag = f"_limit{args.limit}" if args.limit else ""
     out_path = os.path.join(
-        out_dir, f"{args.model.replace('/', '_')}_{mode_tag}_{img_flag}.json"
+        out_dir,
+        f"{args.model.replace('/', '_')}_{mode_tag}_{img_flag}{limit_tag}.json",
     )
 
     extractor = ItemMultimodalBatchExtractor(
@@ -642,7 +654,7 @@ def main():
         image_only=args.image_only,
     )
 
-    extractor.run(dataset_path=dataset_path, output_path=out_path)
+    extractor.run(dataset_path=dataset_path, output_path=out_path, limit=args.limit)
 
 
 if __name__ == "__main__":

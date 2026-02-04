@@ -1,12 +1,45 @@
+# 测试 / 评测说明
 
-使用 scripts/seqrec 下的脚本来测试 seqrec / fusionseqrec / item2index 性能
+评测相关代码主要在 `src/seqrec/`（序列推荐）与 `src/text_generation/`（文本生成）。可直接运行 Python 模块，也可以用 `scripts/` 下的脚本模板快速启动。
 
-1. 基本只需使用 case_seqrec.sh 和 metric_ddp.sh
-2. 使用 lora 需要加上 --lora, 同时提供 base_model 和 ckpt_model。否则只需要提供 ckpt_model 如果也提供了 base_model 则不会影响加载过程。
-3. 不同的 task 使用 --test_task 来控制。默认为 seqrec。
-4. metric_ddp.ssh 相比 metric_*.sh 使用了多卡数据并行。同时保存逻辑更完善。
+> `scripts/*/*.sh` 多为“可运行模板”：首次使用请先改 `DATASET/DATA_PATH/CKPT_PATH/BASE_MODEL/INDEX_FILE` 等变量为你的实际路径。
 
+---
 
-使用 scripts/text_generate 下的脚本来测试 text_enrich 性能
+## 1. 序列推荐（seqrec / fusionseqrec / item2index 等）
 
-1. lora 使用 evaluate_lora.sh 不是 lora 的使用其他的 evaluate 就行
+常用脚本：
+
+- Case（看生成样例）：`scripts/seqrec/case_seqrec.sh`、`scripts/seqrec/case_item2index.sh`
+- Metric（跑指标）：`scripts/seqrec/metric_ddp.sh`（多卡）、`scripts/seqrec/metric_seqrec.sh`（单卡/调试）
+- 约束解码版本：`scripts/seqrec/metric_constrained_ddp.sh`、`scripts/seqrec/metric_constrained_seqrec.sh`
+
+### 1.1 LoRA / 非 LoRA 的加载规则
+
+序列评测入口一般是 `torchrun -m src.seqrec.metric_ddp ...`，关键参数：
+
+- 非 LoRA：只需要 `--ckpt_path <checkpoint-*>`
+- LoRA：需要同时提供：
+  - `--ckpt_path <adapter 或 checkpoint 路径>`
+  - `--base_model <base 模型路径>`
+  - `--lora`
+
+以 `scripts/seqrec/metric_ddp.sh` 为准（脚本里已包含 `--results_file` 的保存逻辑）。
+
+### 1.2 用哪些参数切换任务？
+
+- `--test_task`：控制评测任务（默认 `seqrec`；也可用 `item2index`/`fusionseqrec` 等）
+- `--test_prompt_ids`：控制使用哪组 prompt（`all` 或逗号分隔的 id 列表）
+- `--index_file`：加载 SID 索引（文件拼接规则见 `docs/sid_readme.md`）
+
+---
+
+## 2. 文本生成（text_enrich 等）
+
+常用脚本在 `scripts/text_generate/`：
+
+- LoRA：`scripts/text_generate/evaluate_lora.sh`
+- 非 LoRA：`scripts/text_generate/evaluate_*.sh`（按模型类型区分）
+
+文本生成评测实现见 `src/text_generation/evaluate.py`，指标/输出文件路径以脚本参数为准。
+
