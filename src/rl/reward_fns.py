@@ -56,13 +56,18 @@ def initialize_reward_functions(
     ndcg_rewards = [-elm / sum(ndcg_rewards) for elm in ndcg_rewards]
     _SEQREC_PATTERN = _build_seqrec_pattern(pad_token)
     _REWARD_CONTEXT = _RewardContext(
-        num_generations, ndcg_rewards, pad_token_id=pad_token_id, pad_token=pad_token
+        num_generations,
+        ndcg_rewards,
+        pad_token_id=pad_token_id,
+        pad_token=pad_token,
     )
 
     return False
 
 
-def _strip_padding_tokens(tokens: Iterable[int], pad_token_id: int | None) -> list[int]:
+def _strip_padding_tokens(
+    tokens: Iterable[int], pad_token_id: int | None
+) -> list[int]:
     if pad_token_id is None:
         return list(tokens)
     return [tok for tok in tokens if tok != pad_token_id]
@@ -142,13 +147,19 @@ def ndcg_rule_reward(
         data_source=data_source,
     )
     if completion_token_ids is None:
-        raise RuntimeError("completion_token_ids must be provided for token matching.")
+        raise RuntimeError(
+            "completion_token_ids must be provided for token matching."
+        )
 
     if use_prm:
         for i, (tokens, rm, fr) in enumerate(
-            zip(completion_token_ids, reward_model, format_rewards, strict=False)
+            zip(
+                completion_token_ids, reward_model, format_rewards, strict=False
+            )
         ):
-            gt_tokens = _strip_padding_tokens(_extract_gt_tokens(rm), pad_token_id)
+            gt_tokens = _strip_padding_tokens(
+                _extract_gt_tokens(rm), pad_token_id
+            )
             norm_tokens = _strip_padding_tokens(tokens, pad_token_id)
             group_records.append(
                 {
@@ -178,7 +189,9 @@ def ndcg_rule_reward(
                 compare_len = _prm_compare_length(norm_tokens, gt_tokens)
                 length = max(len(norm_tokens), compare_len)
                 base_reward = (
-                    0.0 if rec["is_correct"] or not any_correct else rec["ndcg_value"]
+                    0.0
+                    if rec["is_correct"] or not any_correct
+                    else rec["ndcg_value"]
                 )
                 match_mask = _prm_match_mask(
                     norm_tokens,
@@ -235,7 +248,9 @@ def rule_reward(
         data_source=data_source,
     )
     if completion_token_ids is None:
-        raise RuntimeError("completion_token_ids must be provided for token matching.")
+        raise RuntimeError(
+            "completion_token_ids must be provided for token matching."
+        )
 
     for i, (tokens, rm, fr) in enumerate(
         zip(completion_token_ids, reward_model, format_rewards, strict=False)
@@ -341,13 +356,17 @@ if __name__ == "__main__":
     for i in range(ctx.num_generations):
         sample = valid_samples[i % len(valid_samples)]
         completions.append([{"content": sample}])
-        reward_model.append({"ground_truth": {"text": "gt", "token": gt_tokens}})
+        reward_model.append(
+            {"ground_truth": {"text": "gt", "token": gt_tokens}}
+        )
         completion_token_ids.append(gt_tokens if i == 0 else mismatch_tokens)
 
     for i in range(ctx.num_generations):
         sample = invalid_samples[i % len(invalid_samples)]
         completions.append([{"content": sample}])
-        reward_model.append({"ground_truth": {"text": "gt", "token": gt_tokens}})
+        reward_model.append(
+            {"ground_truth": {"text": "gt", "token": gt_tokens}}
+        )
         completion_token_ids.append(mismatch_tokens)
 
     data_source = ["seqrec"] * (2 * ctx.num_generations)

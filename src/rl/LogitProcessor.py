@@ -66,7 +66,9 @@ class ConstrainedLogitsProcessor(LogitsProcessor):
                 # else:
                 #     print(prefix_allowed_tokens)
 
-                mask[batch_id * self._num_beams + beam_id, prefix_allowed_tokens] = 0
+                mask[
+                    batch_id * self._num_beams + beam_id, prefix_allowed_tokens
+                ] = 0
 
         self.count += 1
 

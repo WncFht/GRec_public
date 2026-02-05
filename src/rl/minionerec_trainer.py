@@ -100,7 +100,9 @@ class RepeatRandomSampler(Sampler):
             Random seed for reproducibility (only affects this sampler).
     """
 
-    def __init__(self, data_source: Sized, repeat_count: int, seed: int | None = None):
+    def __init__(
+        self, data_source: Sized, repeat_count: int, seed: int | None = None
+    ):
         self.data_source = data_source
         self.repeat_count = repeat_count
         self.num_samples = len(data_source)
@@ -260,7 +262,9 @@ class ReReTrainer(Trainer):
     ):
         # Args
         if args is None:
-            model_name = model if isinstance(model, str) else model.config._name_or_path
+            model_name = (
+                model if isinstance(model, str) else model.config._name_or_path
+            )
             model_name = model_name.split("/")[-1]
             args = GRPOConfig(f"{model_name}-GRPO")
 
@@ -295,7 +299,9 @@ class ReReTrainer(Trainer):
                 if args.gradient_checkpointing
                 else model_init_kwargs.get("use_cache")
             )
-            model = AutoModelForCausalLM.from_pretrained(model, **model_init_kwargs)
+            model = AutoModelForCausalLM.from_pretrained(
+                model, **model_init_kwargs
+            )
         else:
             model_id = model.config._name_or_path
             if args.model_init_kwargs is not None:
@@ -332,8 +338,10 @@ class ReReTrainer(Trainer):
             reward_funcs = [reward_funcs]
         for i, reward_func in enumerate(reward_funcs):
             if isinstance(reward_func, str):
-                reward_funcs[i] = AutoModelForSequenceClassification.from_pretrained(
-                    reward_func, num_labels=1, **model_init_kwargs
+                reward_funcs[i] = (
+                    AutoModelForSequenceClassification.from_pretrained(
+                        reward_func, num_labels=1, **model_init_kwargs
+                    )
                 )
         self.reward_funcs = reward_funcs
 
@@ -344,9 +352,13 @@ class ReReTrainer(Trainer):
                     f"Number of reward weights ({len(args.reward_weights)}) must match number of reward "
                     f"functions ({len(reward_funcs)})"
                 )
-            self.reward_weights = torch.tensor(args.reward_weights, dtype=torch.float32)
+            self.reward_weights = torch.tensor(
+                args.reward_weights, dtype=torch.float32
+            )
         else:
-            self.reward_weights = torch.ones(len(reward_funcs), dtype=torch.float32)
+            self.reward_weights = torch.ones(
+                len(reward_funcs), dtype=torch.float32
+            )
 
         # Reward processing class
         if reward_processing_classes is None:
@@ -372,17 +384,23 @@ class ReReTrainer(Trainer):
                     )
                 # The reward model computes the reward for the latest non-padded token in the input sequence.
                 # So it's important to set the pad token ID to the padding token ID of the processing class.
-                reward_func.config.pad_token_id = reward_processing_class.pad_token_id
+                reward_func.config.pad_token_id = (
+                    reward_processing_class.pad_token_id
+                )
                 reward_processing_classes[i] = reward_processing_class
         self.reward_processing_classes = reward_processing_classes
         self.reward_func_names: list[str] = []
         for reward_func in self.reward_funcs:
             if isinstance(reward_func, nn.Module):
-                reward_func_name = reward_func.config._name_or_path.split("/")[-1]
+                reward_func_name = reward_func.config._name_or_path.split("/")[
+                    -1
+                ]
             else:
                 reward_func_name = getattr(reward_func, "__name__", None)
                 if reward_func_name is None and hasattr(reward_func, "func"):
-                    reward_func_name = getattr(reward_func.func, "__name__", None)
+                    reward_func_name = getattr(
+                        reward_func.func, "__name__", None
+                    )
                 if reward_func_name is None:
                     reward_func_name = reward_func.__class__.__name__
             self.reward_func_names.append(reward_func_name)
@@ -507,7 +525,8 @@ class ReReTrainer(Trainer):
                 # Check that the requested device is available
                 if (
                     vllm_device.split(":")[0] == "cuda"
-                    and int(vllm_device.split(":")[1]) >= torch.cuda.device_count()
+                    and int(vllm_device.split(":")[1])
+                    >= torch.cuda.device_count()
                 ):
                     raise ValueError(
                         f"The requested device for vllm ({vllm_device}) is not available. You are likely using vLLM "
@@ -517,7 +536,8 @@ class ReReTrainer(Trainer):
                     )
                 # Check that the requested device is not also used for training
                 if vllm_device in {
-                    f"cuda:{idx}" for idx in range(self.accelerator.num_processes)
+                    f"cuda:{idx}"
+                    for idx in range(self.accelerator.num_processes)
                 }:
                     warnings.warn(
                         f"The requested device {vllm_device} is also being used for training. For higher throughput "
@@ -569,7 +589,7 @@ class ReReTrainer(Trainer):
                 num_return_sequences=self.num_generations,
                 pad_token_id=processing_class.pad_token_id,
                 eos_token_id=processing_class.eos_token_id,
-                do_sample=True, # if self.temperature > 1.0 else False,
+                do_sample=True,  # if self.temperature > 1.0 else False,
                 temperature=1.0,
                 top_k=None,
                 top_p=None,
@@ -593,7 +613,9 @@ class ReReTrainer(Trainer):
 
         if self.ref_model is not None:
             if self.is_deepspeed_enabled:
-                self.ref_model = prepare_deepspeed(self.ref_model, self.accelerator)
+                self.ref_model = prepare_deepspeed(
+                    self.ref_model, self.accelerator
+                )
             else:
                 self.ref_model = self.accelerator.prepare_model(
                     self.ref_model, evaluation_mode=True
@@ -723,7 +745,9 @@ class ReReTrainer(Trainer):
                 unwrapped_model.unmerge_adapter()
                 # Remove base_model and base_layer prefixes
                 state_dict = {
-                    k.removeprefix("base_model.model.").replace(".base_layer", ""): v
+                    k.removeprefix("base_model.model.").replace(
+                        ".base_layer", ""
+                    ): v
                     for k, v in state_dict.items()
                 }
                 # Remove values with adapter prefix (example: "_lora")
@@ -741,9 +765,7 @@ class ReReTrainer(Trainer):
             else:
                 state_dict = unwrapped_model.state_dict()
         if self.accelerator.is_main_process:
-            llm_model = (
-                self.llm.llm_engine.model_executor.driver_worker.model_runner.model
-            )
+            llm_model = self.llm.llm_engine.model_executor.driver_worker.model_runner.model
             llm_model.load_weights(state_dict.items())
 
     def _prepare_inputs(
@@ -867,7 +889,9 @@ class ReReTrainer(Trainer):
                 completion_ids = [None] * len(all_prompts_text)
             # Broadcast the completions from the main process to all processes, ensuring each process receives its
             # corresponding slice.
-            completion_ids = broadcast_object_list(completion_ids, from_process=0)
+            completion_ids = broadcast_object_list(
+                completion_ids, from_process=0
+            )
             process_slice = slice(
                 self.accelerator.process_index * len(prompts_text),
                 (self.accelerator.process_index + 1) * len(prompts_text),
@@ -881,7 +905,9 @@ class ReReTrainer(Trainer):
             completion_ids = pad(
                 completion_ids, padding_value=self.processing_class.pad_token_id
             )
-            prompt_completion_ids = torch.cat([prompt_ids, completion_ids], dim=1)
+            prompt_completion_ids = torch.cat(
+                [prompt_ids, completion_ids], dim=1
+            )
         else:
             # Regular generation path
             with unwrap_model_for_generation(
@@ -964,7 +990,9 @@ class ReReTrainer(Trainer):
                         target_clean = target.strip('\n"').replace(" ", "")
                         found_full = False
                         for j in range(len(comp_lis)):
-                            comp_clean = comp_lis[j].strip('\n"').replace(" ", "")
+                            comp_clean = (
+                                comp_lis[j].strip('\n"').replace(" ", "")
+                            )
                             if (not found_full) and comp_clean == target_clean:
                                 for index, k in enumerate(topk):
                                     if j < k:
@@ -976,7 +1004,8 @@ class ReReTrainer(Trainer):
                                 for idx in range(current_token_len):
                                     if (
                                         idx < len(comp_tokens)
-                                        and comp_tokens[idx] == target_tokens[idx]
+                                        and comp_tokens[idx]
+                                        == target_tokens[idx]
                                     ):
                                         for k in hitk_positions:
                                             if j < k:
@@ -1015,8 +1044,12 @@ class ReReTrainer(Trainer):
                     lis2 = []
                     extended_targets = []
                     for i in range(0, len(prompt_ids), self.num_generations):
-                        lis1.extend([prompt_ids[i]] * int(1.5 * self.num_generations))
-                        lis2.extend([prompt_mask[i]] * int(1.5 * self.num_generations))
+                        lis1.extend(
+                            [prompt_ids[i]] * int(1.5 * self.num_generations)
+                        )
+                        lis2.extend(
+                            [prompt_mask[i]] * int(1.5 * self.num_generations)
+                        )
                         extended_targets.extend(
                             [targets[i]] * int(1.5 * self.num_generations)
                         )
@@ -1031,16 +1064,23 @@ class ReReTrainer(Trainer):
                         logits_processor=self.logits_processor,
                     )
                     prompt_length = prompt_ids.size(1)
-                    extended_completion_ids = prompt_completion_ids[:, prompt_length:]
+                    extended_completion_ids = prompt_completion_ids[
+                        :, prompt_length:
+                    ]
                     if self.base_model.lower().find("llama") > -1:
-                        extended_completions_text = self.processing_class.batch_decode(
-                            extended_completion_ids,
-                            skip_special_tokens=True,
-                            clean_up_tokenization_spaces=False,
+                        extended_completions_text = (
+                            self.processing_class.batch_decode(
+                                extended_completion_ids,
+                                skip_special_tokens=True,
+                                clean_up_tokenization_spaces=False,
+                            )
                         )
                     else:
-                        extended_completions_text = self.processing_class.batch_decode(
-                            extended_completion_ids, skip_special_tokens=True
+                        extended_completions_text = (
+                            self.processing_class.batch_decode(
+                                extended_completion_ids,
+                                skip_special_tokens=True,
+                            )
                         )
                     # print(f"extended_completions_text: {extended_completions_text}")
 
@@ -1074,7 +1114,10 @@ class ReReTrainer(Trainer):
                                     return selected
                         while len(selected) < self.num_generations:
                             for item in completion_times:
-                                if item != target and completion_times[item] > 0:
+                                if (
+                                    item != target
+                                    and completion_times[item] > 0
+                                ):
                                     selected.append(item)
                                     completion_times[item] -= 1
                                     if len(selected) == self.num_generations:
@@ -1132,7 +1175,9 @@ class ReReTrainer(Trainer):
                         # print(f"target_ids: {target_ids.shape}")
                         # print(f"prompt_ids: {prompt_ids[idx].shape}")
                         target_ids = target_ids.to(device)
-                        added_ids = torch.cat([prompt_ids[i], target_ids], dim=0)
+                        added_ids = torch.cat(
+                            [prompt_ids[i], target_ids], dim=0
+                        )
                         # print(f"added_ids: {added_ids.shape}")
                         new_prompt_completions.append(added_ids)
                     else:
@@ -1152,7 +1197,9 @@ class ReReTrainer(Trainer):
         eos_idx = torch.full(
             (is_eos.size(0),), is_eos.size(1), dtype=torch.long, device=device
         )
-        eos_idx[is_eos.any(dim=1)] = is_eos.int().argmax(dim=1)[is_eos.any(dim=1)]
+        eos_idx[is_eos.any(dim=1)] = is_eos.int().argmax(dim=1)[
+            is_eos.any(dim=1)
+        ]
         sequence_indices = torch.arange(is_eos.size(1), device=device).expand(
             is_eos.size(0), -1
         )
@@ -1161,7 +1208,9 @@ class ReReTrainer(Trainer):
         # print(completions_text)
 
         # Concatenate prompt_mask with completion_mask for logit computation
-        attention_mask = torch.cat([prompt_mask, completion_mask], dim=1)  # (B*G, P+C)
+        attention_mask = torch.cat(
+            [prompt_mask, completion_mask], dim=1
+        )  # (B*G, P+C)
 
         logits_to_keep = completion_ids.size(
             1
@@ -1175,7 +1224,9 @@ class ReReTrainer(Trainer):
                     logits_to_keep,
                 )
             else:
-                with self.accelerator.unwrap_model(self.model).disable_adapter():
+                with self.accelerator.unwrap_model(
+                    self.model
+                ).disable_adapter():
                     ref_per_token_logps = self._get_per_token_logps(
                         self.model,
                         prompt_completion_ids,
@@ -1197,9 +1248,13 @@ class ReReTrainer(Trainer):
         # print(completions_text)
         if is_conversational(inputs[0]):
             completions = []
-            for prompt, completion in zip(prompts, completions_text, strict=False):
+            for prompt, completion in zip(
+                prompts, completions_text, strict=False
+            ):
                 bootstrap = (
-                    prompt.pop()["content"] if prompt[-1]["role"] == "assistant" else ""
+                    prompt.pop()["content"]
+                    if prompt[-1]["role"] == "assistant"
+                    else ""
                 )
                 completions.append(
                     [{"role": "assistant", "content": bootstrap + completion}]
@@ -1230,7 +1285,9 @@ class ReReTrainer(Trainer):
             total_ids.update(set(ids))
             num_tokens += len(ids)
         num_unique_tokens = len(total_ids)
-        token_diversity = num_unique_tokens / num_tokens if num_tokens > 0 else 0.0
+        token_diversity = (
+            num_unique_tokens / num_tokens if num_tokens > 0 else 0.0
+        )
 
         max_completion_tokens = completion_ids.size(1)
         reward_outputs: list[list[Any] | torch.Tensor] = []
@@ -1250,7 +1307,10 @@ class ReReTrainer(Trainer):
                         for x in messages
                     ]
                 else:
-                    texts = [p + c for p, c in zip(prompts, completions, strict=False)]
+                    texts = [
+                        p + c
+                        for p, c in zip(prompts, completions, strict=False)
+                    ]
                 reward_inputs = reward_processing_class(
                     texts,
                     return_tensors="pt",
@@ -1265,7 +1325,11 @@ class ReReTrainer(Trainer):
                     ]  # Shape (B*G,)
             else:
                 # Repeat all input columns (but "prompt" and "completion") to match the number of generations
-                keys = [key for key in inputs[0] if key not in ["prompt", "completion"]]
+                keys = [
+                    key
+                    for key in inputs[0]
+                    if key not in ["prompt", "completion"]
+                ]
                 reward_kwargs = {
                     key: [example[key] for example in inputs] for key in keys
                 }
@@ -1309,22 +1373,23 @@ class ReReTrainer(Trainer):
                         )
                         use_len = min(fill_len, vals.numel())
                         if use_len > 0:
-                            rewards_per_func_token[sample_idx, :use_len, func_idx] = (
-                                vals[:use_len]
-                            )
+                            rewards_per_func_token[
+                                sample_idx, :use_len, func_idx
+                            ] = vals[:use_len]
                     elif (
-                        isinstance(current_val, torch.Tensor) and current_val.dim() > 0
+                        isinstance(current_val, torch.Tensor)
+                        and current_val.dim() > 0
                     ):
                         vals = current_val.to(device).float()
                         use_len = min(fill_len, vals.numel())
                         if use_len > 0:
-                            rewards_per_func_token[sample_idx, :use_len, func_idx] = (
-                                vals[:use_len]
-                            )
+                            rewards_per_func_token[
+                                sample_idx, :use_len, func_idx
+                            ] = vals[:use_len]
                     else:
-                        rewards_per_func_token[sample_idx, :fill_len, func_idx] = float(
-                            current_val
-                        )
+                        rewards_per_func_token[
+                            sample_idx, :fill_len, func_idx
+                        ] = float(current_val)
         else:
             rewards_per_func = torch.zeros(
                 len(prompts_text), len(self.reward_funcs), device=device
@@ -1387,7 +1452,9 @@ class ReReTrainer(Trainer):
 
             # Weighted sum per token across reward functions
             token_reward_weights = self.reward_weights.to(device).view(1, 1, -1)
-            token_rewards = (rewards_per_func_token * token_reward_weights).sum(dim=2)
+            token_rewards = (rewards_per_func_token * token_reward_weights).sum(
+                dim=2
+            )
 
             # Group-wise normalization per token position
             max_completion_tokens = token_rewards.size(1)
@@ -1415,9 +1482,9 @@ class ReReTrainer(Trainer):
             rewards = (token_rewards * mask_float).sum(dim=1) / mask_float.sum(
                 dim=1
             ).clamp(min=1)
-            rewards_per_func = (rewards_per_func_token * mask_float.unsqueeze(-1)).sum(
-                dim=1
-            ) / mask_float.sum(dim=1, keepdim=True).clamp(min=1)
+            rewards_per_func = (
+                rewards_per_func_token * mask_float.unsqueeze(-1)
+            ).sum(dim=1) / mask_float.sum(dim=1, keepdim=True).clamp(min=1)
             std_grouped_rewards = std_grouped_token.mean(dim=1)
         else:
             # Gather the reward per function: this part is crucial, because the rewards are normalized per group and the
@@ -1430,8 +1497,12 @@ class ReReTrainer(Trainer):
             ).sum(dim=1)
 
             # Compute grouped-wise rewards
-            mean_grouped_rewards = rewards.view(-1, self.num_generations).mean(dim=1)
-            std_grouped_rewards = rewards.view(-1, self.num_generations).std(dim=1)
+            mean_grouped_rewards = rewards.view(-1, self.num_generations).mean(
+                dim=1
+            )
+            std_grouped_rewards = rewards.view(-1, self.num_generations).std(
+                dim=1
+            )
 
             # Normalize the rewards to compute the advantages
             mean_grouped_rewards = mean_grouped_rewards.repeat_interleave(
@@ -1459,7 +1530,9 @@ class ReReTrainer(Trainer):
             self._metrics["adv/mean"].append(adv_valid.mean().item())
             self._metrics["adv/min"].append(adv_valid.min().item())
             self._metrics["adv/max"].append(adv_valid.max().item())
-            self._metrics["adv/std"].append(adv_valid.std(unbiased=False).item())
+            self._metrics["adv/std"].append(
+                adv_valid.std(unbiased=False).item()
+            )
 
         # import pdb; pdb.set_trace()
         # Slice to keep only the local part of the data
@@ -1487,7 +1560,9 @@ class ReReTrainer(Trainer):
                 format_idx = i
                 break
         if format_idx is not None:
-            wrong_format_num = (rewards_per_func[:, format_idx] < 0).sum().item()
+            wrong_format_num = (
+                (rewards_per_func[:, format_idx] < 0).sum().item()
+            )
             self._metrics["wrong_format_num"].append(wrong_format_num)
 
         self._metrics["reward/mean"].append(rewards.mean().item())
@@ -1554,7 +1629,9 @@ class ReReTrainer(Trainer):
         self, model, inputs, return_outputs=False, num_items_in_batch=None
     ):
         if return_outputs:
-            raise ValueError("The GRPOTrainer does not support returning outputs")
+            raise ValueError(
+                "The GRPOTrainer does not support returning outputs"
+            )
 
         def _pad_right(
             tensor: torch.Tensor, target_len: int, pad_value: int | float
@@ -1595,18 +1672,24 @@ class ReReTrainer(Trainer):
             target_len = max(completion_ids.size(1), gt_input_ids.size(1))
             pad_token_id = self.processing_class.pad_token_id
 
-            completion_ids = _pad_right(completion_ids, target_len, pad_token_id)
+            completion_ids = _pad_right(
+                completion_ids, target_len, pad_token_id
+            )
             completion_mask = _pad_right(completion_mask, target_len, 0)
             gt_input_ids = _pad_right(gt_input_ids, target_len, pad_token_id)
             gt_attention_mask = _pad_right(gt_attention_mask, target_len, 0)
-            ref_per_token_logps = _pad_right(ref_per_token_logps, target_len, 0.0)
+            ref_per_token_logps = _pad_right(
+                ref_per_token_logps, target_len, 0.0
+            )
             if old_log_probs is not None:
                 old_log_probs = _pad_right(old_log_probs, target_len, 0.0)
 
             input_ids = torch.cat([prompt_ids, completion_ids], dim=1)
             attention_mask = torch.cat([prompt_mask, completion_mask], dim=1)
             sft_input_ids = torch.cat([prompt_ids, gt_input_ids], dim=1)
-            sft_attention_mask = torch.cat([prompt_mask, gt_attention_mask], dim=1)
+            sft_attention_mask = torch.cat(
+                [prompt_mask, gt_attention_mask], dim=1
+            )
 
             combined_input_ids = torch.cat([input_ids, sft_input_ids], dim=0)
             combined_attention_mask = torch.cat(
@@ -1628,7 +1711,9 @@ class ReReTrainer(Trainer):
             log_probs = torch.log_softmax(logits_rl, dim=-1)
             per_token_entropy = -(log_probs.exp() * log_probs).sum(dim=-1)
 
-            masked_labels = gt_input_ids.masked_fill(gt_attention_mask == 0, -100)
+            masked_labels = gt_input_ids.masked_fill(
+                gt_attention_mask == 0, -100
+            )
             sft_loss_val = self._sft_loss_fct(
                 logits_sft.reshape(-1, logits_sft.size(-1)),
                 masked_labels.reshape(-1),
@@ -1640,7 +1725,11 @@ class ReReTrainer(Trainer):
                 1
             )  # we only need to compute the logits for the completion tokens
             per_token_logps, per_token_entropy = self._get_per_token_logps(
-                model, input_ids, attention_mask, logits_to_keep, return_entropy=True
+                model,
+                input_ids,
+                attention_mask,
+                logits_to_keep,
+                return_entropy=True,
             )
 
         per_token_kl = (
@@ -1651,7 +1740,9 @@ class ReReTrainer(Trainer):
         per_token_kl = per_token_kl.masked_fill(completion_mask == 0, 0.0)
 
         advantages = inputs["advantages"]
-        if advantages.dim() == 2 and advantages.size(1) != completion_mask.size(1):
+        if advantages.dim() == 2 and advantages.size(1) != completion_mask.size(
+            1
+        ):
             advantages = _pad_right(advantages, completion_mask.size(1), 0.0)
 
         if advantages.dim() == 1:
@@ -1714,7 +1805,8 @@ class ReReTrainer(Trainer):
                     advantage_term < 0
                 )
                 pg_clipfrac_lower_val = (
-                    (clipfrac_lower_mask.float() * mask_float).sum() / mask_denom
+                    (clipfrac_lower_mask.float() * mask_float).sum()
+                    / mask_denom
                 ).unsqueeze(0)
 
             pg_clipfrac_val = (
@@ -1726,14 +1818,16 @@ class ReReTrainer(Trainer):
 
             per_token_loss = pg_losses + self.beta * per_token_kl
         else:
-            per_token_loss = torch.exp(per_token_logps - per_token_logps.detach()) * (
-                advantage_term
-            )
+            per_token_loss = torch.exp(
+                per_token_logps - per_token_logps.detach()
+            ) * (advantage_term)
             per_token_loss = -(per_token_loss - self.beta * per_token_kl)
 
         # import pdb; pdb.set_trace()
         if self.dapo:
-            loss = (per_token_loss * completion_mask).sum() / completion_mask.sum()
+            loss = (
+                per_token_loss * completion_mask
+            ).sum() / completion_mask.sum()
         elif self.gspo:
             per_token_ratio = per_token_logps - per_token_logps.detach()
             s_score = torch.exp(
@@ -1743,7 +1837,9 @@ class ReReTrainer(Trainer):
             sequence_kl = (per_token_kl * completion_mask).sum(
                 dim=1
             ) / completion_mask.sum(dim=1)
-            loss = -(s_score * advantage_scalar - self.beta * sequence_kl).mean()
+            loss = -(
+                s_score * advantage_scalar - self.beta * sequence_kl
+            ).mean()
         else:
             loss = (
                 (per_token_loss * completion_mask).sum(dim=1)
@@ -1763,7 +1859,8 @@ class ReReTrainer(Trainer):
         self._metrics["completion_length"].append(completion_length)
 
         mean_kl = (
-            (per_token_kl * completion_mask).sum(dim=1) / completion_mask.sum(dim=1)
+            (per_token_kl * completion_mask).sum(dim=1)
+            / completion_mask.sum(dim=1)
         ).mean()
         self._metrics["kl"].append(
             self.accelerator.gather_for_metrics(mean_kl).mean().item()
@@ -1772,7 +1869,9 @@ class ReReTrainer(Trainer):
             dim=1
         ) / completion_mask.sum(dim=1).clamp(min=1)
         self._metrics["entropy"].append(
-            self.accelerator.gather_for_metrics(entropy_per_seq.detach()).mean().item()
+            self.accelerator.gather_for_metrics(entropy_per_seq.detach())
+            .mean()
+            .item()
         )
         if pg_clipfrac_val is not None:
             self._metrics["pg_clipfrac"].append(
@@ -1781,7 +1880,9 @@ class ReReTrainer(Trainer):
                 .item()
             )
             self._metrics["pg_clipfrac_lower"].append(
-                self.accelerator.gather_for_metrics(pg_clipfrac_lower_val.detach())
+                self.accelerator.gather_for_metrics(
+                    pg_clipfrac_lower_val.detach()
+                )
                 .mean()
                 .item()
             )
@@ -1793,7 +1894,9 @@ class ReReTrainer(Trainer):
                 )
         if sft_loss_val is not None:
             self._metrics["sft_loss"].append(
-                self.accelerator.gather_for_metrics(sft_loss_val.detach()).mean().item()
+                self.accelerator.gather_for_metrics(sft_loss_val.detach())
+                .mean()
+                .item()
             )
 
         return loss
@@ -1812,7 +1915,9 @@ class ReReTrainer(Trainer):
             loss = loss.mean().detach()
         return loss, None, None
 
-    def log(self, logs: dict[str, float], start_time: float | None = None) -> None:
+    def log(
+        self, logs: dict[str, float], start_time: float | None = None
+    ) -> None:
         metrics = {
             key: sum(val) / len(val) for key, val in self._metrics.items()
         }  # average the metrics
@@ -1835,7 +1940,9 @@ class ReReTrainer(Trainer):
             metrics = {f"{prefix}_{key}": val for key, val in metrics.items()}
 
         logs = {**logs, **metrics}
-        if version.parse(transformers.__version__) >= version.parse("4.47.0.dev0"):
+        if version.parse(transformers.__version__) >= version.parse(
+            "4.47.0.dev0"
+        ):
             super().log(logs, start_time)
         else:  # transformers<=4.46
             super().log(logs)

@@ -59,7 +59,9 @@ class UnifiedTrainer:
         configure_tqdm_for_file_output(use_file_output=not debug_mode)
 
         # 记录训练模式
-        train_mode = "LoRA finetuning" if self.args.use_lora else "Full finetuning"
+        train_mode = (
+            "LoRA finetuning" if self.args.use_lora else "Full finetuning"
+        )
         self.logger.info(f"Starting multitask {train_mode}")
         self.logger.info(f"RUN_NAME: {self.args.run_name}")
 
@@ -106,7 +108,9 @@ class UnifiedTrainer:
             if main_ds:
                 metric_for_best_model = f"eval_{main_ds}_loss"
         if self.local_rank == 0 and metric_for_best_model != "eval_loss":
-            self.logger.info(f"metric_for_best_model set to: {metric_for_best_model}")
+            self.logger.info(
+                f"metric_for_best_model set to: {metric_for_best_model}"
+            )
 
         return TrainingArguments(
             seed=self.args.seed,
@@ -139,7 +143,9 @@ class UnifiedTrainer:
             remove_unused_columns=False,
             report_to=report_to,
             run_name=self.args.run_name,
-            eval_delay=1 if self.args.save_and_eval_strategy == "epoch" else 200,
+            eval_delay=1
+            if self.args.save_and_eval_strategy == "epoch"
+            else 200,
             metric_for_best_model=metric_for_best_model,
             greater_is_better=False,
         )
@@ -162,10 +168,14 @@ class UnifiedTrainer:
         )
 
         # 加载数据集
-        train_data, valid_data = load_datasets(self.args, self.logger, self.local_rank)
+        train_data, valid_data = load_datasets(
+            self.args, self.logger, self.local_rank
+        )
         if bool(getattr(self.args, "eval_by_dataset", False)):
             requires_eval = (
-                str(getattr(self.args, "save_and_eval_strategy", "epoch")).lower()
+                str(
+                    getattr(self.args, "save_and_eval_strategy", "epoch")
+                ).lower()
                 != "no"
             )
             if not isinstance(valid_data, dict):
@@ -180,9 +190,15 @@ class UnifiedTrainer:
                     raise ValueError(
                         "--eval_by_dataset is set but no valid datasets were built."
                     )
-                if self._eval_dataset_keys and getattr(self.args, "eval_main_dataset", None) is None:
+                if (
+                    self._eval_dataset_keys
+                    and getattr(self.args, "eval_main_dataset", None) is None
+                ):
                     self.args.eval_main_dataset = self._eval_dataset_keys[0]
-                if self._eval_dataset_keys and self.args.eval_main_dataset not in valid_data:
+                if (
+                    self._eval_dataset_keys
+                    and self.args.eval_main_dataset not in valid_data
+                ):
                     raise ValueError(
                         f"--eval_main_dataset={self.args.eval_main_dataset!r} not found in "
                         f"valid datasets: {self._eval_dataset_keys}"
@@ -218,7 +234,9 @@ class UnifiedTrainer:
                 self.logger.info(
                     f"LoRA config: r={self.args.lora_r}, alpha={self.args.lora_alpha}, dropout={self.args.lora_dropout}"
                 )
-                self.logger.info(f"Target modules: {self.args.lora_target_modules}")
+                self.logger.info(
+                    f"Target modules: {self.args.lora_target_modules}"
+                )
                 if (
                     hasattr(self.args, "lora_modules_to_save")
                     and self.args.lora_modules_to_save
@@ -227,7 +245,9 @@ class UnifiedTrainer:
                         f"Modules to save: {self.args.lora_modules_to_save}"
                     )
 
-            self.logger.info(f"Added {new_vocab_size - original_vocab_size} new tokens")
+            self.logger.info(
+                f"Added {new_vocab_size - original_vocab_size} new tokens"
+            )
             self.logger.info(f"Original vocab size: {original_vocab_size}")
             self.logger.info(f"New vocab size: {new_vocab_size}")
             self.logger.info(f"Train samples: {len(train_data)}")
@@ -243,7 +263,9 @@ class UnifiedTrainer:
                     * self.world_size
                 )
             else:
-                effective_batch_size = self.args.per_device_batch_size * self.world_size
+                effective_batch_size = (
+                    self.args.per_device_batch_size * self.world_size
+                )
 
             self.logger.info(f"Effective batch size: {effective_batch_size}")
             self.logger.info(
@@ -344,7 +366,10 @@ class UnifiedTrainer:
             model.model_parallel = True
 
         # 编译模型（如果支持）
-        if version.parse(torch.__version__) >= version.parse("2.0.0") and sys.platform != "win32":
+        if (
+            version.parse(torch.__version__) >= version.parse("2.0.0")
+            and sys.platform != "win32"
+        ):
             self.logger.info("Compiling model with torch.compile()...")
             model = torch.compile(model)
 
@@ -371,7 +396,9 @@ class UnifiedTrainer:
         if embedding_hooks:
             for hook in embedding_hooks:
                 hook.remove()
-            self.logger.info(f"Removed {len(embedding_hooks)} embedding gradient hooks")
+            self.logger.info(
+                f"Removed {len(embedding_hooks)} embedding gradient hooks"
+            )
 
         # 保存模型和状态
         self.logger.info("Saving model and training state...")

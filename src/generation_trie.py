@@ -50,17 +50,16 @@ class Trie:
                 output.remove(bos_token_id)
                 output += list(append_trie.trie_dict.keys())
             return output
-        elif prefix_sequence[0] in trie_dict:
+        if prefix_sequence[0] in trie_dict:
             return Trie._get_from_trie(
                 prefix_sequence[1:],
                 trie_dict[prefix_sequence[0]],
                 append_trie,
                 bos_token_id,
             )
-        elif append_trie:
+        if append_trie:
             return append_trie.get(prefix_sequence)
-        else:
-            return []
+        return []
 
     def __iter__(self):
         def _traverse(prefix_sequence, trie_dict):

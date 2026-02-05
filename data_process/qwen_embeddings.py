@@ -654,7 +654,9 @@ def main():
         image_only=args.image_only,
     )
 
-    extractor.run(dataset_path=dataset_path, output_path=out_path, limit=args.limit)
+    extractor.run(
+        dataset_path=dataset_path, output_path=out_path, limit=args.limit
+    )
 
 
 if __name__ == "__main__":

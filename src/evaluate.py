@@ -1,5 +1,5 @@
 import math
-from typing import Iterable, List
+from collections.abc import Iterable
 
 
 def clean_prediction_text(text: str) -> str:
@@ -9,7 +9,6 @@ def clean_prediction_text(text: str) -> str:
     This is used both by metric computation and rollout cache saving, so keep it
     lightweight and deterministic.
     """
-
     if not isinstance(text, str):
         text = str(text)
 
@@ -30,7 +29,7 @@ def clean_prediction_text(text: str) -> str:
     return text
 
 
-def clean_predictions(predictions: Iterable[str]) -> List[str]:
+def clean_predictions(predictions: Iterable[str]) -> list[str]:
     return [clean_prediction_text(_) for _ in predictions]
 
 

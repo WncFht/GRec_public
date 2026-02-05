@@ -65,7 +65,9 @@ def get_collision_item(all_keys):
     return collision_item_groups
 
 
-def _parse_datasets_arg(single: str | None, multiple: list[str] | None) -> list[str]:
+def _parse_datasets_arg(
+    single: str | None, multiple: list[str] | None
+) -> list[str]:
     if multiple:
         return [d.strip() for d in multiple if str(d).strip()]
     if not single:
@@ -107,7 +109,9 @@ def _dataset_spans(
     return spans
 
 
-def _dataset_ids_for_global_indices(spans: list[tuple[str, int, int]], n: int) -> list[int]:
+def _dataset_ids_for_global_indices(
+    spans: list[tuple[str, int, int]], n: int
+) -> list[int]:
     dataset_ids = [-1] * n
     for ds_id, (_ds, start, end) in enumerate(spans):
         for i in range(start, end):
@@ -125,22 +129,35 @@ def main(args):
     model_args = ckpt["args"]  # 从检查点中获取训练参数
     state_dict = ckpt["state_dict"]  # 从检查点中获取模型状态字典
 
-    datasets = _parse_datasets_arg(getattr(args, "dataset", None), getattr(args, "datasets", None))
-    multi_output = (len(datasets) > 1) and (getattr(args, "output_suffix", None) is not None)
+    datasets = _parse_datasets_arg(
+        getattr(args, "dataset", None), getattr(args, "datasets", None)
+    )
+    multi_output = (len(datasets) > 1) and (
+        getattr(args, "output_suffix", None) is not None
+    )
 
     if multi_output and getattr(args, "output_file", None) is not None:
-        raise ValueError("In multi-output mode, please use --output_suffix, not --output_file.")
+        raise ValueError(
+            "In multi-output mode, please use --output_suffix, not --output_file."
+        )
 
     # 加载嵌入数据集：优先使用命令行传入的 data_path(s)，否则使用 checkpoint 中保存的 data_path(s)
-    if getattr(args, "data_paths", None) is not None and getattr(args, "data_path", None) is not None:
-        raise ValueError("Please use either --data_path or --data_paths, not both.")
+    if (
+        getattr(args, "data_paths", None) is not None
+        and getattr(args, "data_path", None) is not None
+    ):
+        raise ValueError(
+            "Please use either --data_path or --data_paths, not both."
+        )
 
     if getattr(args, "data_paths", None) is not None:
         data_paths = list(args.data_paths)
     elif getattr(args, "data_path", None) is not None:
         data_paths = [args.data_path]
     else:
-        data_paths = getattr(model_args, "data_paths", None) or [model_args.data_path]
+        data_paths = getattr(model_args, "data_paths", None) or [
+            model_args.data_path
+        ]
 
     if multi_output and len(data_paths) != len(datasets):
         raise ValueError(
@@ -261,7 +278,9 @@ def main(args):
 
     tot_item = len(all_keys)
     tot_indice = len(set(all_keys))
-    print("Collision Rate", (tot_item - tot_indice) / tot_item)  # 打印最终碰撞率
+    print(
+        "Collision Rate", (tot_item - tot_indice) / tot_item
+    )  # 打印最终碰撞率
 
     if multi_output:
         assert spans is not None

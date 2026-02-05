@@ -243,7 +243,9 @@ def load_model_for_inference(
     return model, processor
 
 
-def _load_processor_and_tokenizer(args, config, base_model_path, local_rank, log_func):
+def _load_processor_and_tokenizer(
+    args, config, base_model_path, local_rank, log_func
+):
     """加载处理器和分词器"""
     processor_class = config["processor_class"]
     from_pretrained_kwargs = config.get("from_pretrained_kwargs", {})
@@ -277,7 +279,9 @@ def _load_processor_and_tokenizer(args, config, base_model_path, local_rank, log
     return processor, tokenizer
 
 
-def _load_base_model(args, config, base_model_path, config_obj, local_rank, log_func):
+def _load_base_model(
+    args, config, base_model_path, config_obj, local_rank, log_func
+):
     """加载基础模型"""
     model_class = config["model_class"]
     from_pretrained_kwargs = config.get("from_pretrained_kwargs", {})
@@ -312,7 +316,9 @@ def _extend_vocabulary(
     """扩展词汇表"""
     # 获取新tokens
     if new_tokens is None:
-        dataset_list = [d.strip() for d in str(args.dataset).split(",") if d.strip()]
+        dataset_list = [
+            d.strip() for d in str(args.dataset).split(",") if d.strip()
+        ]
         if not dataset_list:
             raise ValueError(
                 "`--dataset` is empty. Please provide at least one dataset."
@@ -344,7 +350,9 @@ def _extend_vocabulary(
         new_tokens = sorted(token_set)
 
     if local_rank == 0:
-        log_func(f"从数据集中获取到 {len(new_tokens)} 个新 token 用于扩展词汇表。")
+        log_func(
+            f"从数据集中获取到 {len(new_tokens)} 个新 token 用于扩展词汇表。"
+        )
 
     original_vocab_size = len(tokenizer)
     tokenizer.add_tokens(new_tokens, special_tokens=False)
@@ -425,7 +433,9 @@ def _setup_lora(args, model, local_rank, log_func):
 
 def _load_lora_checkpoint(args, model, local_rank, log_func):
     """加载LoRA检查点权重"""
-    if not (hasattr(args, "resume_from_checkpoint") and args.resume_from_checkpoint):
+    if not (
+        hasattr(args, "resume_from_checkpoint") and args.resume_from_checkpoint
+    ):
         return
 
     from peft import set_peft_model_state_dict
@@ -434,7 +444,9 @@ def _load_lora_checkpoint(args, model, local_rank, log_func):
         args.resume_from_checkpoint, "adapter_model.safetensors"
     )
     if not os.path.exists(checkpoint_name):
-        checkpoint_name = os.path.join(args.resume_from_checkpoint, "adapter_model.bin")
+        checkpoint_name = os.path.join(
+            args.resume_from_checkpoint, "adapter_model.bin"
+        )
 
     if os.path.exists(checkpoint_name):
         if local_rank == 0:
@@ -458,16 +470,20 @@ def _freeze_only_embeddings(model, local_rank, log_func):
     embedding_paths = [
         (
             "language_model.embed_tokens",
-            lambda m: getattr(m.language_model, "embed_tokens", None)
-            if hasattr(m, "language_model")
-            else None,
+            lambda m: (
+                getattr(m.language_model, "embed_tokens", None)
+                if hasattr(m, "language_model")
+                else None
+            ),
         ),
         ("embed_tokens", lambda m: getattr(m, "embed_tokens", None)),
         (
             "model.embed_tokens",
-            lambda m: getattr(m.model, "embed_tokens", None)
-            if hasattr(m, "model")
-            else None,
+            lambda m: (
+                getattr(m.model, "embed_tokens", None)
+                if hasattr(m, "model")
+                else None
+            ),
         ),
     ]
 
@@ -486,9 +502,11 @@ def _freeze_only_embeddings(model, local_rank, log_func):
         ("lm_head", lambda m: getattr(m, "lm_head", None)),
         (
             "language_model.lm_head",
-            lambda m: getattr(m.language_model, "lm_head", None)
-            if hasattr(m, "language_model")
-            else None,
+            lambda m: (
+                getattr(m.language_model, "lm_head", None)
+                if hasattr(m, "language_model")
+                else None
+            ),
         ),
     ]
 
@@ -586,7 +604,9 @@ def load_model_for_training(
     config = MODEL_CONFIG[model_type]
     from transformers import AutoConfig
 
-    config_obj = AutoConfig.from_pretrained(base_model_path, trust_remote_code=True)
+    config_obj = AutoConfig.from_pretrained(
+        base_model_path, trust_remote_code=True
+    )
 
     # 2. 加载处理器和分词器
     processor, tokenizer = _load_processor_and_tokenizer(
@@ -643,12 +663,12 @@ def get_local_time():
 
 
 def set_seed(seed: int, deterministic: bool = False):
-    """设置随机种子。
+    """
+    设置随机种子。
 
     默认走性能优先路径（启用 cuDNN 与 benchmark）；当 deterministic=True 时，
     再切换到严格可复现模式（通常会更慢）。
     """
-
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -680,7 +700,9 @@ def load_datasets(args: argparse.Namespace, logger=None, local_rank=0):
 
     tasks = [t.strip() for t in args.tasks.split(",") if t.strip()]
     if not tasks:
-        raise ValueError("`--tasks` is empty. Please provide at least one task.")
+        raise ValueError(
+            "`--tasks` is empty. Please provide at least one task."
+        )
 
     dataset_list = [d.strip() for d in args.dataset.split(",") if d.strip()]
     if not dataset_list:
@@ -690,11 +712,15 @@ def load_datasets(args: argparse.Namespace, logger=None, local_rank=0):
 
     eval_by_dataset = bool(getattr(args, "eval_by_dataset", False))
 
-    train_prompt_sample_num = [int(_) for _ in args.train_prompt_sample_num.split(",")]
+    train_prompt_sample_num = [
+        int(_) for _ in args.train_prompt_sample_num.split(",")
+    ]
     assert len(tasks) == len(train_prompt_sample_num), (
         "prompt sample number does not match task number"
     )
-    train_data_sample_num = [int(_) for _ in args.train_data_sample_num.split(",")]
+    train_data_sample_num = [
+        int(_) for _ in args.train_data_sample_num.split(",")
+    ]
     assert len(tasks) == len(train_data_sample_num), (
         "data sample number does not match task number"
     )
@@ -705,7 +731,9 @@ def load_datasets(args: argparse.Namespace, logger=None, local_rank=0):
         log_func(f"train data sample num: {train_data_sample_num}")
         log_func(f"datasets: {dataset_list}")
         if eval_by_dataset:
-            log_func("eval_by_dataset: enabled (will log eval metrics per dataset key)")
+            log_func(
+                "eval_by_dataset: enabled (will log eval metrics per dataset key)"
+            )
 
     train_datasets = []
     valid_datasets = []
@@ -896,14 +924,21 @@ def load_datasets(args: argparse.Namespace, logger=None, local_rank=0):
             if train_dataset:
                 train_datasets.append(train_dataset)
                 if local_rank == 0:
-                    log_func(f"Task: {task} - train sample nums: {len(train_dataset)}")
+                    log_func(
+                        f"Task: {task} - train sample nums: {len(train_dataset)}"
+                    )
             if valid_dataset:
                 valid_datasets.append(valid_dataset)
                 valid_datasets_by_dataset[dataset].append(valid_dataset)
                 if local_rank == 0:
-                    log_func(f"Task: {task} - valid sample nums: {len(valid_dataset)}")
+                    log_func(
+                        f"Task: {task} - valid sample nums: {len(valid_dataset)}"
+                    )
         train_data = ConcatDataset(train_datasets)
-        requires_eval = str(getattr(args, "save_and_eval_strategy", "epoch")).lower() != "no"
+        requires_eval = (
+            str(getattr(args, "save_and_eval_strategy", "epoch")).lower()
+            != "no"
+        )
 
         if eval_by_dataset:
             valid_data = {}
@@ -911,22 +946,23 @@ def load_datasets(args: argparse.Namespace, logger=None, local_rank=0):
                 parts = valid_datasets_by_dataset.get(ds) or []
                 if not parts:
                     continue
-                valid_data[ds] = parts[0] if len(parts) == 1 else ConcatDataset(parts)
+                valid_data[ds] = (
+                    parts[0] if len(parts) == 1 else ConcatDataset(parts)
+                )
             if not valid_data and requires_eval:
                 raise ValueError(
                     "No validation datasets were built. "
                     "Set --save_and_eval_strategy no or include tasks that support valid split."
                 )
+        elif valid_datasets:
+            valid_data = ConcatDataset(valid_datasets)
         else:
-            if valid_datasets:
-                valid_data = ConcatDataset(valid_datasets)
-            else:
-                if requires_eval:
-                    raise ValueError(
-                        "No validation datasets were built. "
-                        "Set --save_and_eval_strategy no or include tasks that support valid split."
-                    )
-                valid_data = None
+            if requires_eval:
+                raise ValueError(
+                    "No validation datasets were built. "
+                    "Set --save_and_eval_strategy no or include tasks that support valid split."
+                )
+            valid_data = None
 
     if local_rank == 0:
         log_func(f"Train sample nums: {len(train_data)}")
@@ -970,7 +1006,9 @@ def load_test_dataset(args: argparse.Namespace, logger=None, local_rank=0):
     """根据配置加载测试数据集；支持多数据集合并评测。"""
     dataset_list = [d.strip() for d in args.dataset.split(",") if d.strip()]
     if not dataset_list:
-        raise ValueError("`--dataset` is empty. Please provide at least one dataset name.")
+        raise ValueError(
+            "`--dataset` is empty. Please provide at least one dataset name."
+        )
 
     test_datasets = []
     for dataset in dataset_list:
@@ -1067,7 +1105,9 @@ def make_run_name(args: argparse.Namespace) -> str:
 
     # 处理 index_file
     idx_file = (
-        os.path.basename(args.index_file) if hasattr(args, "index_file") else "none"
+        os.path.basename(args.index_file)
+        if hasattr(args, "index_file")
+        else "none"
     )
     if idx_file != "none":
         idx_file = idx_file.removeprefix(".index_")
@@ -1086,7 +1126,9 @@ def make_run_name(args: argparse.Namespace) -> str:
     )
     dataset = args.dataset if hasattr(args, "dataset") else "unknown"
     batch_size = (
-        args.per_device_batch_size if hasattr(args, "per_device_batch_size") else "1"
+        args.per_device_batch_size
+        if hasattr(args, "per_device_batch_size")
+        else "1"
     )
 
     method = "Lora" if args.use_lora else "Finetune"
@@ -1096,7 +1138,9 @@ def make_run_name(args: argparse.Namespace) -> str:
     return f"{base_name}__{dataset}__{method}__lr{lr}__b{batch_size}__gc{gc_flag}__{tasks}__p{prompt_num}__idx{idx_key}__{timestamp}"
 
 
-def verify_token_ordering(tokenizer_or_processor, original_vocab_size, new_tokens):
+def verify_token_ordering(
+    tokenizer_or_processor, original_vocab_size, new_tokens
+):
     """验证新添加的token是否真的在词汇表末尾"""
     from transformers import AutoProcessor
 
@@ -1146,7 +1190,9 @@ def verify_token_ordering(tokenizer_or_processor, original_vocab_size, new_token
     print(f"  原始词汇表大小: {original_vocab_size}")
     print(f"  当前词汇表大小: {current_vocab_size}")
     print(f"  新增token数量: {len(new_tokens)}")
-    print(f"  预期新token ID范围: {original_vocab_size} ~ {current_vocab_size - 1}")
+    print(
+        f"  预期新token ID范围: {original_vocab_size} ~ {current_vocab_size - 1}"
+    )
 
     return (
         new_token_start == original_vocab_size
@@ -1186,7 +1232,10 @@ def freeze_original_embeddings_with_hook(
         model.language_model, "embed_tokens"
     ):
         embed_module = model.language_model.embed_tokens
-        if hasattr(embed_module, "weight") and embed_module.weight.requires_grad:
+        if (
+            hasattr(embed_module, "weight")
+            and embed_module.weight.requires_grad
+        ):
             handle = embed_module.weight.register_hook(set_grads_to_zero_hook)
             hooks.append(handle)
             log_func(

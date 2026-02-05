@@ -5,8 +5,9 @@ import random
 from dataclasses import asdict
 
 import numpy as np
-from src.parser import parse_dataset_args
 from torch.utils.data import Dataset
+
+from src.parser import parse_dataset_args
 
 from .prompt import all_prompt, sft_prompt
 from .type import EnrichedData, TrainingSample
@@ -44,7 +45,9 @@ def _split_item_ids(all_item_ids: list[str], seed: int) -> dict[str, list[str]]:
 
 # 定义BaseDataset类，继承自PyTorch的Dataset
 class BaseDataset(Dataset):
-    def __init__(self, args: argparse.Namespace, dataset, logger=None, local_rank=0):
+    def __init__(
+        self, args: argparse.Namespace, dataset, logger=None, local_rank=0
+    ):
         super().__init__()
 
         self.args = args
@@ -73,7 +76,9 @@ class BaseDataset(Dataset):
 
     def _load_data(self):
         # 从指定的索引文件中加载物品索引
-        with open(os.path.join(self.data_path, self.dataset + self.index_file)) as f:
+        with open(
+            os.path.join(self.data_path, self.dataset + self.index_file)
+        ) as f:
             self.indices = json.load(f)
 
     def get_new_tokens(self):
@@ -186,7 +191,9 @@ class SeqRecDataset(BaseDataset):
 
     def _load_data(self):
         # 加载用户交互数据
-        with open(os.path.join(self.data_path, self.dataset + ".inter.json")) as f:
+        with open(
+            os.path.join(self.data_path, self.dataset + ".inter.json")
+        ) as f:
             self.inters = json.load(f)
 
         total_inters = len(self.inters)
@@ -200,7 +207,9 @@ class SeqRecDataset(BaseDataset):
             self.log_func(f"new total inters: {len(self.inters)}")
 
         # 加载物品索引数据
-        with open(os.path.join(self.data_path, self.dataset + self.index_file)) as f:
+        with open(
+            os.path.join(self.data_path, self.dataset + self.index_file)
+        ) as f:
             self.indices = json.load(f)
 
     def _remap_items(self):
@@ -214,7 +223,9 @@ class SeqRecDataset(BaseDataset):
         # 处理训练数据：构建历史交互和目标物品对
         inter_data = []
         for uid in self.remapped_inters:
-            items = self.remapped_inters[uid][:-2]  # 移除最后两个物品（验证和测试）
+            items = self.remapped_inters[uid][
+                :-2
+            ]  # 移除最后两个物品（验证和测试）
             for i in range(1, len(items)):
                 one_data = dict()
                 one_data["item"] = items[i]  # 当前目标物品
@@ -226,7 +237,9 @@ class SeqRecDataset(BaseDataset):
                         str(k + 1) + ". " + item_idx
                         for k, item_idx in enumerate(history)
                     ]  # 添加前缀
-                one_data["inters"] = self.his_sep.join(history)  # 用分隔符连接历史记录
+                one_data["inters"] = self.his_sep.join(
+                    history
+                )  # 用分隔符连接历史记录
                 inter_data.append(one_data)
         return inter_data
 
@@ -242,7 +255,8 @@ class SeqRecDataset(BaseDataset):
                 history = history[-self.max_his_len :]
             if self.add_prefix:
                 history = [
-                    str(k + 1) + ". " + item_idx for k, item_idx in enumerate(history)
+                    str(k + 1) + ". " + item_idx
+                    for k, item_idx in enumerate(history)
                 ]
             one_data["inters"] = self.his_sep.join(history)
             inter_data.append(one_data)
@@ -260,7 +274,8 @@ class SeqRecDataset(BaseDataset):
                 history = history[-self.max_his_len :]
             if self.add_prefix:
                 history = [
-                    str(k + 1) + ". " + item_idx for k, item_idx in enumerate(history)
+                    str(k + 1) + ". " + item_idx
+                    for k, item_idx in enumerate(history)
                 ]
             one_data["inters"] = self.his_sep.join(history)
             inter_data.append(one_data)
@@ -268,7 +283,9 @@ class SeqRecDataset(BaseDataset):
         # 如果指定了采样数量，则进行采样
         if self.sample_num > 0:
             all_inter_idx = range(len(inter_data))
-            sample_idx = np.random.choice(all_inter_idx, self.sample_num, replace=False)
+            sample_idx = np.random.choice(
+                all_inter_idx, self.sample_num, replace=False
+            )
             inter_data = np.array(inter_data)[sample_idx].tolist()
         return inter_data
 
@@ -387,7 +404,9 @@ class MultimodalSeqRecDataset(BaseDataset):
 
         # 路径
         self.image_root = os.path.join(self.data_path, args.image_path)
-        self.item2id_path = os.path.join(self.data_path, f"{args.dataset}.item2id")
+        self.item2id_path = os.path.join(
+            self.data_path, f"{args.dataset}.item2id"
+        )
 
         # 加载数据
         self._load_data()
@@ -404,7 +423,9 @@ class MultimodalSeqRecDataset(BaseDataset):
     # ------------------------------------------------------------------
     def _load_data(self):
         # 交互序列：{uid: [iid1, iid2, ...]}
-        with open(os.path.join(self.data_path, f"{self.dataset}.inter.json")) as f:
+        with open(
+            os.path.join(self.data_path, f"{self.dataset}.inter.json")
+        ) as f:
             self.raw_inters = json.load(f)
 
         total_inters = len(self.raw_inters)
@@ -573,13 +594,19 @@ class FusionSeqRecDataset(BaseDataset):
 
     def _load_data(self):
         # 加载用户交互数据
-        with open(os.path.join(self.data_path, self.dataset + ".inter.json")) as f:
+        with open(
+            os.path.join(self.data_path, self.dataset + ".inter.json")
+        ) as f:
             self.inters = json.load(f)
         # 加载物品索引数据
-        with open(os.path.join(self.data_path, self.dataset + self.index_file)) as f:
+        with open(
+            os.path.join(self.data_path, self.dataset + self.index_file)
+        ) as f:
             self.indices = json.load(f)
         # 加载物品特征数据
-        with open(os.path.join(self.data_path, self.dataset + ".item.json")) as f:
+        with open(
+            os.path.join(self.data_path, self.dataset + ".item.json")
+        ) as f:
             self.item_feat = json.load(f)
 
     def _process_train_data(self):
@@ -594,7 +621,9 @@ class FusionSeqRecDataset(BaseDataset):
                     self.indices[str(items[i])]
                 )  # 目标物品的token形式
                 one_data["title"] = (
-                    self.item_feat[str(items[i])]["title"].strip().strip(".!?,;:`")
+                    self.item_feat[str(items[i])]["title"]
+                    .strip()
+                    .strip(".!?,;:`")
                 )  # 目标物品的标题
                 one_data["description"] = self.item_feat[str(items[i])][
                     "description"
@@ -606,7 +635,9 @@ class FusionSeqRecDataset(BaseDataset):
                     "".join(self.indices[str(j)]) for j in history
                 ]  # 历史物品的token形式
                 inter_titles = [
-                    '"' + self.item_feat[str(j)]["title"].strip().strip(".!?,;:`") + '"'
+                    '"'
+                    + self.item_feat[str(j)]["title"].strip().strip(".!?,;:`")
+                    + '"'
                     for j in history
                 ]  # 历史物品的标题
 
@@ -627,7 +658,9 @@ class FusionSeqRecDataset(BaseDataset):
         # 如果指定了采样数量，则进行采样
         if self.sample_num > 0:
             all_inter_idx = range(len(inter_data))
-            sample_idx = np.random.choice(all_inter_idx, self.sample_num, replace=False)
+            sample_idx = np.random.choice(
+                all_inter_idx, self.sample_num, replace=False
+            )
             inter_data = np.array(inter_data)[sample_idx].tolist()
 
         return inter_data
@@ -642,20 +675,25 @@ class FusionSeqRecDataset(BaseDataset):
             one_data["title"] = (
                 self.item_feat[str(items[-2])]["title"].strip().strip(".!?,;:`")
             )
-            one_data["description"] = self.item_feat[str(items[-2])]["description"]
+            one_data["description"] = self.item_feat[str(items[-2])][
+                "description"
+            ]
 
             history = items[:-2]
             if self.max_his_len > 0:
                 history = history[-self.max_his_len :]
             inters = ["".join(self.indices[str(j)]) for j in history]
             inter_titles = [
-                '"' + self.item_feat[str(j)]["title"].strip().strip(".!?,;:`") + '"'
+                '"'
+                + self.item_feat[str(j)]["title"].strip().strip(".!?,;:`")
+                + '"'
                 for j in history
             ]
 
             if self.add_prefix:
                 inters = [
-                    str(k + 1) + ". " + item_idx for k, item_idx in enumerate(inters)
+                    str(k + 1) + ". " + item_idx
+                    for k, item_idx in enumerate(inters)
                 ]
                 inter_titles = [
                     str(k + 1) + ". " + item_title
@@ -668,7 +706,9 @@ class FusionSeqRecDataset(BaseDataset):
 
         if self.sample_num > 0:
             all_inter_idx = range(len(inter_data))
-            sample_idx = np.random.choice(all_inter_idx, self.sample_num, replace=False)
+            sample_idx = np.random.choice(
+                all_inter_idx, self.sample_num, replace=False
+            )
             inter_data = np.array(inter_data)[sample_idx].tolist()
 
         return inter_data
@@ -683,20 +723,25 @@ class FusionSeqRecDataset(BaseDataset):
             one_data["title"] = (
                 self.item_feat[str(items[-1])]["title"].strip().strip(".!?,;:`")
             )
-            one_data["description"] = self.item_feat[str(items[-1])]["description"]
+            one_data["description"] = self.item_feat[str(items[-1])][
+                "description"
+            ]
 
             history = items[:-1]
             if self.max_his_len > 0:
                 history = history[-self.max_his_len :]
             inters = ["".join(self.indices[str(j)]) for j in history]
             inter_titles = [
-                '"' + self.item_feat[str(j)]["title"].strip().strip(".!?,;:`") + '"'
+                '"'
+                + self.item_feat[str(j)]["title"].strip().strip(".!?,;:`")
+                + '"'
                 for j in history
             ]
 
             if self.add_prefix:
                 inters = [
-                    str(k + 1) + ". " + item_idx for k, item_idx in enumerate(inters)
+                    str(k + 1) + ". " + item_idx
+                    for k, item_idx in enumerate(inters)
                 ]
                 inter_titles = [
                     str(k + 1) + ". " + item_title
@@ -709,7 +754,9 @@ class FusionSeqRecDataset(BaseDataset):
 
         if self.sample_num > 0:
             all_inter_idx = range(len(inter_data))
-            sample_idx = np.random.choice(all_inter_idx, self.sample_num, replace=False)
+            sample_idx = np.random.choice(
+                all_inter_idx, self.sample_num, replace=False
+            )
             inter_data = np.array(inter_data)[sample_idx].tolist()
 
         return inter_data
@@ -846,10 +893,14 @@ class ItemFeatDataset(BaseDataset):
 
     def _load_data(self):
         # 加载物品索引文件
-        with open(os.path.join(self.data_path, self.dataset + self.index_file)) as f:
+        with open(
+            os.path.join(self.data_path, self.dataset + self.index_file)
+        ) as f:
             self.indices = json.load(f)
         # 加载物品特征文件
-        with open(os.path.join(self.data_path, self.dataset + ".item.json")) as f:
+        with open(
+            os.path.join(self.data_path, self.dataset + ".item.json")
+        ) as f:
             self.item_feat = json.load(f)
 
     def _process_data(self):
@@ -882,7 +933,9 @@ class ItemFeatDataset(BaseDataset):
         # 如果指定了采样数量，则进行采样
         if self.sample_num > 0 and len(feat_data) > self.sample_num:
             all_idx = range(len(feat_data))
-            sample_idx = np.random.choice(all_idx, self.sample_num, replace=False)
+            sample_idx = np.random.choice(
+                all_idx, self.sample_num, replace=False
+            )
             feat_data = np.array(feat_data)[sample_idx].tolist()
 
         if self.local_rank == 0:
@@ -929,7 +982,11 @@ class ItemFeatDataset(BaseDataset):
     def __len__(self):
         # 返回数据集长度
         if self.mode == "valid":
-            return len(self.valid_text_data) if hasattr(self, "valid_text_data") else 0
+            return (
+                len(self.valid_text_data)
+                if hasattr(self, "valid_text_data")
+                else 0
+            )
         return len(self.feat_data) * self.prompt_sample_num
 
     def _get_text_data(self, data, prompt):
@@ -994,8 +1051,12 @@ class MultimodalDataset(BaseDataset):
         self.sample_num = sample_num
         self.args = args
         self.image_path = os.path.join(self.data_path, args.image_path)
-        self.item_meta_path = os.path.join(self.data_path, f"{args.dataset}.item.json")
-        self.item2id_path = os.path.join(self.data_path, f"{args.dataset}.item2id")
+        self.item_meta_path = os.path.join(
+            self.data_path, f"{args.dataset}.item.json"
+        )
+        self.item2id_path = os.path.join(
+            self.data_path, f"{args.dataset}.item2id"
+        )
 
         # 根据任务类型选择对应的prompts
         if self.task == "mmitem2index":
@@ -1016,7 +1077,10 @@ class MultimodalDataset(BaseDataset):
             self.sample_valid = args.sample_valid
             self.valid_prompt_id = args.valid_prompt_id
             self._construct_valid_text()
-            if self.sample_num > 0 and len(self.multimodal_data) > self.sample_num:
+            if (
+                self.sample_num > 0
+                and len(self.multimodal_data) > self.sample_num
+            ):
                 self.valid_text_data = self.valid_text_data[: self.sample_num]
 
     def _load_item_metadata(self):
@@ -1069,7 +1133,9 @@ class MultimodalDataset(BaseDataset):
                 "highlights": ", ".join(metadata.get("highlights", []))
                 if isinstance(metadata.get("highlights"), list)
                 else metadata.get("highlights", ""),
-                "characteristics": ", ".join(metadata.get("characteristics", []))
+                "characteristics": ", ".join(
+                    metadata.get("characteristics", [])
+                )
                 if isinstance(metadata.get("characteristics"), list)
                 else metadata.get("characteristics", ""),
                 "image_path": image_path,
@@ -1086,7 +1152,9 @@ class MultimodalDataset(BaseDataset):
             sampled_indices = np.random.choice(
                 len(self.multimodal_data), self.sample_num, replace=False
             )
-            self.multimodal_data = [self.multimodal_data[i] for i in sampled_indices]
+            self.multimodal_data = [
+                self.multimodal_data[i] for i in sampled_indices
+            ]
 
     def _get_text_data(self, data: dict, prompt: dict) -> tuple[str, str, str]:
         """构造文本数据，并返回图片路径"""
@@ -1129,7 +1197,9 @@ class MultimodalDataset(BaseDataset):
             prompt = self.prompts[self.valid_prompt_id]
             for i in range(len(self.multimodal_data)):
                 data = self.multimodal_data[i]
-                input_text, label_text, image_path = self._get_text_data(data, prompt)
+                input_text, label_text, image_path = self._get_text_data(
+                    data, prompt
+                )
                 self.valid_text_data.append(
                     TrainingSample(
                         input_text=input_text,
@@ -1143,7 +1213,11 @@ class MultimodalDataset(BaseDataset):
     def __len__(self):
         # 返回数据集长度
         if self.mode == "valid":
-            return len(self.valid_text_data) if hasattr(self, "valid_text_data") else 0
+            return (
+                len(self.valid_text_data)
+                if hasattr(self, "valid_text_data")
+                else 0
+            )
         return len(self.multimodal_data) * self.prompt_sample_num
 
     def __getitem__(self, index):
@@ -1196,7 +1270,9 @@ class TextEnrichDataset(BaseDataset):
         self.item_meta_path = os.path.join(
             self.data_path, f"{args.dataset}.item_enriched_v2.json"
         )
-        self.item2id_path = os.path.join(self.data_path, f"{args.dataset}.item2id")
+        self.item2id_path = os.path.join(
+            self.data_path, f"{args.dataset}.item2id"
+        )
 
         # TextEnrich任务的prompts
         self.prompts = all_prompt["text_enrich"]
@@ -1264,7 +1340,9 @@ class TextEnrichDataset(BaseDataset):
                 ]:
                     if key not in metadata:
                         if self.local_rank == 0:
-                            self.log_func(f"item_id: {item_id} 的metadata中缺少 {key}")
+                            self.log_func(
+                                f"item_id: {item_id} 的metadata中缺少 {key}"
+                            )
                 continue
 
             image_file = f"{self.id2item[item_id]}.jpg"
@@ -1295,16 +1373,22 @@ class TextEnrichDataset(BaseDataset):
             )
             self.textenrich_data.append(enriched_data)
         if self.local_rank == 0:
-            self.log_func(f"len(self.textenrich_data): {len(self.textenrich_data)}")
+            self.log_func(
+                f"len(self.textenrich_data): {len(self.textenrich_data)}"
+            )
 
         # 数据采样, 调试的时候调用
         if self.sample_num > 0 and len(self.textenrich_data) > self.sample_num:
             sampled_indices = np.random.choice(
                 len(self.textenrich_data), self.sample_num, replace=False
             )
-            self.textenrich_data = [self.textenrich_data[i] for i in sampled_indices]
+            self.textenrich_data = [
+                self.textenrich_data[i] for i in sampled_indices
+            ]
 
-    def _get_text_data(self, data: EnrichedData, prompt: dict) -> tuple[str, str, str]:
+    def _get_text_data(
+        self, data: EnrichedData, prompt: dict
+    ) -> tuple[str, str, str]:
         """构造文本数据"""
         # data现在是一个EnrichedData对象，但prompt.format期望一个字典
         # dataclasses.asdict() 可以很好地处理这个问题
@@ -1363,7 +1447,9 @@ class TextEnrichWihtoutItemIDDataset(BaseDataset):
         self.item_meta_path = os.path.join(
             self.data_path, f"{args.dataset}.item_enriched_v2.json"
         )
-        self.item2id_path = os.path.join(self.data_path, f"{args.dataset}.item2id")
+        self.item2id_path = os.path.join(
+            self.data_path, f"{args.dataset}.item2id"
+        )
 
         # TextEnrich任务的prompts
         self.prompts = all_prompt["text_enrich_without_id"]
@@ -1438,7 +1524,9 @@ class TextEnrichWihtoutItemIDDataset(BaseDataset):
                 ]:
                     if key not in metadata:
                         if self.local_rank == 0:
-                            self.log_func(f"item_id: {item_id} 的metadata中缺少 {key}")
+                            self.log_func(
+                                f"item_id: {item_id} 的metadata中缺少 {key}"
+                            )
                 continue
 
             image_file = f"{self.id2item[item_id]}.jpg"
@@ -1469,9 +1557,13 @@ class TextEnrichWihtoutItemIDDataset(BaseDataset):
             )
             self.textenrich_data.append(enriched_data)
         if self.local_rank == 0:
-            self.log_func(f"len(self.textenrich_data): {len(self.textenrich_data)}")
+            self.log_func(
+                f"len(self.textenrich_data): {len(self.textenrich_data)}"
+            )
 
-    def _get_text_data(self, data: EnrichedData, prompt: dict) -> tuple[str, str, str]:
+    def _get_text_data(
+        self, data: EnrichedData, prompt: dict
+    ) -> tuple[str, str, str]:
         """构造文本数据"""
         # data现在是一个EnrichedData对象，但prompt.format期望一个字典
         # dataclasses.asdict() 可以很好地处理这个问题
@@ -1553,7 +1645,9 @@ class SeqRectWithoutItemIDDataset_1(BaseDataset):
 
     def _load_data(self):
         # 加载用户交互数据
-        with open(os.path.join(self.data_path, self.dataset + ".inter.json")) as f:
+        with open(
+            os.path.join(self.data_path, self.dataset + ".inter.json")
+        ) as f:
             self.inters = json.load(f)
         total_inters = len(self.inters)
         if self.local_rank == 0:
@@ -1576,7 +1670,9 @@ class SeqRectWithoutItemIDDataset_1(BaseDataset):
         # 处理训练数据：构建历史交互和目标物品对
         inter_data = []
         for uid in self.remapped_inters:
-            items = self.remapped_inters[uid][:-2]  # 移除最后两个物品（验证和测试）
+            items = self.remapped_inters[uid][
+                :-2
+            ]  # 移除最后两个物品（验证和测试）
             for i in range(1, len(items)):
                 one_data = dict()
                 one_data["item"] = items[i]  # 当前目标物品
@@ -1588,7 +1684,9 @@ class SeqRectWithoutItemIDDataset_1(BaseDataset):
                         str(k + 1) + ". " + item_idx
                         for k, item_idx in enumerate(history)
                     ]  # 添加前缀
-                one_data["inters"] = self.his_sep.join(history)  # 用分隔符连接历史记录
+                one_data["inters"] = self.his_sep.join(
+                    history
+                )  # 用分隔符连接历史记录
                 inter_data.append(one_data)
         return inter_data
 
@@ -1604,7 +1702,8 @@ class SeqRectWithoutItemIDDataset_1(BaseDataset):
                 history = history[-self.max_his_len :]
             if self.add_prefix:
                 history = [
-                    str(k + 1) + ". " + item_idx for k, item_idx in enumerate(history)
+                    str(k + 1) + ". " + item_idx
+                    for k, item_idx in enumerate(history)
                 ]
             one_data["inters"] = self.his_sep.join(history)
             inter_data.append(one_data)
@@ -1622,7 +1721,8 @@ class SeqRectWithoutItemIDDataset_1(BaseDataset):
                 history = history[-self.max_his_len :]
             if self.add_prefix:
                 history = [
-                    str(k + 1) + ". " + item_idx for k, item_idx in enumerate(history)
+                    str(k + 1) + ". " + item_idx
+                    for k, item_idx in enumerate(history)
                 ]
             one_data["inters"] = self.his_sep.join(history)
             inter_data.append(one_data)
@@ -1630,7 +1730,9 @@ class SeqRectWithoutItemIDDataset_1(BaseDataset):
         # 如果指定了采样数量，则进行采样
         if self.sample_num > 0:
             all_inter_idx = range(len(inter_data))
-            sample_idx = np.random.choice(all_inter_idx, self.sample_num, replace=False)
+            sample_idx = np.random.choice(
+                all_inter_idx, self.sample_num, replace=False
+            )
             inter_data = np.array(inter_data)[sample_idx].tolist()
         return inter_data
 
@@ -1768,9 +1870,13 @@ class SeqRecWithTitleDataset(BaseDataset):
 
     def _load_data(self):
         # 加载用户交互数据
-        with open(os.path.join(self.data_path, self.dataset + ".inter.json")) as f:
+        with open(
+            os.path.join(self.data_path, self.dataset + ".inter.json")
+        ) as f:
             self.inters = json.load(f)
-        with open(os.path.join(self.data_path, self.dataset + ".item.json")) as f:
+        with open(
+            os.path.join(self.data_path, self.dataset + ".item.json")
+        ) as f:
             self.items = json.load(f)
         total_inters = len(self.inters)
         if self.local_rank == 0:
@@ -1786,14 +1892,18 @@ class SeqRecWithTitleDataset(BaseDataset):
         # 将用户交互序列中的物品ID映射为对应的token字符串
         self.remapped_inters = dict()
         for uid, items in self.inters.items():
-            new_items = [f"<title>{self.items[str(i)]['title']}</title>" for i in items]
+            new_items = [
+                f"<title>{self.items[str(i)]['title']}</title>" for i in items
+            ]
             self.remapped_inters[uid] = new_items
 
     def _process_train_data(self):
         # 处理训练数据：构建历史交互和目标物品对
         inter_data = []
         for uid in self.remapped_inters:
-            items = self.remapped_inters[uid][:-2]  # 移除最后两个物品（验证和测试）
+            items = self.remapped_inters[uid][
+                :-2
+            ]  # 移除最后两个物品（验证和测试）
             for i in range(1, len(items)):
                 one_data = dict()
                 one_data["item"] = items[i]  # 当前目标物品
@@ -1805,7 +1915,9 @@ class SeqRecWithTitleDataset(BaseDataset):
                         str(k + 1) + ". " + item_idx
                         for k, item_idx in enumerate(history)
                     ]  # 添加前缀
-                one_data["inters"] = self.his_sep.join(history)  # 用分隔符连接历史记录
+                one_data["inters"] = self.his_sep.join(
+                    history
+                )  # 用分隔符连接历史记录
                 inter_data.append(one_data)
         return inter_data
 
@@ -1821,7 +1933,8 @@ class SeqRecWithTitleDataset(BaseDataset):
                 history = history[-self.max_his_len :]
             if self.add_prefix:
                 history = [
-                    str(k + 1) + ". " + item_idx for k, item_idx in enumerate(history)
+                    str(k + 1) + ". " + item_idx
+                    for k, item_idx in enumerate(history)
                 ]
             one_data["inters"] = self.his_sep.join(history)
             inter_data.append(one_data)
@@ -1839,7 +1952,8 @@ class SeqRecWithTitleDataset(BaseDataset):
                 history = history[-self.max_his_len :]
             if self.add_prefix:
                 history = [
-                    str(k + 1) + ". " + item_idx for k, item_idx in enumerate(history)
+                    str(k + 1) + ". " + item_idx
+                    for k, item_idx in enumerate(history)
                 ]
             one_data["inters"] = self.his_sep.join(history)
             inter_data.append(one_data)
@@ -1847,7 +1961,9 @@ class SeqRecWithTitleDataset(BaseDataset):
         # 如果指定了采样数量，则进行采样
         if self.sample_num > 0:
             all_inter_idx = range(len(inter_data))
-            sample_idx = np.random.choice(all_inter_idx, self.sample_num, replace=False)
+            sample_idx = np.random.choice(
+                all_inter_idx, self.sample_num, replace=False
+            )
             inter_data = np.array(inter_data)[sample_idx].tolist()
         return inter_data
 
@@ -1948,10 +2064,13 @@ if __name__ == "__main__":
     dataset = MultimodalSeqRecDataset(args, mode="test")
     print(dataset[0])
 
-    from src.collator import MultiModalCollator
     from transformers import AutoProcessor
 
-    processor = AutoProcessor.from_pretrained("./ckpt/base_model/Qwen2-VL-2B-Instruct")
+    from src.collator import MultiModalCollator
+
+    processor = AutoProcessor.from_pretrained(
+        "./ckpt/base_model/Qwen2-VL-2B-Instruct"
+    )
 
     tokenizer = processor.tokenizer
     collator = MultiModalCollator(args, processor_or_tokenizer=processor)

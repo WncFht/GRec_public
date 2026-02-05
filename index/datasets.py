@@ -32,7 +32,9 @@ class EmbDataset(data.Dataset):
 class MultiEmbDataset(data.Dataset):
     def __init__(self, data_paths):
         if not data_paths:
-            raise ValueError("data_paths must be a non-empty list of .npy paths")
+            raise ValueError(
+                "data_paths must be a non-empty list of .npy paths"
+            )
 
         self.data_paths = list(data_paths)
         self.embeddings_list = []
@@ -70,7 +72,9 @@ class MultiEmbDataset(data.Dataset):
             raise IndexError("index out of range")
 
         dataset_idx = bisect_right(self.cumulative_sizes, idx)
-        start = 0 if dataset_idx == 0 else self.cumulative_sizes[dataset_idx - 1]
+        start = (
+            0 if dataset_idx == 0 else self.cumulative_sizes[dataset_idx - 1]
+        )
         local_idx = idx - start
         return self.embeddings_list[dataset_idx][local_idx]
 

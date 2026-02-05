@@ -67,8 +67,12 @@ def main(args: argparse.Namespace):
         return text.strip()
 
     tokenizer = get_tokenizer(processor)
-    print(f"Using eos_token: {tokenizer.eos_token} (ID: {tokenizer.eos_token_id})")
-    print(f"Using pad_token: {tokenizer.pad_token} (ID: {tokenizer.pad_token_id})")
+    print(
+        f"Using eos_token: {tokenizer.eos_token} (ID: {tokenizer.eos_token_id})"
+    )
+    print(
+        f"Using pad_token: {tokenizer.pad_token} (ID: {tokenizer.pad_token_id})"
+    )
 
     # 测试最后5个样本
     for i in range(max(0, length - 5), length):
@@ -108,9 +112,13 @@ def main(args: argparse.Namespace):
 
         # 解码所有结果
         tokenizer = (
-            processor.tokenizer if hasattr(processor, "tokenizer") else processor
+            processor.tokenizer
+            if hasattr(processor, "tokenizer")
+            else processor
         )
-        output_texts = tokenizer.batch_decode(output_ids, skip_special_tokens=False)
+        output_texts = tokenizer.batch_decode(
+            output_ids, skip_special_tokens=False
+        )
 
         input_len = inputs["input_ids"].shape[1]
         print(f"input 长度: {input_len}")
@@ -134,7 +142,9 @@ def main(args: argparse.Namespace):
             # )
 
         # 检查是否命中
-        responses = [clean_text(text.split(split_word)[-1]) for text in output_texts]
+        responses = [
+            clean_text(text.split(split_word)[-1]) for text in output_texts
+        ]
         # remove the blank in responses
         if target_text[0] in responses:
             print(f"✓ 命中! 排名: {responses.index(target_text[0]) + 1}")

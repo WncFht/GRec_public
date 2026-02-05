@@ -32,7 +32,9 @@ def main():
         "--batch_size", type=int, default=10000, help="inference batch size"
     )
     parser.add_argument(
-        "--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu"
+        "--device",
+        type=str,
+        default="cuda" if torch.cuda.is_available() else "cpu",
     )
     parser.add_argument(
         "--n_layers",
@@ -58,11 +60,15 @@ def main():
             state_dict = checkpoint
 
         # Infer model parameters
-        n_layers = sum(1 for k in state_dict.keys() if k.startswith("centroids."))
+        n_layers = sum(
+            1 for k in state_dict.keys() if k.startswith("centroids.")
+        )
         first_centroid = state_dict["centroids.0"]
         codebook_size, dim = first_centroid.shape
 
-        model = ResKmeans(n_layers=n_layers, codebook_size=codebook_size, dim=dim)
+        model = ResKmeans(
+            n_layers=n_layers, codebook_size=codebook_size, dim=dim
+        )
         model.load_state_dict(state_dict)
     else:
         raise ValueError("Unknown checkpoint format")
@@ -87,13 +93,17 @@ def main():
             codes = model.encode(batch, n_layers=args.n_layers)
             all_codes.append(codes.cpu())
             if (i // args.batch_size) % 10 == 0:
-                print(f"  Processed {min(i + args.batch_size, len(emb))}/{len(emb)}")
+                print(
+                    f"  Processed {min(i + args.batch_size, len(emb))}/{len(emb)}"
+                )
 
     all_codes = torch.cat(all_codes, dim=0)
     print(f"Output codes shape: {all_codes.shape}")
 
     # Save results to parquet
-    output_path = args.output_path or args.emb_path.rsplit(".", 1)[0] + "_codes.parquet"
+    output_path = (
+        args.output_path or args.emb_path.rsplit(".", 1)[0] + "_codes.parquet"
+    )
     df_out = pd.DataFrame({"pid": pids, "codes": all_codes.numpy().tolist()})
     df_out.to_parquet(output_path, index=False)
     print(f"Codes saved to {output_path}")

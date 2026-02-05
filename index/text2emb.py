@@ -101,17 +101,27 @@ def generate_item_embedding(
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    def _mean_pool_last_hidden(last_hidden: torch.Tensor, attention_mask: torch.Tensor):
-        mask = attention_mask.unsqueeze(-1).to(dtype=last_hidden.dtype)  # [B, S, 1]
+    def _mean_pool_last_hidden(
+        last_hidden: torch.Tensor, attention_mask: torch.Tensor
+    ):
+        mask = attention_mask.unsqueeze(-1).to(
+            dtype=last_hidden.dtype
+        )  # [B, S, 1]
         sum_embeddings = torch.sum(
             last_hidden * mask, dim=1, dtype=torch.float32
         )  # [B, D]
-        sum_mask = torch.clamp(mask.sum(dim=1, dtype=torch.float32), min=1e-9)  # [B, 1]
+        sum_mask = torch.clamp(
+            mask.sum(dim=1, dtype=torch.float32), min=1e-9
+        )  # [B, 1]
         return sum_embeddings / sum_mask
 
-    final_prefix = os.path.join(args.root, f"{args.dataset}.emb-{args.plm_name}-td")
+    final_prefix = os.path.join(
+        args.root, f"{args.dataset}.emb-{args.plm_name}-td"
+    )
     part_dir = getattr(args, "tmp_dir", None) or args.root
-    out_prefix = os.path.join(part_dir, f"{args.dataset}.emb-{args.plm_name}-td")
+    out_prefix = os.path.join(
+        part_dir, f"{args.dataset}.emb-{args.plm_name}-td"
+    )
     run_id = getattr(args, "run_id", None) or "default"
 
     part_emb_path = f"{out_prefix}.{run_id}.part{process_index}.npy"
@@ -139,7 +149,9 @@ def generate_item_embedding(
             "shape": shape,
         }
         write_header = getattr(
-            np.lib.format, "write_array_header_2_0", np.lib.format.write_array_header_1_0
+            np.lib.format,
+            "write_array_header_2_0",
+            np.lib.format.write_array_header_1_0,
         )
         write_header(fp, header)
 
@@ -154,7 +166,9 @@ def generate_item_embedding(
                 processed_batch = []
                 for text in batch_texts:
                     sent = text.split(" ")
-                    new_sent = [wd for wd in sent if random.random() > word_drop_ratio]
+                    new_sent = [
+                        wd for wd in sent if random.random() > word_drop_ratio
+                    ]
                     processed_batch.append(" ".join(new_sent))
                 batch_texts = processed_batch
 
@@ -170,9 +184,13 @@ def generate_item_embedding(
                 input_ids = encoded_sentences.input_ids
                 attention_mask = encoded_sentences.attention_mask
 
-                outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+                outputs = model(
+                    input_ids=input_ids, attention_mask=attention_mask
+                )
                 last_hidden = outputs.last_hidden_state
-                mean_output = _mean_pool_last_hidden(last_hidden, attention_mask)
+                mean_output = _mean_pool_last_hidden(
+                    last_hidden, attention_mask
+                )
             except torch.cuda.OutOfMemoryError:
                 if accelerator.is_local_main_process:
                     print(
@@ -194,7 +212,9 @@ def generate_item_embedding(
                 emb_dim = int(mean_np.shape[1])
                 os.makedirs(os.path.dirname(part_emb_tmp) or ".", exist_ok=True)
                 emb_fp = open(part_emb_tmp, "wb")
-                _write_npy_header(emb_fp, (len(local_texts), emb_dim), dtype=np.float32)
+                _write_npy_header(
+                    emb_fp, (len(local_texts), emb_dim), dtype=np.float32
+                )
 
             emb_fp.write(mean_np.tobytes(order="C"))
             rows_written += int(mean_np.shape[0])
@@ -206,7 +226,9 @@ def generate_item_embedding(
     pbar.close()
 
     if emb_fp is None:
-        raise ValueError("No embeddings were generated; please check input text data.")
+        raise ValueError(
+            "No embeddings were generated; please check input text data."
+        )
     emb_fp.close()
 
     if rows_written != len(local_texts):
@@ -300,10 +322,16 @@ def generate_item_embedding(
     offset = 0
     for r in range(num_processes):
         n_r = expected_counts[r]
-        print(f"Merging part {r}/{num_processes - 1} (rows={n_r})...", flush=True)
+        print(
+            f"Merging part {r}/{num_processes - 1} (rows={n_r})...", flush=True
+        )
         p_emb = np.load(f"{out_prefix}.{run_id}.part{r}.npy")
         p_emb = np.squeeze(p_emb)
-        if p_emb.ndim != 2 or int(p_emb.shape[0]) != n_r or int(p_emb.shape[1]) != dim:
+        if (
+            p_emb.ndim != 2
+            or int(p_emb.shape[0]) != n_r
+            or int(p_emb.shape[1]) != dim
+        ):
             raise ValueError(
                 f"Part {r} shape mismatch: got {p_emb.shape}, expected ({n_r}, {dim})"
             )
@@ -353,7 +381,9 @@ def generate_item_embedding(
 
 def load_qwen_model(model_path):
     print("Loading Qwen Model:", model_path)
-    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_path, trust_remote_code=True
+    )
     try:
         model = AutoModel.from_pretrained(
             model_path,

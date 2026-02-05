@@ -557,7 +557,10 @@ class UnifiedTrainer:
         )
 
         # 编译模型（如果支持）
-        if version.parse(torch.__version__) >= version.parse("2.0.0") and sys.platform != "win32":
+        if (
+            version.parse(torch.__version__) >= version.parse("2.0.0")
+            and sys.platform != "win32"
+        ):
             self.logger.info("Compiling model with torch.compile()...")
             model = torch.compile(model)
 

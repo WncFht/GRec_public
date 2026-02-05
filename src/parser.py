@@ -38,7 +38,9 @@ def parse_rl_args(
 ) -> argparse.ArgumentParser:
     rl_parser = parser.add_argument_group("rl_args")
 
-    rl_parser.add_argument("--base_model", type=str, default="", help="Base Model.")
+    rl_parser.add_argument(
+        "--base_model", type=str, default="", help="Base Model."
+    )
     rl_parser.add_argument(
         "--output_dir",
         type=str,
@@ -444,7 +446,9 @@ def parse_train_args(
         action="store_true",
         default=False,
     )
-    train_args.add_argument("--gradient_accumulation_steps", type=int, default=1)
+    train_args.add_argument(
+        "--gradient_accumulation_steps", type=int, default=1
+    )
     train_args.add_argument("--logging_step", type=int, default=1)
     train_args.add_argument("--model_max_length", type=int, default=2048)
     train_args.add_argument("--weight_decay", type=float, default=0.01)
@@ -477,7 +481,9 @@ def parse_train_args(
 
     train_args.add_argument("--warmup_ratio", type=float, default=0.01)
     train_args.add_argument("--lr_scheduler_type", type=str, default="cosine")
-    train_args.add_argument("--save_and_eval_strategy", type=str, default="epoch")
+    train_args.add_argument(
+        "--save_and_eval_strategy", type=str, default="epoch"
+    )
     train_args.add_argument("--save_and_eval_steps", type=float, default=1000)
     train_args.add_argument(
         "--eval_by_dataset",
@@ -500,7 +506,9 @@ def parse_train_args(
     )
     train_args.add_argument("--fp16", action="store_true", default=False)
     train_args.add_argument("--bf16", action="store_true", default=False)
-    train_args.add_argument("--deepspeed", type=str, default="./config/ds_z3_bf16.json")
+    train_args.add_argument(
+        "--deepspeed", type=str, default="./config/ds_z3_bf16.json"
+    )
 
     train_args.add_argument(
         "--train_prompt_sample_num",
