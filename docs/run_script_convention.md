@@ -301,3 +301,48 @@ sbatch --job-name "${RUN_ID}" runs/generated/sft_text/20260205/${RUN_ID}.sh
 - 在集群场景中，建议再加一层“脚本生成器”来产出最终提交脚本（本规范即该生成器的命名与目录约束）。
 - 这样既保留模板维护便利性，也满足并发实验的可追踪与可复现。
 
+
+---
+
+## 13. 仓库内已落地生成器
+
+当前仓库已提供脚本生成器：
+
+- `scripts/tools/gen_run.sh`
+
+你可以直接用它按本规范生成运行脚本（含 `RUN_KEY / RUN_ID / output_dir / log / wandb` 命名）。
+
+### 13.1 SFT 示例
+
+```bash
+bash scripts/tools/gen_run.sh \
+  --stage sft_text \
+  --dataset Instruments \
+  --tasks item2index,seqrec \
+  --base-model ckpt/base_model/Qwen2.5-3B-Instruct \
+  --model-type qwen2_5_instruct \
+  --index-file .index_qwen3-embedding-4B.json \
+  --set PER_DEVICE_BATCH_SIZE=8 \
+  --set GRAD_ACC=4
+```
+
+### 13.2 RL 示例
+
+```bash
+bash scripts/tools/gen_run.sh \
+  --stage rl \
+  --dataset Instruments \
+  --tasks seqrec \
+  --base-model ckpt/Instruments/qwen2.5-sft/checkpoint-1234 \
+  --model-type qwen2_5_instruct \
+  --index-file .index_qwen3-embedding-4B.json \
+  --set REWARD_TYPE=ranking \
+  --set NUM_GENERATIONS=16
+```
+
+### 13.3 产物位置
+
+- 运行脚本：`runs/generated/<stage>/<yyyymmdd>/<RUN_ID>.sh`
+- 参数快照：`runs/specs/<stage>/<yyyymmdd>/<RUN_ID>.env`
+- 元信息：`runs/meta/<stage>/<yyyymmdd>/<RUN_ID>.txt`
+

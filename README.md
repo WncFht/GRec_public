@@ -25,6 +25,7 @@ GRec 聚焦**多模态生成式推荐**。整体流水线是：
 - `src/`：训练/评测核心代码（SFT、RL、SeqRec metric、Text generation 等）
 - `scripts/`：一键/模板脚本（finetune、seqrec、text_generate、rl…）
   - 统一模板入口说明：`scripts/finetune/README.md`、`scripts/rl/README.md`
+  - 集群脚本生成器：`scripts/tools/gen_run.sh`（见 `scripts/tools/README.md`）
 - `config/`：deepspeed/accelerate 配置与 benchmark 配置
 
 ---
