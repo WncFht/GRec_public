@@ -45,7 +45,7 @@ def test(args: argparse.Namespace):
     rank, world_size, local_rank = setup_distributed()
     device = torch.device("cuda", local_rank)
 
-    set_seed(args.seed)
+    set_seed(args.seed, deterministic=getattr(args, "deterministic", False))
 
     # 只在主进程打印参数
     if rank == 0:

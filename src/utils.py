@@ -630,15 +630,32 @@ def get_local_time():
     return cur
 
 
-def set_seed(seed):
+def set_seed(seed: int, deterministic: bool = False):
+    """设置随机种子。
+
+    默认走性能优先路径（启用 cuDNN 与 benchmark）；当 deterministic=True 时，
+    再切换到严格可复现模式（通常会更慢）。
+    """
+
     random.seed(seed)
     np.random.seed(seed)
+    torch.manual_seed(seed)
+
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.enabled = False
+
+    # 默认性能优先，避免此前强制关闭 cuDNN 导致的吞吐下降
+    torch.backends.cudnn.enabled = True
+    torch.backends.cudnn.benchmark = not deterministic
+    torch.backends.cudnn.deterministic = deterministic
+
+    # PyTorch 全局确定性开关（当 deterministic=False 时显式关闭）
+    if hasattr(torch, "use_deterministic_algorithms"):
+        try:
+            torch.use_deterministic_algorithms(deterministic, warn_only=True)
+        except TypeError:
+            torch.use_deterministic_algorithms(deterministic)
 
 
 def ensure_dir(dir_path):
@@ -894,9 +911,39 @@ def load_datasets(args: argparse.Namespace, logger=None, local_rank=0):
     return train_data, valid_data
 
 
+class TestConcatDataset(ConcatDataset):
+    """支持测试阶段常用接口的 ConcatDataset 包装。"""
+
+    def set_prompt(self, prompt_id: int) -> None:
+        for dataset in self.datasets:
+            if hasattr(dataset, "set_prompt"):
+                dataset.set_prompt(prompt_id)
+
+    def get_all_items(self) -> set[str]:
+        all_items: set[str] = set()
+        for dataset in self.datasets:
+            get_all_items = getattr(dataset, "get_all_items", None)
+            if callable(get_all_items):
+                all_items.update(get_all_items())
+        return all_items
+
+    def get_prefix_allowed_tokens_fn(self, tokenizer):
+        from .generation_trie import Trie, prefix_allowed_tokens_fn
+
+        all_items = self.get_all_items()
+        candidate_trie = Trie(
+            [[0] + tokenizer.encode(candidate) for candidate in all_items]
+        )
+        return prefix_allowed_tokens_fn(candidate_trie)
+
+
 def load_test_dataset(args: argparse.Namespace, logger=None, local_rank=0):
-    """根据配置加载测试数据集"""
+    """根据配置加载测试数据集；支持多数据集合并评测。"""
     dataset_list = [d.strip() for d in args.dataset.split(",") if d.strip()]
+    if not dataset_list:
+        raise ValueError("`--dataset` is empty. Please provide at least one dataset name.")
+
+    test_datasets = []
     for dataset in dataset_list:
         if args.test_task.lower() == "seqrec":
             test_data = SeqRecDataset(
@@ -953,7 +1000,17 @@ def load_test_dataset(args: argparse.Namespace, logger=None, local_rank=0):
         else:
             raise NotImplementedError
 
-    return test_data
+        test_datasets.append(test_data)
+
+    if len(test_datasets) == 1:
+        return test_datasets[0]
+
+    log_func = logger.info if logger else print
+    if local_rank == 0:
+        log_func(
+            f"Loaded {len(test_datasets)} test datasets; using TestConcatDataset for unified evaluation."
+        )
+    return TestConcatDataset(test_datasets)
 
 
 def load_json(file):

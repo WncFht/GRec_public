@@ -73,7 +73,10 @@ class UnifiedTrainer:
 
     def _setup_environment(self):
         """设置训练环境"""
-        set_seed(self.args.seed)
+        set_seed(
+            self.args.seed,
+            deterministic=getattr(self.args, "deterministic", False),
+        )
         ensure_dir(self.args.output_dir)
 
         if self.ddp:
@@ -261,6 +264,11 @@ class UnifiedTrainer:
             model.is_parallelizable = True
             model.model_parallel = True
 
+        # 编译模型（如果支持）
+        if torch.__version__ >= "2" and sys.platform != "win32":
+            self.logger.info("Compiling model with torch.compile()...")
+            model = torch.compile(model)
+
         # 获取训练参数
         training_args = self._get_training_args()
 
@@ -273,11 +281,6 @@ class UnifiedTrainer:
             processing_class=processor,
             data_collator=collator,
         )
-
-        # 编译模型（如果支持）
-        if torch.__version__ >= "2" and sys.platform != "win32":
-            self.logger.info("Compiling model with torch.compile()...")
-            model = torch.compile(model)
 
         # 开始训练
         self.logger.info("Starting training...")

@@ -14,7 +14,7 @@ from utils import *
 
 
 def train(args):
-    set_seed(args.seed)
+    set_seed(args.seed, deterministic=getattr(args, "deterministic", False))
     ensure_dir(args.output_dir)
 
     world_size = int(os.environ.get("WORLD_SIZE", 1))

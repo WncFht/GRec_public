@@ -548,7 +548,7 @@ def main():
     args = parser.parse_args()
 
     # 设置随机种子
-    set_seed(args.seed)
+    set_seed(args.seed, deterministic=getattr(args, "deterministic", False))
 
     print("=" * 80)
     print("LoRA模型文本生成评估测试")

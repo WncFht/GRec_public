@@ -18,7 +18,7 @@ from src.utils import load_model_for_inference, load_test_dataset, set_seed
 
 
 def test(args: argparse.Namespace):
-    set_seed(args.seed)
+    set_seed(args.seed, deterministic=getattr(args, "deterministic", False))
     print(vars(args))
 
     device = torch.device("cuda", args.gpu_id)

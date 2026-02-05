@@ -95,7 +95,7 @@ def test(args: argparse.Namespace):
         else torch.device("cpu")
     )
 
-    set_seed(args.seed)
+    set_seed(args.seed, deterministic=getattr(args, "deterministic", False))
     eval_split = getattr(args, "eval_split", "test")
     eval_split_lower = eval_split.lower()
 

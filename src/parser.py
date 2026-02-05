@@ -7,6 +7,12 @@ def parse_global_args(
     global_args = parser.add_argument_group("global_args")
     global_args.add_argument("--seed", type=int, default=42, help="Random seed")
     global_args.add_argument(
+        "--deterministic",
+        action="store_true",
+        default=False,
+        help="Enable deterministic algorithms (slower but reproducible)",
+    )
+    global_args.add_argument(
         "--model_type",
         type=str,
         default="qwen2_vl",

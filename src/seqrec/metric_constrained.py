@@ -188,7 +188,7 @@ def build_prefix_allowed_tokens_fn(hash_dict: Dict[str, List[int]]) -> Callable:
 
 
 def test(args: argparse.Namespace):
-    set_seed(args.seed)
+    set_seed(args.seed, deterministic=getattr(args, "deterministic", False))
     print(vars(args))
 
     eval_split = getattr(args, "eval_split", "test")

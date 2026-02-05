@@ -238,7 +238,10 @@ def main():
 
     # 设置随机种子
     _set_stage("set_seed_and_dirs")
-    set_seed(parsed_args.seed)
+    set_seed(
+        parsed_args.seed,
+        deterministic=getattr(parsed_args, "deterministic", False),
+    )
     ensure_dir(parsed_args.output_dir)
 
     # print(f"Run Name: {run_name}")
