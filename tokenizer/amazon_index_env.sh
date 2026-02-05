@@ -9,18 +9,18 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 : "${DATA_ROOT:=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/data}"
-: "${PLM_NAME:=qwen}"
+: "${PLM_NAME:=qwen3-embedding-8B}"
 
-# Datasets should match `index/scripts/text2emb.sh` by default.
+# Datasets should match src/GRec/index/amazon_text2emb.sh by default.
 : "${DATASETS_STR:=Arts Automotive Cell Games Instruments Pet Sports Tools Toys}"
 read -r -a DATASETS <<< "$DATASETS_STR"
 
 # Tokenizer config
 : "${N_LAYERS:=3}"
-: "${CODEBOOK_SIZE:=8192}"
+: "${CODEBOOK_SIZE:=2048}"
 # DIM is only used as an upper bound for slicing; train script will auto-detect and warn/override if mismatch.
-: "${DIM:=2560}"
-: "${NITER:=20}"
+: "${DIM:=4096}"
+: "${NITER:=200}"
 : "${MAX_TRAIN_POINTS:=0}"
 : "${MAX_POINTS_PER_CENTROID:=256}"
 : "${FAISS_GPU:=1}"

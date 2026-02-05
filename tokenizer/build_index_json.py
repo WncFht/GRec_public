@@ -10,7 +10,7 @@ from res_kmeans import ResKmeans
 
 def _load_ids(ids_path: str) -> list:
     if ids_path.endswith(".json"):
-        with open(ids_path, "r", encoding="utf-8") as f:
+        with open(ids_path, encoding="utf-8") as f:
             ids = json.load(f)
         if not isinstance(ids, list):
             raise ValueError(f"Expected a JSON list in {ids_path}")
@@ -22,7 +22,7 @@ def _load_ids(ids_path: str) -> list:
         return ids.tolist()
 
     if ids_path.endswith(".txt"):
-        with open(ids_path, "r", encoding="utf-8") as f:
+        with open(ids_path, encoding="utf-8") as f:
             return [line.strip() for line in f if line.strip()]
 
     raise ValueError(f"Unsupported ids_path format: {ids_path}")
@@ -81,7 +81,9 @@ def codes_to_tokens(codes: np.ndarray) -> list[list[str]]:
     # codes: [N, L]
     n_layers = codes.shape[1]
     if n_layers > 26:
-        raise ValueError(f"Too many layers for a-z prefixes: n_layers={n_layers}")
+        raise ValueError(
+            f"Too many layers for a-z prefixes: n_layers={n_layers}"
+        )
     out: list[list[str]] = []
     for row in codes:
         toks = []
@@ -97,10 +99,16 @@ def main():
         description="Export OpenOneRec-style index JSON from embeddings."
     )
     parser.add_argument(
-        "--model_path", type=str, required=True, help="ResKmeans checkpoint path"
+        "--model_path",
+        type=str,
+        required=True,
+        help="ResKmeans checkpoint path",
     )
     parser.add_argument(
-        "--emb_path", type=str, required=True, help="Embedding path (.npy or .parquet)"
+        "--emb_path",
+        type=str,
+        required=True,
+        help="Embedding path (.npy or .parquet)",
     )
     parser.add_argument(
         "--ids_path",
@@ -118,7 +126,9 @@ def main():
         "--batch_size", type=int, default=10000, help="Inference batch size"
     )
     parser.add_argument(
-        "--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu"
+        "--device",
+        type=str,
+        default="cuda" if torch.cuda.is_available() else "cpu",
     )
     parser.add_argument(
         "--n_layers",
@@ -159,6 +169,25 @@ def main():
     if len(ids) != n:
         raise ValueError(
             f"ids length mismatch: len(ids)={len(ids)} vs num_embeddings={n}"
+        )
+
+    # Clean NaN/Inf once, and keep ids in sync
+    finite_mask = np.isfinite(emb).all(axis=1)
+    num_bad = int(n - finite_mask.sum())
+    if num_bad > 0:
+        print(
+            f"[warn] Found {num_bad} rows with NaN/Inf in embeddings, dropping them for export."
+        )
+        bad_indices = np.nonzero(~finite_mask)[0][:10]
+        print(
+            f"[warn] First bad row indices (up to 10): {bad_indices.tolist()}"
+        )
+        emb = emb[finite_mask]
+        # Keep ids aligned with embeddings
+        ids = [ids[i] for i in range(len(ids)) if finite_mask[i]]
+        n = int(emb.shape[0])
+        print(
+            f"[info] Clean embeddings shape for export: {emb.shape}, ids: {len(ids)}"
         )
 
     out: dict[str, list[str]] = {}

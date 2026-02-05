@@ -4,7 +4,7 @@ set -euo pipefail
 # Train ONE ResKmeans tokenizer on multiple Amazon datasets' embeddings,
 # then export per-dataset index JSON files under each dataset directory.
 #
-# Expected embedding outputs (from `index/text2emb.py` / `index/scripts/text2emb.sh`):
+# Expected embedding outputs (from src/GRec/index/amazon_text2emb.py):
 #   $DATA_ROOT/$DATASET/${DATASET}.emb-${PLM_NAME}-td.npy
 #   $DATA_ROOT/$DATASET/${DATASET}.emb-${PLM_NAME}-td.ids.json   (recommended)
 #

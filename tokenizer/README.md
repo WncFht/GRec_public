@@ -6,9 +6,9 @@
 > 如果你在看 GRec 的另一套 `index/`：它是 **RQVAE（深度模型）** 的离散化；本目录是 **纯 KMeans 的 residual quantization**（更轻、更接近 OpenOneRec 官方 tokenizer）。
 
 核心目标（对应你的需求）：
-- 从 `index/text2emb.py` 产出的 `.npy embedding` 出发
+- 从 `amazon_text2emb.py` 产出的 `.npy embedding` 出发
 - **统一**在多个数据集上训练一个 tokenizer（shared index space）
-- 为 `index/scripts/text2emb.sh` 里的所有数据集，分别导出 `Dataset.index_*.json`
+- 为 `amazon_text2emb.sh` 里的所有数据集，分别导出 `Dataset.index_*.json`
 
 ## 架构：Residual K-Means Tokenizer 在做什么
 
@@ -89,17 +89,17 @@ $DATA_ROOT/Automotive/
 
 ### 1) 先抽取 embedding（amazon_text2emb）
 
-脚本在 `index/scripts/text2emb.sh`，默认会为每个数据集生成：
+脚本在 `src/GRec/index/amazon_text2emb.sh`，默认会为每个数据集生成：
 
 - `$DATA_ROOT/<DATASET>/<DATASET>.emb-${PLM_NAME}-td.npy`
 - `$DATA_ROOT/<DATASET>/<DATASET>.emb-${PLM_NAME}-td.ids.json`（用于保持 item_id 与 embedding 行对齐，强烈建议保留）
 
-示例（在项目根目录下执行）：
+示例（在 `src/GRec/index/` 下执行）：
 
 ```bash
 export HOME_DIR=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian
 export PLM_NAME=qwen3-embedding-4B
-bash index/scripts/text2emb.sh
+bash amazon_text2emb.sh
 ```
 
 ### 2) 统一训练 tokenizer（shared index）
@@ -111,19 +111,6 @@ DATA_ROOT=/mnt/.../data \
 PLM_NAME=qwen3-embedding-4B \
 MAX_TRAIN_POINTS=200000 \
 bash amazon_train_and_export_index.sh
-```
-
-脚本已拆分为多个子步骤脚本，你也可以按需只跑其中一段：
-
-```bash
-# 只检查输入文件是否齐全
-bash amazon_train_and_export_index.sh check
-
-# 只训练 tokenizer（输出到 $TOKENIZER_OUT/model.pt）
-bash amazon_train_and_export_index.sh train
-
-# 只导出每个数据集的 *.index_*.json（需要已有 tokenizer）
-MODEL_PT=/path/to/model.pt bash amazon_train_and_export_index.sh export
 ```
 
 说明：
@@ -195,7 +182,7 @@ python3 build_index_json.py \
 ## 常见坑
 
 - 训练 tokenizer 时如果直接用全量多数据集 embedding，可能非常占内存；优先用 `--max_train_points` 采样。
-- 强烈建议保留 `text2emb.py` 导出的 `*.ids.json`，否则默认用 `0..N-1` 作为 item_id，可能和原始 item_id 不一致。
+- 强烈建议保留 `amazon_text2emb.py` 导出的 `*.ids.json`，否则默认用 `0..N-1` 作为 item_id，可能和原始 item_id 不一致。
 
 ## 和 `../index/` 的核心区别（什么时候选哪个）
 
