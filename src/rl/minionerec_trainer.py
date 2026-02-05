@@ -565,20 +565,20 @@ class ReReTrainer(Trainer):
             print(f"self.temperature: {self.temperature}")
             self.generation_config = GenerationConfig(
                 max_new_tokens=self.max_completion_length,
-                length_penalty=self.length_penalty,
                 num_beams=self.num_generations,
                 num_return_sequences=self.num_generations,
                 pad_token_id=processing_class.pad_token_id,
                 eos_token_id=processing_class.eos_token_id,
-                # temperature=self.temperature,
-                # do_sample=True, # if self.temperature > 1.0 else False,
+                do_sample=True, # if self.temperature > 1.0 else False,
+                temperature=1.0,
+                top_k=None,
+                top_p=None,
             )
         else:
             self.generation_config = GenerationConfig(
                 max_new_tokens=self.max_completion_length,
-                length_penalty=self.length_penalty,
                 do_sample=True,
-                temperature=args.temperature,
+                temperature=self.temperature,
                 pad_token_id=processing_class.pad_token_id,
                 eos_token_id=processing_class.eos_token_id,
             )
@@ -615,10 +615,12 @@ class ReReTrainer(Trainer):
 
         self.test_generation_config = GenerationConfig(
             max_new_tokens=self.max_completion_length,
-            length_penalty=self.length_penalty,
             num_beams=self.test_beam,
             num_return_sequences=self.test_beam,
-            do_sample=False,
+            temperature=1.0,
+            do_sample=True,
+            top_k=None,
+            top_p=None,
             pad_token_id=self.processing_class.pad_token_id,
             eos_token_id=self.processing_class.eos_token_id,
         )

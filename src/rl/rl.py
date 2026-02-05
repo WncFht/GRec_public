@@ -327,7 +327,7 @@ def main():
     # 这个函数封装了: Tokenizer, Resize Embeddings, LoRA, Freeze
 
     _set_stage("load_model_for_training")
-    model, processor, orig_vocab, new_vocab, _, embedding_hooks = (
+    model, processor, orig_vocab, new_vocab, new_tokens, embedding_hooks = (
         load_model_for_training(
             args=parsed_args,
             local_rank=int(os.environ.get("LOCAL_RANK", 0)),
@@ -348,6 +348,18 @@ def main():
             model.config.pad_token_id = tokenizer.eos_token_id
     print(f"Using eos_token: {tokenizer.eos_token} (ID: {tokenizer.eos_token_id})")
     print(f"Using pad_token: {tokenizer.pad_token} (ID: {tokenizer.pad_token_id})")
+
+    if parsed_args.debug_prefix_index:
+        debug_prefix_index(tokenizer, parsed_args.base_model)
+        return
+
+    if new_tokens and len(new_tokens) > 0:
+        _log(
+            f"Tokenizer extended with {len(new_tokens)} new tokens. "
+            "If you are resuming from an SFT checkpoint, this often means the current "
+            "`--index_file/--dataset` token space differs from what the checkpoint was trained on, "
+            "and rule/ndcg rewards may become ~0 due to exact-match evaluation."
+        )
 
     # 注册 tokenizer 并初始化奖励函数所需的上下文
     if initialize_reward_functions(
