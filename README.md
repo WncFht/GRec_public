@@ -13,6 +13,7 @@ GRec 聚焦**多模态生成式推荐**。整体流水线是：
 - 测试：`docs/test_readme.md`
 - 数据处理：`docs/dataprocess_readme.md`
 - Notebook：`docs/notebook_readme.md`
+- 集群脚本与命名规范：`docs/run_script_convention.md`
 
 ---
 
@@ -23,6 +24,7 @@ GRec 聚焦**多模态生成式推荐**。整体流水线是：
 - `tokenizer/`：SID 方式 B（Residual KMeans，OpenOneRec-style tokenizer）
 - `src/`：训练/评测核心代码（SFT、RL、SeqRec metric、Text generation 等）
 - `scripts/`：一键/模板脚本（finetune、seqrec、text_generate、rl…）
+  - 统一模板入口说明：`scripts/finetune/README.md`、`scripts/rl/README.md`
 - `config/`：deepspeed/accelerate 配置与 benchmark 配置
 
 ---

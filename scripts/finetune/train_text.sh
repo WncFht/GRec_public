@@ -23,38 +23,42 @@ export CUDA_LAUNCH_BLOCKING="${CUDA_LAUNCH_BLOCKING:-0}"
 
 DATASET="${DATASET:-Instruments}"
 DATA_PATH="${DATA_PATH:-./data}"
-BASE_MODEL="${BASE_MODEL:-ckpt/base_model/llava-hf/llava-onevision-qwen2-7b-ov-hf}"
-MODEL_TYPE="${MODEL_TYPE:-llava_onevision}"
-OUTPUT_DIR="${OUTPUT_DIR:-./ckpt/${DATASET}/llava-onevision-sft}"
+BASE_MODEL="${BASE_MODEL:-ckpt/base_model/Qwen2.5-3B-Instruct}"
+MODEL_TYPE="${MODEL_TYPE:-qwen2_5_instruct}"
+OUTPUT_DIR="${OUTPUT_DIR:-./ckpt/${DATASET}/qwen2.5-3b-sft}"
 
 GPUS="${GPUS:-0,1,2,3}"
 NPROC="${NPROC:-4}"
-MASTER_PORT="${MASTER_PORT:-33325}"
+MASTER_PORT="${MASTER_PORT:-33326}"
 
 SEED="${SEED:-42}"
-PER_DEVICE_BATCH_SIZE="${PER_DEVICE_BATCH_SIZE:-4}"
-GRAD_ACC="${GRAD_ACC:-2}"
+PER_DEVICE_BATCH_SIZE="${PER_DEVICE_BATCH_SIZE:-8}"
+GRAD_ACC="${GRAD_ACC:-4}"
 NUM_WORKERS="${NUM_WORKERS:-16}"
 LEARNING_RATE="${LEARNING_RATE:-5e-5}"
-EPOCHS="${EPOCHS:-5}"
+EPOCHS="${EPOCHS:-2}"
 WEIGHT_DECAY="${WEIGHT_DECAY:-0.01}"
+LR_SCHEDULER_TYPE="${LR_SCHEDULER_TYPE:-cosine}"
 SAVE_AND_EVAL_STRATEGY="${SAVE_AND_EVAL_STRATEGY:-epoch}"
 SAVE_AND_EVAL_STEPS="${SAVE_AND_EVAL_STEPS:-1000}"
 DEEPSPEED_CONFIG="${DEEPSPEED_CONFIG:-./config/ds_z2_bf16.json}"
 
-TASKS="${TASKS:-item2index,seqrec,index2item,fusionseqrec}"
-TRAIN_PROMPT_SAMPLE_NUM="${TRAIN_PROMPT_SAMPLE_NUM:-1,1,1,1}"
-TRAIN_DATA_SAMPLE_NUM="${TRAIN_DATA_SAMPLE_NUM:-0,0,0,0}"
+TASKS="${TASKS:-item2index,seqrec}"
+TRAIN_PROMPT_SAMPLE_NUM="${TRAIN_PROMPT_SAMPLE_NUM:-1,1}"
+TRAIN_DATA_SAMPLE_NUM="${TRAIN_DATA_SAMPLE_NUM:-0,0}"
 RATIO_DATASET="${RATIO_DATASET:-1}"
-INDEX_FILE="${INDEX_FILE:-.index_qwen7B.json}"
+INDEX_FILE="${INDEX_FILE:-.index_qwen3-embedding-4B.json}"
 
 USE_LORA="${USE_LORA:-false}"
 LORA_MODULES_TO_SAVE="${LORA_MODULES_TO_SAVE:-embed_tokens,lm_head}"
-FREEZE="${FREEZE:-visual}"
+FREEZE="${FREEZE:-}"
 ONLY_TRAIN_RESPONSE="${ONLY_TRAIN_RESPONSE:-true}"
 USE_GRADIENT_CHECKPOINTING="${USE_GRADIENT_CHECKPOINTING:-true}"
 REPORT_TO="${REPORT_TO:-wandb}"
 DETERMINISTIC="${DETERMINISTIC:-false}"
+
+EVAL_BY_DATASET="${EVAL_BY_DATASET:-false}"
+EVAL_MAIN_DATASET="${EVAL_MAIN_DATASET:-}"
 
 mkdir -p "${OUTPUT_DIR}"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
@@ -70,19 +74,20 @@ COMMON_ARGS=(
     --per_device_batch_size "${PER_DEVICE_BATCH_SIZE}"
     --gradient_accumulation_steps "${GRAD_ACC}"
     --num_workers "${NUM_WORKERS}"
+    --lr_scheduler_type "${LR_SCHEDULER_TYPE}"
     --learning_rate "${LEARNING_RATE}"
     --epochs "${EPOCHS}"
-    --weight_decay "${WEIGHT_DECAY}"
     --save_and_eval_strategy "${SAVE_AND_EVAL_STRATEGY}"
     --save_and_eval_steps "${SAVE_AND_EVAL_STEPS}"
+    --weight_decay "${WEIGHT_DECAY}"
     --deepspeed "${DEEPSPEED_CONFIG}"
     --bf16
     --tasks "${TASKS}"
     --train_prompt_sample_num "${TRAIN_PROMPT_SAMPLE_NUM}"
     --train_data_sample_num "${TRAIN_DATA_SAMPLE_NUM}"
     --ratio_dataset "${RATIO_DATASET}"
-    --report_to "${REPORT_TO}"
     --index_file "${INDEX_FILE}"
+    --report_to "${REPORT_TO}"
 )
 
 if [[ "${USE_GRADIENT_CHECKPOINTING}" == "true" ]]; then
@@ -105,19 +110,27 @@ if [[ "${DETERMINISTIC}" == "true" ]]; then
     COMMON_ARGS+=(--deterministic)
 fi
 
-echo "[finetune/vl] OUTPUT_DIR=${OUTPUT_DIR}"
-echo "[finetune/vl] LOG_FILE=${LOG_FILE}"
-echo "[finetune/vl] MODEL_TYPE=${MODEL_TYPE} TASKS=${TASKS}"
+if [[ "${EVAL_BY_DATASET}" == "true" ]]; then
+    COMMON_ARGS+=(--eval_by_dataset)
+    if [[ -n "${EVAL_MAIN_DATASET}" ]]; then
+        COMMON_ARGS+=(--eval_main_dataset "${EVAL_MAIN_DATASET}")
+    fi
+fi
+
+echo "[finetune/text] OUTPUT_DIR=${OUTPUT_DIR}"
+echo "[finetune/text] LOG_FILE=${LOG_FILE}"
+echo "[finetune/text] MODEL_TYPE=${MODEL_TYPE} TASKS=${TASKS}"
 
 if [[ "${DEBUG}" == "true" ]]; then
     export CUDA_VISIBLE_DEVICES="${DEBUG_GPU:-0}"
-    python -m src.finetune.train_ddp_vl "${COMMON_ARGS[@]}" --debug
+    python -m src.finetune.train_ddp "${COMMON_ARGS[@]}" --debug
 else
     export CUDA_VISIBLE_DEVICES="${GPUS}"
     nohup torchrun --nproc_per_node="${NPROC}" --master_port="${MASTER_PORT}" \
-        -m src.finetune.train_ddp_vl "${COMMON_ARGS[@]}" >"${LOG_FILE}" 2>&1 &
+        -m src.finetune.train_ddp "${COMMON_ARGS[@]}" >"${LOG_FILE}" 2>&1 &
     PID=$!
     echo "Training started with PID=${PID}"
     echo "${PID}" >"${OUTPUT_DIR}/training.pid"
     echo "tail -f ${LOG_FILE}"
 fi
+
