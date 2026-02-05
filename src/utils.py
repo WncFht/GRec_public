@@ -88,6 +88,11 @@ MODEL_CONFIG = {
         "processor_class": AutoTokenizer,
         "from_pretrained_kwargs": {},
     },
+    "qwen2_instruct": {
+        "model_class": AutoModelForCausalLM,
+        "processor_class": AutoTokenizer,
+        "from_pretrained_kwargs": {},
+    },
 }
 
 
@@ -247,7 +252,14 @@ def _load_processor_and_tokenizer(args, config, base_model_path, local_rank, log
         log_func(f"从 '{base_model_path}' 加载处理器/分词器...")
 
     # 特殊处理文本模型
-    if args.model_type in ["qwen2", "qwen2_5", "llama", "qwen", "qwen2_5_instruct"]:
+    if args.model_type in [
+        "qwen2",
+        "qwen2_5",
+        "llama",
+        "qwen",
+        "qwen2_5_instruct",
+        "qwen2_instruct",
+    ]:
         tokenizer = AutoTokenizer.from_pretrained(
             base_model_path,
             use_fast=True,
@@ -891,6 +903,8 @@ def load_datasets(args: argparse.Namespace, logger=None, local_rank=0):
                 if local_rank == 0:
                     log_func(f"Task: {task} - valid sample nums: {len(valid_dataset)}")
         train_data = ConcatDataset(train_datasets)
+        requires_eval = str(getattr(args, "save_and_eval_strategy", "epoch")).lower() != "no"
+
         if eval_by_dataset:
             valid_data = {}
             for ds in dataset_list:
@@ -898,14 +912,29 @@ def load_datasets(args: argparse.Namespace, logger=None, local_rank=0):
                 if not parts:
                     continue
                 valid_data[ds] = parts[0] if len(parts) == 1 else ConcatDataset(parts)
+            if not valid_data and requires_eval:
+                raise ValueError(
+                    "No validation datasets were built. "
+                    "Set --save_and_eval_strategy no or include tasks that support valid split."
+                )
         else:
-            valid_data = ConcatDataset(valid_datasets)
+            if valid_datasets:
+                valid_data = ConcatDataset(valid_datasets)
+            else:
+                if requires_eval:
+                    raise ValueError(
+                        "No validation datasets were built. "
+                        "Set --save_and_eval_strategy no or include tasks that support valid split."
+                    )
+                valid_data = None
 
     if local_rank == 0:
         log_func(f"Train sample nums: {len(train_data)}")
         if isinstance(valid_data, dict):
             for ds, ds_valid in valid_data.items():
                 log_func(f"Valid[{ds}] sample nums: {len(ds_valid)}")
+        elif valid_data is None:
+            log_func("Valid sample nums: 0 (evaluation disabled)")
         else:
             log_func(f"Valid sample nums: {len(valid_data)}")
     return train_data, valid_data

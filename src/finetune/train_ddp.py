@@ -1,6 +1,7 @@
 import argparse
 import os
 import sys
+from packaging import version
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -163,6 +164,10 @@ class UnifiedTrainer:
         # 加载数据集
         train_data, valid_data = load_datasets(self.args, self.logger, self.local_rank)
         if bool(getattr(self.args, "eval_by_dataset", False)):
+            requires_eval = (
+                str(getattr(self.args, "save_and_eval_strategy", "epoch")).lower()
+                != "no"
+            )
             if not isinstance(valid_data, dict):
                 if self.local_rank == 0:
                     self.logger.warning(
@@ -171,18 +176,18 @@ class UnifiedTrainer:
                     )
             else:
                 self._eval_dataset_keys = list(valid_data.keys())
-                if not self._eval_dataset_keys:
+                if not self._eval_dataset_keys and requires_eval:
                     raise ValueError(
                         "--eval_by_dataset is set but no valid datasets were built."
                     )
-                if getattr(self.args, "eval_main_dataset", None) is None:
+                if self._eval_dataset_keys and getattr(self.args, "eval_main_dataset", None) is None:
                     self.args.eval_main_dataset = self._eval_dataset_keys[0]
-                if self.args.eval_main_dataset not in valid_data:
+                if self._eval_dataset_keys and self.args.eval_main_dataset not in valid_data:
                     raise ValueError(
                         f"--eval_main_dataset={self.args.eval_main_dataset!r} not found in "
                         f"valid datasets: {self._eval_dataset_keys}"
                     )
-                if self.local_rank == 0:
+                if self.local_rank == 0 and self._eval_dataset_keys:
                     self.logger.info(
                         f"Eval datasets: {self._eval_dataset_keys}; "
                         f"main={self.args.eval_main_dataset}"
@@ -328,7 +333,7 @@ class UnifiedTrainer:
         # 创建数据collator：文本模型使用 ChatTemplateCollator，多模态模型使用 MultiModalCollator
         if self.args.model_type in ["qwen", "qwen2", "qwen2_5", "llama"]:
             collator = Collator(self.args, processor)
-        elif self.args.model_type in ["qwen2_instrcut", "qwen2_5_instruct"]:
+        elif self.args.model_type in ["qwen2_instruct", "qwen2_5_instruct"]:
             collator = ChatTemplateCollator(self.args, processor)
         else:
             collator = MultiModalCollator(self.args, processor)
@@ -339,7 +344,7 @@ class UnifiedTrainer:
             model.model_parallel = True
 
         # 编译模型（如果支持）
-        if torch.__version__ >= "2" and sys.platform != "win32":
+        if version.parse(torch.__version__) >= version.parse("2.0.0") and sys.platform != "win32":
             self.logger.info("Compiling model with torch.compile()...")
             model = torch.compile(model)
 

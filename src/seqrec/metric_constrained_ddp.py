@@ -248,7 +248,7 @@ def test(args: argparse.Namespace):
 
     if args.model_type in ["qwen", "qwen2", "qwen2_5", "llama"]:
         collator = TestCollator(args, tokenizer=processor)
-    elif args.model_type in ["qwen2_instrcut", "qwen2_5_instruct"]:
+    elif args.model_type in ["qwen2_instruct", "qwen2_5_instruct"]:
         collator = ChatTemplateTestCollator(args, tokenizer=processor)
     else:
         collator = UnifiedTestCollator(args, processor_or_tokenizer=processor)

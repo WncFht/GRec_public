@@ -1,6 +1,7 @@
 import argparse
 import os
 import sys
+from packaging import version
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -310,7 +311,7 @@ class UnifiedTrainer:
             model.model_parallel = True
 
         # 编译模型（如果支持）
-        if torch.__version__ >= "2" and sys.platform != "win32":
+        if version.parse(torch.__version__) >= version.parse("2.0.0") and sys.platform != "win32":
             self.logger.info("Compiling model with torch.compile()...")
             model = torch.compile(model)
 
