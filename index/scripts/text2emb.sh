@@ -4,13 +4,13 @@ set -e
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 
 export HOME_DIR=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian
-MODEL_PATH="$HOME_DIR/ckpt/base_model/Qwen3-Embedding-4B"
-: "${PLM_NAME:=qwen3-embedding-4B}"
+MODEL_PATH="$HOME_DIR/ckpt/base_model/Llama-3.1-8B-Instruct"
+: "${PLM_NAME:=Llama-3.1-8B-Instruct}"
 : "${NUM_PROCESSES:=4}"
 : "${BATCH_SIZE:=256}"   # will auto-reduce on OOM
 : "${MAX_SENT_LEN:=2048}"
 : "${FORCE_REBUILD:=0}"  # set to 1 to overwrite existing embeddings
-: "${TMP_DIR:=}"         # optional, e.g. /tmp (faster/safer than network FS)
+: "${TMP_DIR:=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/temp}"         # optional, e.g. /tmp (faster/safer than network FS)
 
 # Helps avoid CUDA memory fragmentation on long runs.
 : "${PYTORCH_CUDA_ALLOC_CONF:=expandable_segments:True}"
@@ -27,6 +27,8 @@ for dataset in "${datasets[@]}"; do
     OUT_EMB="$DATASET_DIR/${dataset}.emb-${PLM_NAME}-td.npy"
     OUT_IDS="$DATASET_DIR/${dataset}.emb-${PLM_NAME}-td.ids.json"
 
+    echo $OUT_EMB
+    echo $OUT_IDS
     if [[ "$FORCE_REBUILD" != "1" && -f "$OUT_EMB" ]]; then
         if [[ -f "$OUT_IDS" ]]; then
             echo "Skip $dataset (embedding exists): $OUT_EMB"

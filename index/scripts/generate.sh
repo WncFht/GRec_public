@@ -1,17 +1,24 @@
 #!/bin/bash
 
-MODEL_NAME=llama
 
+MODEL_NAME=qwen3-embedding-4B
+
+ROOT_DIR=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian
 # 训练好的 ckpt（可以是单数据集训练，也可以是多数据集合并训练的 ckpt）
-CKPT_PATH=./data/Instruments/index/$MODEL_NAME/Jul-24-2025_14-55-51/best_collision_model.pth
+CKPT_PATH=$ROOT_DIR/GRec/data/Arts-Automotive-Cell-Games-Pet-Sports-Tools-Toys-Instruments/index/qwen3-embedding-4B/rq4_cb1024-1024-1024-1024/Jan-28-2026_05-54-58/epoch_49_collision_0.0576_util_1.0000_model.pth
+
+# 数据根目录（包含各数据集子目录）
+DATA_ROOT=$ROOT_DIR/data
 
 # 单数据集（兼容旧用法）：
 DATASET=Instruments
-DATA_PATH=./data/$DATASET/${DATASET}.emb-${MODEL_NAME}-td.npy
+DATA_PATH=$DATA_ROOT/$DATASET/${DATASET}.emb-${MODEL_NAME}-td.npy
 
-# 多数据集：把 DATASETS 填上，然后会按每个数据集分别生成 index 并落盘到各自目录
-DATASETS=() # 例如：(Arts Games Instruments)
+# 多数据集（推荐）：一次性联合导出，避免不同数据集之间 token 序列碰撞
+# 例如：(Arts Games Instruments)
+DATASETS=(Arts Automotive Cell Games Pet Sports Tools Toys Instruments)
 DATA_PATHS=() # 可选：手动指定多个 .npy 路径；留空则按默认规则拼接
+OUTPUT_SUFFIX=".index_${MODEL_NAME}.json"
 
 DEVICE=cuda:0
 BATCH_SIZE=64
@@ -19,8 +26,8 @@ BATCH_SIZE=64
 gen_one() {
   local dataset="$1"
   local data_path="$2"
-  local output_dir="./data/$dataset/index/"
-  local output_file="${dataset}.index_${MODEL_NAME}.json"
+  local output_dir="$DATA_ROOT/$dataset/"
+  local output_file="${dataset}${OUTPUT_SUFFIX}"
 
   python3 index/generate_indices.py \
     --dataset "$dataset" \
@@ -35,7 +42,7 @@ gen_one() {
 if [ ${#DATASETS[@]} -gt 0 ]; then
   if [ ${#DATA_PATHS[@]} -eq 0 ]; then
     for d in "${DATASETS[@]}"; do
-      DATA_PATHS+=("./data/$d/${d}.emb-${MODEL_NAME}-td.npy")
+      DATA_PATHS+=("$DATA_ROOT/$d/${d}.emb-${MODEL_NAME}-td.npy")
     done
   fi
 
@@ -44,9 +51,14 @@ if [ ${#DATASETS[@]} -gt 0 ]; then
     exit 1
   fi
 
-  for i in "${!DATASETS[@]}"; do
-    gen_one "${DATASETS[$i]}" "${DATA_PATHS[$i]}"
-  done
+  python3 index/generate_indices.py \
+    --datasets "${DATASETS[@]}" \
+    --ckpt_path "$CKPT_PATH" \
+    --data_paths "${DATA_PATHS[@]}" \
+    --output_dir "$DATA_ROOT" \
+    --output_suffix "$OUTPUT_SUFFIX" \
+    --device "$DEVICE" \
+    --batch_size "$BATCH_SIZE"
 else
   gen_one "$DATASET" "$DATA_PATH"
 fi

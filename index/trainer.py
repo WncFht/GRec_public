@@ -15,7 +15,11 @@ from transformers import (
 )
 from utils import delete_file, ensure_dir, get_local_time, set_color
 
-import wandb
+# wandb 变成可选依赖，没安装也能跑
+try:
+    import wandb  # type: ignore
+except ImportError:
+    wandb = None
 
 
 class Trainer:
@@ -30,7 +34,7 @@ class Trainer:
         参数:
             args: 包含各种配置参数的对象。
             model: 要训练的模型实例。
-            data_num: 训练数据集中的样本总数。
+            data_num: 训练数据集中的样本总数（以 step 数为单位，比如 len(dataloader)）。
         """
         self.args = args
         self.model = model
@@ -44,8 +48,14 @@ class Trainer:
         if self.distributed and not self.is_main_process:
             self.logger.setLevel(logging.WARNING)
 
-        # 是否使用 Weights & Biases 进行实验跟踪
-        self.use_wandb = getattr(self.args, "use_wandb", False) and self.is_main_process
+        # 是否使用 Weights & Biases 进行实验跟踪（可选）
+        want_wandb = getattr(self.args, "use_wandb", False)
+        self.use_wandb = bool(want_wandb and self.is_main_process and wandb is not None)
+        if want_wandb and wandb is None and self.is_main_process:
+            self.logger.warning(
+                "use_wandb=True 但未安装 wandb，自动关闭 wandb 日志。"
+            )
+
         if self.use_wandb:
             wandb_project = getattr(self.args, "wandb_project", "unifymmgrec")
             wandb_name = getattr(self.args, "wandb_name", None)
@@ -116,9 +126,6 @@ class Trainer:
     def _build_optimizer(self):
         """
         根据配置参数构建优化器。
-
-        返回:
-            torch.optim.Optimizer: 构建好的优化器实例。
         """
         params = self.model.parameters()  # 获取模型参数
         learner = self.learner
@@ -154,9 +161,6 @@ class Trainer:
     def _get_scheduler(self):
         """
         根据配置参数获取学习率调度器。
-
-        返回:
-            torch.optim.lr_scheduler._LRScheduler: 学习率调度器实例。
         """
         if self.lr_scheduler_type.lower() == "linear":
             # 线性预热和衰减的学习率调度器
@@ -173,18 +177,12 @@ class Trainer:
 
         return lr_scheduler
 
-    def _check_nan(self, loss):
+    def _check_nan(self, loss: torch.Tensor):
         """
-        检查损失是否为 NaN (非数字)。
-
-        参数:
-            loss: 模型的损失值。
-
-        抛出:
-            ValueError: 如果损失为 NaN。
+        检查损失是否为 NaN / Inf。
         """
-        if torch.isnan(loss):
-            raise ValueError("Training loss is nan")
+        if not torch.isfinite(loss):
+            raise ValueError("Training loss is NaN or Inf")
 
     def _train_epoch(self, train_data, epoch_idx):
         """
@@ -200,8 +198,8 @@ class Trainer:
         self.model.train()  # 设置模型为训练模式
         base_model = self._unwrap_model()
 
-        total_loss = 0
-        total_recon_loss = 0
+        total_loss = 0.0
+        total_recon_loss = 0.0
         # 使用 tqdm 显示训练进度条
         iter_data = tqdm(
             train_data,
@@ -212,17 +210,32 @@ class Trainer:
         )
         for batch_idx, data in enumerate(iter_data):
             data = data.to(self.device)  # 将数据移动到指定设备
+
+            # 过滤掉包含 NaN/Inf 的样本，避免训练过程出错
+            if not torch.isfinite(data).all():
+                flat_finite = torch.isfinite(data).view(data.size(0), -1)
+                finite_mask = flat_finite.all(dim=1)
+                num_bad = int((~finite_mask).sum().item())
+                if num_bad > 0 and self.is_main_process:
+                    self.logger.warning(
+                        f"Train epoch {epoch_idx}: dropping {num_bad} samples with NaN/Inf."
+                    )
+                data = data[finite_mask]
+                if data.size(0) == 0:
+                    continue
+
             self.optimizer.zero_grad()  # 清零梯度
             out, rq_loss, indices = self.model(data)  # 前向传播
             loss, loss_recon = base_model.compute_loss(
                 out, rq_loss, xs=data
             )  # 计算损失
-            self._check_nan(loss)  # 检查损失是否为 NaN
+            self._check_nan(loss)  # 检查损失是否为 NaN/Inf
             loss.backward()  # 反向传播
             # 梯度裁剪，防止梯度爆炸
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+            torch.nn.utils.clip_grad_norm_((self.model.parameters()), 1.0)
             self.optimizer.step()  # 更新模型参数
             self.scheduler.step()  # 更新学习率
+
             if self.use_wandb:
                 # 记录训练步的损失、重构损失和学习率到 WandB
                 wandb.log(
@@ -232,6 +245,7 @@ class Trainer:
                         "train_step/lr": self.scheduler.get_last_lr()[0],
                     }
                 )
+
             total_loss += loss.item()
             total_recon_loss += loss_recon.item()
 
@@ -263,12 +277,33 @@ class Trainer:
         all_indices = []  # 存储所有索引
         num_sample = 0  # 样本总数
         for batch_idx, data in enumerate(iter_data):
-            num_sample += len(data)
             data = data.to(self.device)
+
+            # 过滤掉包含 NaN/Inf 的样本，避免评估时出错
+            if not torch.isfinite(data).all():
+                flat_finite = torch.isfinite(data).view(data.size(0), -1)
+                finite_mask = flat_finite.all(dim=1)
+                num_bad = int((~finite_mask).sum().item())
+                if num_bad > 0 and self.is_main_process:
+                    self.logger.warning(
+                        f"Eval: dropping {num_bad} samples with NaN/Inf."
+                    )
+                data = data[finite_mask]
+                if data.size(0) == 0:
+                    continue
+
+            num_sample += data.size(0)
             indices = base_model.get_indices(data)  # 获取模型的索引
             # 将索引展平并移动到 CPU
             indices = indices.view(-1, indices.shape[-1]).cpu()
             all_indices.append(indices)
+
+        if not all_indices or num_sample == 0:
+            self.logger.warning(
+                "Validation got no valid samples (all NaN/Inf?). "
+                "Return collision_rate=1.0, avg_utilization=0.0."
+            )
+            return 1.0, 0.0
 
         all_indices = torch.cat(all_indices, dim=0).numpy()
 
@@ -294,7 +329,7 @@ class Trainer:
             if self.use_wandb:
                 wandb.log({f"eval/codebook_utilization_layer_{i}": utilization})
 
-        avg_utilization = np.mean(utilizations)
+        avg_utilization = float(np.mean(utilizations))
 
         return collision_rate, avg_utilization
 
@@ -303,15 +338,6 @@ class Trainer:
     ):
         """
         保存模型检查点。
-
-        参数:
-            epoch: 当前 epoch 的索引。
-            collision_rate: 当前评估的碰撞率。
-            avg_utilization: 当前评估的平均码本利用率。
-            ckpt_file: 可选的检查点文件名。如果未提供，则根据 epoch 和指标生成文件名。
-
-        返回:
-            str: 保存的检查点文件路径。
         """
         ckpt_path = (
             os.path.join(self.ckpt_dir, ckpt_file)
@@ -340,16 +366,6 @@ class Trainer:
     def _generate_train_loss_output(self, epoch_idx, s_time, e_time, loss, recon_loss):
         """
         生成训练损失的输出字符串。
-
-        参数:
-            epoch_idx: 当前 epoch 的索引。
-            s_time: 训练开始时间。
-            e_time: 训练结束时间。
-            loss: 总损失。
-            recon_loss: 重构损失。
-
-        返回:
-            str: 格式化的训练损失输出字符串。
         """
         train_loss_output = (
             set_color("epoch %d training", "green")
@@ -393,7 +409,7 @@ class Trainer:
                     # 从 DataLoader 中获取底层数据集，并随机抽取一个大的样本用于初始化
                     # 兼容 EmbDataset（有 .embeddings）与 MultiEmbDataset（无 .embeddings）
                     dataset = getattr(data, "dataset", data)
-                    init_size = min(20000, len(dataset))
+                    init_size = min(50000, len(dataset))
                     if init_size <= 0:
                         self.logger.warning(
                             "Skip LARGE SCALE K-Means initialization: empty dataset."
@@ -446,6 +462,19 @@ class Trainer:
                             init_data = torch.cat(collected, dim=0)[:init_size].to(
                                 self.device
                             )
+
+                    # 过滤掉初始化数据中的 NaN/Inf，避免 K-Means 初始化失败
+                    if init_data is not None and init_data.numel() > 0:
+                        flat_finite = torch.isfinite(init_data).view(
+                            init_data.size(0), -1
+                        )
+                        finite_mask = flat_finite.all(dim=1)
+                        num_bad = int((~finite_mask).sum().item())
+                        if num_bad > 0:
+                            self.logger.warning(
+                                f"LARGE SCALE K-Means init: dropping {num_bad} samples with NaN/Inf."
+                            )
+                            init_data = init_data[finite_mask]
 
                     # 执行一次前向传播以触发 K-Means 初始化
                     # 使用 no_grad 是因为我们只关心初始化，不需要计算梯度

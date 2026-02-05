@@ -34,7 +34,7 @@ def parse_args():
     parser.add_argument(
         "--num_workers",
         type=int,
-        default=4,
+        default=32,
     )
     parser.add_argument("--eval_step", type=int, default=50, help="eval step")
     parser.add_argument("--learner", type=str, default="AdamW", help="optimizer")
@@ -163,6 +163,52 @@ def _init_distributed(args):
     }
 
 
+def clean_dataset_embeddings(dataset):
+    """
+    清理数据集中的 NaN / Inf 样本（如果数据集有 .embeddings 属性）。
+    会就地修改 dataset.embeddings（以及可选的 dataset.ids），返回 (dataset, 删除行数)。
+    """
+    if not hasattr(dataset, "embeddings"):
+        return dataset, 0
+
+    emb = dataset.embeddings
+    num_bad = 0
+    mask = None
+
+    if isinstance(emb, np.ndarray):
+        mask = np.isfinite(emb).all(axis=1)
+        num_bad = int(emb.shape[0] - mask.sum())
+        if num_bad > 0:
+            print(
+                f"[warn] Dropping {num_bad} samples with NaN/Inf from dataset.embeddings (numpy)."
+            )
+            dataset.embeddings = emb[mask]
+    elif torch.is_tensor(emb):
+        flat_finite = torch.isfinite(emb).view(emb.size(0), -1)
+        mask = flat_finite.all(dim=1)
+        num_bad = int(emb.size(0) - int(mask.sum().item()))
+        if num_bad > 0:
+            print(
+                f"[warn] Dropping {num_bad} samples with NaN/Inf from dataset.embeddings (tensor)."
+            )
+            dataset.embeddings = emb[mask]
+    else:
+        # 未知类型就直接跳过
+        return dataset, 0
+
+    # 同步 ids（如果存在且长度对得上）
+    if mask is not None and hasattr(dataset, "ids"):
+        ids = getattr(dataset, "ids")
+        if isinstance(ids, (list, np.ndarray)) and len(ids) == len(mask):
+            if isinstance(mask, torch.Tensor):
+                mask_np = mask.cpu().numpy()
+            else:
+                mask_np = mask
+            dataset.ids = [id_ for id_, keep in zip(ids, mask_np) if keep]
+
+    return dataset, num_bad
+
+
 if __name__ == "__main__":
     """fix the random seed"""
     seed = 2024
@@ -194,6 +240,12 @@ if __name__ == "__main__":
         if len(train_paths) > 1
         else EmbDataset(train_paths[0])
     )
+
+    # 训练前清理数据中的 NaN / Inf 样本（如果数据集支持）
+    data, num_bad_global = clean_dataset_embeddings(data)
+    if is_main_process and num_bad_global > 0:
+        print(f"[info] Dropped {num_bad_global} invalid samples from training dataset.")
+
     model = RQVAE(
         in_dim=data.dim,
         num_emb_list=args.num_emb_list,

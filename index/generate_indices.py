@@ -11,58 +11,108 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 
-def check_collision(all_indices_str):
+def check_collision(all_keys):
     """
-    检查所有索引字符串是否存在碰撞（即重复）。
+    检查所有索引是否存在碰撞（即重复）。
 
     参数:
-        all_indices_str: 包含所有索引字符串的 NumPy 数组。
+        all_keys: 包含所有索引 key 的数组/列表（例如 tuple(int,...)）。
 
     返回:
         bool: 如果没有碰撞返回 True，否则返回 False。
     """
-    tot_item = len(all_indices_str)  # 总项目数
-    tot_indice = len(set(all_indices_str.tolist()))  # 唯一索引的数量
+    tot_item = len(all_keys)  # 总项目数
+    tot_indice = len(set(all_keys))  # 唯一索引的数量
     return tot_item == tot_indice  # 如果总项目数等于唯一索引数，则没有碰撞
 
 
-def get_indices_count(all_indices_str):
+def get_indices_count(all_keys):
     """
-    计算每个索引字符串出现的次数。
+    计算每个索引出现的次数。
 
     参数:
-        all_indices_str: 包含所有索引字符串的 NumPy 数组。
+        all_keys: 包含所有索引 key 的数组/列表（例如 tuple(int,...)）。
 
     返回:
         collections.defaultdict: 字典，键为索引字符串，值为其出现次数。
     """
     indices_count = collections.defaultdict(int)  # 使用 defaultdict 方便计数
-    for index in all_indices_str:
-        indices_count[index] += 1
+    for key in all_keys:
+        indices_count[key] += 1
     return indices_count
 
 
-def get_collision_item(all_indices_str):
+def get_collision_item(all_keys):
     """
     获取所有发生碰撞的项目的分组。
 
     参数:
-        all_indices_str: 包含所有索引字符串的 NumPy 数组。
+        all_keys: 包含所有索引 key 的数组/列表（例如 tuple(int,...)）。
 
     返回:
         list: 列表中的每个元素是一个列表，包含发生碰撞的项目索引。
     """
     index2id = {}  # 字典，用于存储索引到项目ID的映射
-    for i, index in enumerate(all_indices_str):
-        if index not in index2id:
-            index2id[index] = []
-        index2id[index].append(i)  # 将项目ID添加到对应索引的列表中
+    for i, key in enumerate(all_keys):
+        if key not in index2id:
+            index2id[key] = []
+        index2id[key].append(i)  # 将项目ID添加到对应索引的列表中
 
     # 只保留有冲突的item（即出现次数大于1的索引）
     collision_item_groups = [
         index2id[index] for index in index2id if len(index2id[index]) > 1
     ]
     return collision_item_groups
+
+
+def _parse_datasets_arg(single: str | None, multiple: list[str] | None) -> list[str]:
+    if multiple:
+        return [d.strip() for d in multiple if str(d).strip()]
+    if not single:
+        return []
+    return [d.strip() for d in str(single).split(",") if d.strip()]
+
+
+def _ensure_prefix(num_layers: int) -> list[str]:
+    prefix = ["<a_{}>", "<b_{}>", "<c_{}>", "<d_{}>", "<e_{}>"]
+    if num_layers > len(prefix):
+        raise ValueError(
+            f"num_layers={num_layers} exceeds supported prefix list size={len(prefix)}. "
+            "Please extend the prefix list in generate_indices.py."
+        )
+    return prefix[:num_layers]
+
+
+def _build_key(indices_row: np.ndarray) -> tuple[int, ...]:
+    return tuple(int(x) for x in indices_row.tolist())
+
+
+def _key_to_tokens(key: tuple[int, ...], prefix: list[str]) -> list[str]:
+    return [prefix[i].format(int(ind)) for i, ind in enumerate(key)]
+
+
+def _dataset_spans(
+    datasets: list[str], data: MultiEmbDataset
+) -> list[tuple[str, int, int]]:
+    if len(datasets) != len(data.embeddings_list):
+        raise ValueError(
+            f"--datasets length ({len(datasets)}) must match data_paths length ({len(data.embeddings_list)})."
+        )
+    spans: list[tuple[str, int, int]] = []
+    start = 0
+    for ds, emb in zip(datasets, data.embeddings_list, strict=False):
+        end = start + len(emb)
+        spans.append((ds, start, end))
+        start = end
+    return spans
+
+
+def _dataset_ids_for_global_indices(spans: list[tuple[str, int, int]], n: int) -> list[int]:
+    dataset_ids = [-1] * n
+    for ds_id, (_ds, start, end) in enumerate(spans):
+        for i in range(start, end):
+            dataset_ids[i] = ds_id
+    return dataset_ids
 
 
 def main(args):
@@ -75,19 +125,28 @@ def main(args):
     model_args = ckpt["args"]  # 从检查点中获取训练参数
     state_dict = ckpt["state_dict"]  # 从检查点中获取模型状态字典
 
+    datasets = _parse_datasets_arg(getattr(args, "dataset", None), getattr(args, "datasets", None))
+    multi_output = (len(datasets) > 1) and (getattr(args, "output_suffix", None) is not None)
+
+    if multi_output and getattr(args, "output_file", None) is not None:
+        raise ValueError("In multi-output mode, please use --output_suffix, not --output_file.")
+
     # 加载嵌入数据集：优先使用命令行传入的 data_path(s)，否则使用 checkpoint 中保存的 data_path(s)
-    if (
-        getattr(args, "data_paths", None) is not None
-        and getattr(args, "data_path", None) is not None
-    ):
+    if getattr(args, "data_paths", None) is not None and getattr(args, "data_path", None) is not None:
         raise ValueError("Please use either --data_path or --data_paths, not both.")
 
     if getattr(args, "data_paths", None) is not None:
-        data_paths = args.data_paths
+        data_paths = list(args.data_paths)
     elif getattr(args, "data_path", None) is not None:
         data_paths = [args.data_path]
     else:
         data_paths = getattr(model_args, "data_paths", None) or [model_args.data_path]
+
+    if multi_output and len(data_paths) != len(datasets):
+        raise ValueError(
+            f"Multi-output mode requires one --data_paths entry per dataset. "
+            f"Got datasets={len(datasets)}, data_paths={len(data_paths)}."
+        )
 
     data = (
         MultiEmbDataset(data_paths)
@@ -125,10 +184,10 @@ def main(args):
         pin_memory=True,  # 启用 pin_memory，加快数据传输到 GPU
     )
 
-    all_indices = []  # 存储所有索引的列表
-    all_indices_str = []  # 存储所有索引字符串的列表
-    # 定义用于构建索引字符串的前缀
-    prefix = ["<a_{}>", "<b_{}>", "<c_{}>", "<d_{}>", "<e_{}>"]
+    prefix = _ensure_prefix(len(model_args.num_emb_list))
+
+    all_indices = []  # 存储所有索引（int）的列表
+    all_keys: list[tuple[int, ...]] = []  # 用于碰撞检查的 key（tuple）
 
     # 遍历数据加载器，生成初始索引
     for d in tqdm(data_loader):
@@ -139,16 +198,12 @@ def main(args):
         # 将索引展平并转换为 numpy 数组
         indices = indices.view(-1, indices.shape[-1]).cpu().numpy()
         for index in indices:
-            code = []
-            for i, ind in enumerate(index):
-                code.append(prefix[i].format(int(ind)))  # 根据前缀和索引值构建代码
-
-            all_indices.append(code)
-            all_indices_str.append(str(code))
+            key = _build_key(index)
+            all_indices.append(index.tolist())
+            all_keys.append(key)
         # break
 
-    all_indices = np.array(all_indices)  # 将索引列表转换为 NumPy 数组
-    all_indices_str = np.array(all_indices_str)  # 将索引字符串列表转换为 NumPy 数组
+    all_indices = np.asarray(all_indices, dtype=np.int64)
 
     # 设置除最后一层外的 RQ 量化器的 Sinkhorn-Knopp epsilon 为 0
     for vq in model.rq.vq_layers[:-1]:
@@ -161,15 +216,29 @@ def main(args):
     tt = 0  # 迭代计数器
     # There are often duplicate items in the dataset, and we no longer differentiate them
     # 循环处理碰撞，直到没有碰撞或达到最大迭代次数
+    spans = None
+    dataset_ids = None
+    if multi_output:
+        assert isinstance(data, MultiEmbDataset)
+        spans = _dataset_spans(datasets, data)
+        dataset_ids = _dataset_ids_for_global_indices(spans, len(all_keys))
+
     while True:
-        if tt >= 20 or check_collision(
-            all_indices_str
-        ):  # 如果达到最大迭代次数或没有碰撞，则退出循环
+        if tt >= args.max_reencode_rounds or check_collision(all_keys):
             break
 
-        collision_item_groups = get_collision_item(all_indices_str)  # 获取碰撞的项目组
-        print(collision_item_groups)
-        print(len(collision_item_groups))
+        collision_item_groups = get_collision_item(all_keys)  # 获取碰撞的项目组
+        if tt == 0 and dataset_ids is not None:
+            cross = 0
+            for g in collision_item_groups:
+                ds_set = {dataset_ids[i] for i in g if dataset_ids[i] >= 0}
+                if len(ds_set) > 1:
+                    cross += 1
+            print(
+                f"[collision] groups={len(collision_item_groups)} "
+                f"(cross-dataset={cross}, max_rounds={args.max_reencode_rounds})"
+            )
+
         for collision_items in collision_item_groups:
             d = data[collision_items].to(device)  # 获取发生碰撞的数据
 
@@ -180,41 +249,66 @@ def main(args):
             for item, index in zip(
                 collision_items, indices, strict=False
             ):  # 遍历碰撞项目和新的索引
-                code = []
-                for i, ind in enumerate(index):
-                    code.append(prefix[i].format(int(ind)))  # 构建新的代码
-
-                all_indices[item] = code  # 更新索引
-                all_indices_str[item] = str(code)  # 更新索引字符串
+                all_indices[item] = index
+                all_keys[item] = _build_key(index)
         tt += 1
 
     print("All indices number: ", len(all_indices))  # 打印总索引数量
     print(
         "Max number of conflicts: ",
-        max(get_indices_count(all_indices_str).values()),  # 打印最大冲突数量
+        max(get_indices_count(all_keys).values()),  # 打印最大冲突数量
     )
 
-    tot_item = len(all_indices_str)
-    tot_indice = len(set(all_indices_str.tolist()))
+    tot_item = len(all_keys)
+    tot_indice = len(set(all_keys))
     print("Collision Rate", (tot_item - tot_indice) / tot_item)  # 打印最终碰撞率
 
-    all_indices_dict = {}  # 字典，用于存储最终的索引映射
-    for item, indices in enumerate(all_indices.tolist()):
-        all_indices_dict[item] = list(indices)  # 将索引转换为列表并存储到字典中
+    if multi_output:
+        assert spans is not None
+        os.makedirs(args.output_dir, exist_ok=True)
+        for ds, start, end in spans:
+            out_dir = os.path.join(args.output_dir, ds)
+            os.makedirs(out_dir, exist_ok=True)
+            out_path = os.path.join(out_dir, f"{ds}{args.output_suffix}")
 
-    os.makedirs(args.output_dir, exist_ok=True)  # 确保输出目录存在
-    output_file_path = os.path.join(
-        args.output_dir, args.output_file
-    )  # 完整的输出文件路径
-    with open(output_file_path, "w") as fp:
-        json.dump(all_indices_dict, fp)  # 将索引字典保存为 JSON 文件
+            ds_dict = {}
+            for local_id, key in enumerate(all_keys[start:end]):
+                ds_dict[local_id] = _key_to_tokens(key, prefix)
+
+            with open(out_path, "w") as fp:
+                json.dump(ds_dict, fp)
+            print(f"[output] {ds}: {out_path} (items={end - start})")
+    else:
+        if not getattr(args, "output_file", None):
+            raise ValueError("Single-output mode requires --output_file.")
+        all_indices_dict = {}  # 字典，用于存储最终的索引映射
+        for item, key in enumerate(all_keys):
+            all_indices_dict[item] = _key_to_tokens(key, prefix)
+
+        os.makedirs(args.output_dir, exist_ok=True)  # 确保输出目录存在
+        output_file_path = os.path.join(args.output_dir, args.output_file)
+        with open(output_file_path, "w") as fp:
+            json.dump(all_indices_dict, fp)
+        print(f"[output] {output_file_path} (items={len(all_keys)})")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Generate indices for Multimodal Recommendation Model"
     )
-    parser.add_argument("--dataset", type=str, required=True, help="Dataset name")
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default=None,
+        help="Dataset name (single dataset) or comma-separated names (multi).",
+    )
+    parser.add_argument(
+        "--datasets",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Multiple dataset names (space separated). When set with --output_suffix, will export one index json per dataset.",
+    )
     parser.add_argument(
         "--ckpt_path", type=str, required=True, help="Path to model checkpoint"
     )
@@ -235,7 +329,19 @@ if __name__ == "__main__":
         "--output_dir", type=str, default="./data", help="Output directory"
     )
     parser.add_argument(
-        "--output_file", type=str, required=True, help="Output JSON file name"
+        "--output_file",
+        type=str,
+        default=None,
+        help="Output JSON file name (single-output mode).",
+    )
+    parser.add_argument(
+        "--output_suffix",
+        type=str,
+        default=None,
+        help=(
+            "Multi-output mode: write <dataset>/<dataset><output_suffix> under --output_dir. "
+            "Example: .index_qwen3-embedding-4B.json"
+        ),
     )
     parser.add_argument(
         "--device",
@@ -245,6 +351,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--batch_size", type=int, default=64, help="Batch size for data loading"
+    )
+    parser.add_argument(
+        "--max_reencode_rounds",
+        type=int,
+        default=20,
+        help="Max rounds to re-encode collided items using Sinkhorn-Knopp.",
     )
 
     args = parser.parse_args()

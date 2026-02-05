@@ -139,9 +139,7 @@ def generate_item_embedding(
             "shape": shape,
         }
         write_header = getattr(
-            np.lib.format,
-            "write_array_header_2_0",
-            np.lib.format.write_array_header_1_0,
+            np.lib.format, "write_array_header_2_0", np.lib.format.write_array_header_1_0
         )
         write_header(fp, header)
 
