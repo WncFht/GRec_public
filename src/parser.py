@@ -473,6 +473,25 @@ def parse_train_args(
     train_args.add_argument("--lr_scheduler_type", type=str, default="cosine")
     train_args.add_argument("--save_and_eval_strategy", type=str, default="epoch")
     train_args.add_argument("--save_and_eval_steps", type=float, default=1000)
+    train_args.add_argument(
+        "--eval_by_dataset",
+        action="store_true",
+        default=False,
+        help=(
+            "If set, build eval_dataset as a dict keyed by dataset name so metrics are logged "
+            "separately (e.g., eval_Arts_loss, eval_Games_loss) instead of mixing all datasets "
+            "into one validation set."
+        ),
+    )
+    train_args.add_argument(
+        "--eval_main_dataset",
+        type=str,
+        default=None,
+        help=(
+            "When --eval_by_dataset is enabled, choose which dataset's metric is used for "
+            "metric_for_best_model / EarlyStopping (default: the first dataset in --dataset)."
+        ),
+    )
     train_args.add_argument("--fp16", action="store_true", default=False)
     train_args.add_argument("--bf16", action="store_true", default=False)
     train_args.add_argument("--deepspeed", type=str, default="./config/ds_z3_bf16.json")

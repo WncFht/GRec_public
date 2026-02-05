@@ -13,6 +13,8 @@ AR_MODEL = [
     "qwen2_5_vl",
     "qwen2",
     "qwen2_5",
+    "qwen2_5_instruct",
+    "qwen2_instruct",
     "llama",
     "llava_onevision",
     "qwen",

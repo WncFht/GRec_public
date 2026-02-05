@@ -330,6 +330,9 @@ def test(args: argparse.Namespace):
                     output_scores=True,
                     return_dict_in_generate=True,
                     temperature=1.0,
+                    do_sample=False,
+                    top_k=None,
+                    top_p=None,
                     logits_processor=logits_processor,
                 )
 

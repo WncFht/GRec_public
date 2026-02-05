@@ -73,6 +73,21 @@ MODEL_CONFIG = {
         "processor_class": AutoTokenizer,
         "from_pretrained_kwargs": {},
     },
+    "qwen2": {
+        "model_class": AutoModelForCausalLM,
+        "processor_class": AutoTokenizer,
+        "from_pretrained_kwargs": {},
+    },
+    "qwen2_5": {
+        "model_class": AutoModelForCausalLM,
+        "processor_class": AutoTokenizer,
+        "from_pretrained_kwargs": {},
+    },
+    "qwen2_5_instruct": {
+        "model_class": AutoModelForCausalLM,
+        "processor_class": AutoTokenizer,
+        "from_pretrained_kwargs": {},
+    },
 }
 
 
@@ -232,7 +247,7 @@ def _load_processor_and_tokenizer(args, config, base_model_path, local_rank, log
         log_func(f"从 '{base_model_path}' 加载处理器/分词器...")
 
     # 特殊处理文本模型
-    if args.model_type in ["qwen2", "qwen2_5", "llama", "qwen"]:
+    if args.model_type in ["qwen2", "qwen2_5", "llama", "qwen", "qwen2_5_instruct"]:
         tokenizer = AutoTokenizer.from_pretrained(
             base_model_path,
             use_fast=True,
@@ -272,8 +287,8 @@ def _load_base_model(args, config, base_model_path, config_obj, local_rank, log_
         model_kwargs["torch_dtype"] = torch.float16
 
     # 对于多模态模型，添加attention实现
-    if args.model_type in ["qwen2_vl", "qwen2_5_vl", "llava_onevision"]:
-        model_kwargs["attn_implementation"] = "flash_attention_2"
+    # if args.model_type in ["qwen2_vl", "qwen2_5_vl", "llava_onevision"]:
+    model_kwargs["attn_implementation"] = "flash_attention_2"
 
     model = model_class.from_pretrained(base_model_path, **model_kwargs)
     return model
@@ -285,8 +300,36 @@ def _extend_vocabulary(
     """扩展词汇表"""
     # 获取新tokens
     if new_tokens is None:
-        train_data, _ = load_datasets(args, logger, local_rank)
-        new_tokens = train_data.datasets[0].get_new_tokens()
+        dataset_list = [d.strip() for d in str(args.dataset).split(",") if d.strip()]
+        if not dataset_list:
+            raise ValueError(
+                "`--dataset` is empty. Please provide at least one dataset."
+            )
+
+        token_set: set[str] = set()
+        missing: list[str] = []
+        for dataset in dataset_list:
+            index_path = os.path.join(
+                args.data_path, dataset, dataset + args.index_file
+            )
+            try:
+                with open(index_path) as f:
+                    indices = json.load(f)
+            except FileNotFoundError:
+                missing.append(index_path)
+                continue
+            for index in indices.values():
+                token_set.update(index)
+
+        if missing:
+            missing_display = "\n".join(missing[:10])
+            raise FileNotFoundError(
+                "Index file(s) not found when collecting new tokens:\n"
+                f"{missing_display}\n"
+                "Please check --data_path/--dataset/--index_file naming convention."
+            )
+
+        new_tokens = sorted(token_set)
 
     if local_rank == 0:
         log_func(f"从数据集中获取到 {len(new_tokens)} 个新 token 用于扩展词汇表。")
@@ -606,7 +649,17 @@ def load_datasets(args: argparse.Namespace, logger=None, local_rank=0):
     """根据配置加载训练和验证数据集"""
     log_func = logger.info if logger else print
 
-    tasks = args.tasks.split(",")
+    tasks = [t.strip() for t in args.tasks.split(",") if t.strip()]
+    if not tasks:
+        raise ValueError("`--tasks` is empty. Please provide at least one task.")
+
+    dataset_list = [d.strip() for d in args.dataset.split(",") if d.strip()]
+    if not dataset_list:
+        raise ValueError(
+            "`--dataset` is empty. Please provide at least one dataset name."
+        )
+
+    eval_by_dataset = bool(getattr(args, "eval_by_dataset", False))
 
     train_prompt_sample_num = [int(_) for _ in args.train_prompt_sample_num.split(",")]
     assert len(tasks) == len(train_prompt_sample_num), (
@@ -621,13 +674,16 @@ def load_datasets(args: argparse.Namespace, logger=None, local_rank=0):
         log_func(f"tasks: {tasks}")
         log_func(f"train prompt sample num: {train_prompt_sample_num}")
         log_func(f"train data sample num: {train_data_sample_num}")
+        log_func(f"datasets: {dataset_list}")
+        if eval_by_dataset:
+            log_func("eval_by_dataset: enabled (will log eval metrics per dataset key)")
 
     train_datasets = []
     valid_datasets = []
+    valid_datasets_by_dataset: dict[str, list] = {ds: [] for ds in dataset_list}
     for task, prompt_sample_num, data_sample_num in zip(
         tasks, train_prompt_sample_num, train_data_sample_num, strict=False
     ):
-        dataset_list = args.dataset.split(",")
         for dataset in dataset_list:
             train_dataset, valid_dataset = None, None
             # 统一将配置对象传递给各个数据集
@@ -814,20 +870,33 @@ def load_datasets(args: argparse.Namespace, logger=None, local_rank=0):
                     log_func(f"Task: {task} - train sample nums: {len(train_dataset)}")
             if valid_dataset:
                 valid_datasets.append(valid_dataset)
+                valid_datasets_by_dataset[dataset].append(valid_dataset)
                 if local_rank == 0:
                     log_func(f"Task: {task} - valid sample nums: {len(valid_dataset)}")
         train_data = ConcatDataset(train_datasets)
-        valid_data = ConcatDataset(valid_datasets)
+        if eval_by_dataset:
+            valid_data = {}
+            for ds in dataset_list:
+                parts = valid_datasets_by_dataset.get(ds) or []
+                if not parts:
+                    continue
+                valid_data[ds] = parts[0] if len(parts) == 1 else ConcatDataset(parts)
+        else:
+            valid_data = ConcatDataset(valid_datasets)
 
     if local_rank == 0:
         log_func(f"Train sample nums: {len(train_data)}")
-        log_func(f"Valid sample nums: {len(valid_data)}")
+        if isinstance(valid_data, dict):
+            for ds, ds_valid in valid_data.items():
+                log_func(f"Valid[{ds}] sample nums: {len(ds_valid)}")
+        else:
+            log_func(f"Valid sample nums: {len(valid_data)}")
     return train_data, valid_data
 
 
 def load_test_dataset(args: argparse.Namespace, logger=None, local_rank=0):
     """根据配置加载测试数据集"""
-    dataset_list = args.dataset.split(",")
+    dataset_list = [d.strip() for d in args.dataset.split(",") if d.strip()]
     for dataset in dataset_list:
         if args.test_task.lower() == "seqrec":
             test_data = SeqRecDataset(

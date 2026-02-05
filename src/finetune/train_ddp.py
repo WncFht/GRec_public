@@ -38,6 +38,7 @@ class UnifiedTrainer:
         self.world_size = int(os.environ.get("WORLD_SIZE", 1))
         self.ddp = self.world_size != 1
         self.args.run_name = make_run_name(self.args)
+        self._eval_dataset_keys: list[str] | None = None
         self._init_logger()
         self._setup_environment()
 
@@ -95,6 +96,14 @@ class UnifiedTrainer:
         save_only_model = True
         load_best_model_at_end = not use_deepspeed
 
+        metric_for_best_model = "eval_loss"
+        if bool(getattr(self.args, "eval_by_dataset", False)):
+            main_ds = getattr(self.args, "eval_main_dataset", None)
+            if main_ds:
+                metric_for_best_model = f"eval_{main_ds}_loss"
+        if self.local_rank == 0 and metric_for_best_model != "eval_loss":
+            self.logger.info(f"metric_for_best_model set to: {metric_for_best_model}")
+
         return TrainingArguments(
             seed=self.args.seed,
             per_device_train_batch_size=self.args.per_device_batch_size,
@@ -126,8 +135,8 @@ class UnifiedTrainer:
             remove_unused_columns=False,
             report_to=report_to,
             run_name=self.args.run_name,
-            eval_delay=1 if self.args.save_and_eval_strategy == "epoch" else 2000,
-            metric_for_best_model="eval_loss",
+            eval_delay=1 if self.args.save_and_eval_strategy == "epoch" else 200,
+            metric_for_best_model=metric_for_best_model,
             greater_is_better=False,
         )
 
@@ -150,6 +159,31 @@ class UnifiedTrainer:
 
         # 加载数据集
         train_data, valid_data = load_datasets(self.args, self.logger, self.local_rank)
+        if bool(getattr(self.args, "eval_by_dataset", False)):
+            if not isinstance(valid_data, dict):
+                if self.local_rank == 0:
+                    self.logger.warning(
+                        "--eval_by_dataset is set, but valid_data is not a dict. "
+                        "Please check load_datasets()."
+                    )
+            else:
+                self._eval_dataset_keys = list(valid_data.keys())
+                if not self._eval_dataset_keys:
+                    raise ValueError(
+                        "--eval_by_dataset is set but no valid datasets were built."
+                    )
+                if getattr(self.args, "eval_main_dataset", None) is None:
+                    self.args.eval_main_dataset = self._eval_dataset_keys[0]
+                if self.args.eval_main_dataset not in valid_data:
+                    raise ValueError(
+                        f"--eval_main_dataset={self.args.eval_main_dataset!r} not found in "
+                        f"valid datasets: {self._eval_dataset_keys}"
+                    )
+                if self.local_rank == 0:
+                    self.logger.info(
+                        f"Eval datasets: {self._eval_dataset_keys}; "
+                        f"main={self.args.eval_main_dataset}"
+                    )
 
         # 记录统计信息
         self._log_statistics(train_data, original_vocab_size, new_vocab_size)
