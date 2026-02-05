@@ -32,6 +32,43 @@
 - `--test_prompt_ids`：控制使用哪组 prompt（`all` 或逗号分隔的 id 列表）
 - `--index_file`：加载 SID 索引（文件拼接规则见 `docs/sid_readme.md`）
 
+### 1.3 `--model_type` 与 collator 路由
+
+评测阶段会根据 `--model_type` 自动选择 collator：
+
+- 文本自回归模型（`qwen2` / `qwen2_5` / `qwen2_instruct` / `qwen2_5_instruct` / `llama`）：走文本 collator 路径
+- 多模态模型（`qwen2_vl` / `qwen2_5_vl` / `llava_onevision`）：走多模态 collator 路径
+
+建议与训练时 `--model_type` 保持一致，避免 chat template 或 tokenizer 路由不匹配。
+
+### 1.4 多数据集评测（重要更新）
+
+`--dataset` 现在支持传入逗号分隔的多个数据集，并统一合并评测：
+
+```bash
+--dataset Arts,Games,Toys
+```
+
+更新后的行为：
+
+- 多数据集会被合并成一个测试集对象（内部保持 `set_prompt` / `get_all_items` 等接口兼容）；
+- 指标会在合并后的样本集合上统计；
+- 适用于 `metric.py` / `metric_ddp.py` / `metric_constrained*.py` 主路径。
+
+如果你想看“每个数据集单独指标”，建议分别单独运行三次，而不是一次性合并。
+
+### 1.5 复现与性能取舍
+
+所有主评测入口都支持全局参数：
+
+- `--seed`
+- `--deterministic`
+
+建议：
+
+- 日常跑分：不加 `--deterministic`（速度更快）
+- 严格对比实验：加 `--deterministic`（结果更稳定，但速度更慢）
+
 ---
 
 ## 2. 文本生成（text_enrich 等）
@@ -43,3 +80,13 @@
 
 文本生成评测实现见 `src/text_generation/evaluate.py`，指标/输出文件路径以脚本参数为准。
 
+---
+
+## 3. 常见问题（FAQ）
+
+1. **LoRA 评测报错找不到 base model**
+   - 确认同时传了 `--lora --base_model --ckpt_path`。
+2. **多数据集评测结果看起来和单数据集不一致**
+   - 合并评测本质是“样本池混合统计”；若要可比，请按数据集分别跑。
+3. **相同命令重复跑分有轻微波动**
+   - 可加 `--deterministic`，换取更高一致性。

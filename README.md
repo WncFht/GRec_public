@@ -63,6 +63,7 @@ GRec 聚焦**多模态生成式推荐**。整体流水线是：
 
 - `train_ddp_vl.py` / `train_ddp.py` 会从 `index_file` 收集 `<a_*>` 等 token 并扩词表（推荐主线）
 - LoRA 场景建议 `--lora_modules_to_save "embed_tokens,lm_head"`，否则新增 token 的 embedding/head 可能无法正确保存
+- 支持 `--deterministic`：需要严格复现时开启；默认不启用时更偏性能
 
 ### 4)（可选）RL：排序优化
 
@@ -76,6 +77,11 @@ GRec 聚焦**多模态生成式推荐**。整体流水线是：
 
 - 序列推荐：`scripts/seqrec/case_seqrec.sh`、`scripts/seqrec/metric_ddp.sh`
 - 文本生成：`scripts/text_generate/evaluate*.sh`、`scripts/text_generate/evaluate_lora.sh`
+
+补充：
+
+- `--dataset` 在评测阶段支持逗号分隔多数据集（会合并后统一统计指标）
+- 若希望看每个数据集单独指标，建议分别运行多次
 
 ---
 

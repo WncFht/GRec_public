@@ -20,12 +20,23 @@
    - 与上面类似，但**不扩展词表**（仅适用于你确定 tokenizer 已包含这些 token 的场景）
    - 实验经验：如果 token 没有被当成原子 token，最后一个 token 可能更难学（需要结合具体 tokenizer 分词结果排查）
 3. `src.finetune.train_ddp.py`
-   - 面向纯文本 LLM（`qwen` / `qwen2` / `qwen2_5` / `qwen2_5_instruct` / `llama` 等）
+   - 面向纯文本 LLM（`qwen2` / `qwen2_5` / `qwen2_instruct` / `qwen2_5_instruct` / `llama` 等）
    - 同样会按需扩词表（从 `index_file` 收集）
 4. `src.finetune.train_muon.py`
    - 使用 Muon 优化器的实验脚本（当前不是主线）
 
 Shell 示例脚本在 `scripts/finetune/`（建议先看这里的“可运行模板”再改参数）。
+
+当前 `parse_global_args` 支持的 `--model_type` 为：
+
+- `qwen2_vl`
+- `qwen2_5_vl`
+- `llava_onevision`
+- `qwen2`
+- `qwen2_5`
+- `qwen2_instruct`
+- `qwen2_5_instruct`
+- `llama`
 
 ---
 
@@ -100,7 +111,10 @@ torchrun --nproc_per_node=4 --master_port=33325 -m src.finetune.train_ddp_vl \
 ### 4.1 全局参数
 
 - `--model_type`：模型类型（必填），决定加载哪类模型/processor
-  - 常见：`qwen2_vl`、`qwen2_5_vl`、`llava_onevision`、`qwen`、`llama`…
+  - 当前可选：`qwen2_vl`、`qwen2_5_vl`、`llava_onevision`、`qwen2`、`qwen2_5`、`qwen2_instruct`、`qwen2_5_instruct`、`llama`
+- `--deterministic`：启用严格可复现模式（通常更慢）
+  - 默认不传时为性能优先：启用 cuDNN，`benchmark=True`
+  - 传入后会切换为 deterministic 算法与更保守的 cudnn 配置
 
 ### 4.2 数据相关参数（dataset_args）
 
@@ -124,6 +138,18 @@ torchrun --nproc_per_node=4 --master_port=33325 -m src.finetune.train_ddp_vl \
 - `--freeze`：冻结策略（如只训练 embedding 等）
 - `--deepspeed`：DeepSpeed 配置文件路径（项目自带 `config/ds_z2_*.json` 与 `config/ds_z3_*.json`）
 - `--resume_from_checkpoint`：从某个 checkpoint 或 LoRA adapter 恢复（注意：训练脚本默认倾向 `save_only_model`，若你需要完整训练状态请自行调整）
+- `--save_and_eval_strategy`：`epoch` / `steps` / `no`
+  - 若任务组合无法构建 valid（例如全是 `*_nosplit`），请使用 `--save_and_eval_strategy no`
+- `--eval_by_dataset`：按数据集分别构建验证集并单独记录指标（如 `eval_Arts_loss`）
+- `--eval_main_dataset`：在 `--eval_by_dataset` 场景指定“用于 best model / early stop 的主验证集”
+
+### 4.4 训练行为更新（重要）
+
+- `torch.compile` 现在在创建 `Trainer` 之前执行，编译结果会真正被训练使用。
+- 开启 `torch.compile` 后，前几个 step 可能有编译 warmup 开销，这是预期现象。
+- 训练入口会根据 `--save_and_eval_strategy` 检查是否必须存在 valid split：
+  - 需要评估却没有 valid，会直接报清晰错误；
+  - 不需要评估（`no`）则允许 `valid_data=None`。
 
 ---
 
@@ -161,3 +187,11 @@ torchrun --nproc_per_node=4 --master_port=33325 -m src.finetune.train_ddp_vl \
    - 检查拼接规则：文件名应为 `data/<DATASET>/<DATASET><index_file>`（例如 `Instruments.index_xxx.json`）。
 3. **LoRA 训练后推理发现新增 token 不生效**
    - 确认训练时 `--lora_modules_to_save` 包含 `embed_tokens,lm_head`，并确保推理时加载到同一份 tokenizer/processor（训练脚本会保存到输出目录）。
+4. **报错：`No validation datasets were built`**
+   - 常见于任务全是 `*_nosplit`（没有 valid 划分）但仍启用了 eval。
+   - 解决方案：
+     - 若只是训练：加 `--save_and_eval_strategy no`；
+     - 若需要 eval：在 `--tasks` 里加入可构建 valid 的任务（如 `seqrec` / `item2index` 非 nosplit）。
+5. **同样配置每次结果不完全一致**
+   - 加 `--deterministic` 提高可复现性；
+   - 但会带来吞吐下降，建议只在对比实验或排障时开启。
