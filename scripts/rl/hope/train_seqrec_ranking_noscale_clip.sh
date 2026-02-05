@@ -6,6 +6,9 @@ export CC=$CONDA_PREFIX/bin/conda-cc-with-crypt.sh
 export CXX=$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-c++
 export TRITON_CACHE_DIR=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/.cache/triton
 
+nvidia-smi -L
+echo $CUDA_VISIBLE_DEVICES
+
 set -euo pipefail
 
 DEBUG=false
@@ -27,10 +30,7 @@ export GREC_DIR=$HOME_DIR/GRec
 
 cd $GREC_DIR
 export WANDB_MODE=offline
-export WANDB_DIR=$GREC_DIR/wandb
-export WANDB_CACHE_DIR=$GREC_DIR/.cache/wandb
-export WANDB_DATA_DIT=$GREC_DIR/.cache/wandb-data
-export WANDB_ARTIFACT_DIR=$GREC_DIR/artifacts
+export WANDB_DIR=$GREC_DIR
 
 export WANDB_LOG_MODEL=false
 export WANDB_ENTITY=wncfht
@@ -104,13 +104,13 @@ COMMON_ARGS=(
 RUN_ARGS=("${COMMON_ARGS[@]}")
 
 if $DEBUG; then
-    python -m src.rl.rl "${RUN_ARGS[@]}"
+    python -m src.rl.rl_new "${RUN_ARGS[@]}"
 else
     mkdir -p log
     nohup accelerate launch \
         --config_file ./config/zero2_opt.yaml \
         --num_processes 4 --main_process_port 29503 \
-        --module src.rl.rl "${RUN_ARGS[@]}" \
+        --module src.rl.rl_new "${RUN_ARGS[@]}" \
         > >(tee "$LOG_FILE") 2>&1 &
 
     PID=$!

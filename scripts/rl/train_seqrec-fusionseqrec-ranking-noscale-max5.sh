@@ -15,6 +15,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+export WANDB_LOG_MODEL=false
 export WANDB_MODE=offline
 export WANDB_ENTITY=wncfht
 export WANDB_PROJECT=GRec_rl
@@ -36,8 +37,6 @@ BASE_MODEL=ckpt/Instruments/Llava-onevision-finetune-item2index-seqrec-fusionseq
 
 MODEL_TYPE=llava_onevision
 REWARD_TYPE=ranking
-REWARD_FUNCS="format,rule,ndcg"
-REWARD_WEIGHTS="1,1,1"
 
 CHECKPOINT_NAME=$(basename "$BASE_MODEL")
 MODEL_DIR_NAME=$(basename "$(dirname "$BASE_MODEL")")
@@ -69,8 +68,6 @@ COMMON_ARGS=(
     --test_during_training
     --noscale
     --max_completion_length 5
-    --reward_funcs "$REWARD_FUNCS"
-    --reward_weights "$REWARD_WEIGHTS"
 )
 
 RUN_ARGS=("${COMMON_ARGS[@]}")

@@ -46,9 +46,9 @@ DATASET=Instruments
 CKPT_DIR=$HOME_DIR/ckpt
 DATA_PATH=$HOME_DIR/data
 
-export WANDB_NAME=qwen2.5_instruct_seqrec_ranking_nomean_kl1e-3_epoch4_rollout32
+export WANDB_NAME=qwen2.5_instruct_seqrec_ranking_nomean_kl1e-3_epoch4_rollout16
 OUTPUT_DIR=$CKPT_DIR/$DATASET/$WANDB_NAME
-INDEX_FILE=.index_qwen3-embedding-4B.json
+INDEX_FILE=.index_qwen3-embedding-4B-single.json
 TASK=seqrec
 
 BASE_MODEL=$CKPT_DIR/Instruments/Qwen2.5-3B-Instruct-sft-index_qwen3-embedding-4B-5e-5/checkpoint-12294
@@ -70,8 +70,8 @@ COMMON_ARGS=(
     --eval_step 0.125
     --eval_on_test
     --test_during_training
-    --num_generations 32
-    --test_beam 32
+    --num_generations 16
+    --test_beam 16
     --beam_search
     --temperature 1.0
     --max_completion_length 128

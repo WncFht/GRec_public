@@ -1,4 +1,14 @@
 #!/bin/bash
+source /mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/conda/bin/activate grec
+export LD_LIBRARY_PATH=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/conda/envs/grec/lib:$LD_LIBRARY_PATH
+export PATH=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/conda/envs/grec/bin:$PATH
+export CC=$CONDA_PREFIX/bin/conda-cc-with-crypt.sh
+export CXX=$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-c++
+export TRITON_CACHE_DIR=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/.cache/triton
+
+nvidia-smi -L
+echo $CUDA_VISIBLE_DEVICES
+
 set -euo pipefail
 
 DEBUG=false
@@ -15,7 +25,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+export HOME_DIR=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian
+export GREC_DIR=$HOME_DIR/GRec
+
+cd $GREC_DIR
 export WANDB_MODE=offline
+export WANDB_DIR=$GREC_DIR
+
 export WANDB_LOG_MODEL=false
 export WANDB_ENTITY=wncfht
 export WANDB_PROJECT=GRec_rl
@@ -26,22 +42,23 @@ export NCCL_IB_DISABLE=1        # 完全禁用 IB/RoCE
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
 DATASET=Instruments
-OUTPUT_DIR=ckpt/$DATASET/llava_rl_seqrec_ranking_noscale_uft
-DATA_PATH=./data
+CKPT_PATH=$HOME_DIR/ckpt
+OUTPUT_DIR=$CKPT_PATH/$DATASET/llava_rl_seqrec_ranking_noscale_prm-2
+DATA_PATH=$HOME_DIR/data
 
-export WANDB_NAME=llava_rl_seqrec_ranking_noscale_uft
+export WANDB_NAME=llava_rl_seqrec_ranking_noscale_prm-2
 INDEX_FILE=.index_qwen7B.json
 TASK=seqrec
 
-BASE_MODEL=ckpt/Instruments/Llava-onevision-finetune-item2index-seqrec-fusionseqrec/checkpoint-4098
+BASE_MODEL=$CKPT_PATH/Instruments/Llava-onevision-finetune-item2index-seqrec-fusionseqrec/checkpoint-4098
 MODEL_TYPE=llava_onevision
 
 CHECKPOINT_NAME=$(basename "$BASE_MODEL")
 MODEL_DIR_NAME=$(basename "$(dirname "$BASE_MODEL")")
-LOG_FILE="log/${MODEL_DIR_NAME}-${CHECKPOINT_NAME}-${TASK}-${TIMESTAMP}.log"
+LOG_FILE="${GREC_DIR}/log/hope/${MODEL_DIR_NAME}-${CHECKPOINT_NAME}-${TASK}-${TIMESTAMP}.log"
 REWARD_FUNCS="format,rule,ndcg"
 REWARD_WEIGHTS="1,1,1"
-SFT_LOSS_COEF=1e-3
+
 
 COMMON_ARGS=(
     --model_type "$MODEL_TYPE"
@@ -67,31 +84,27 @@ COMMON_ARGS=(
     --train_prompt_sample_num 1
     --train_data_sample_num 0
     --bf16
-    --log_completions
-    --completion_log_interval 100
     --reward_funcs "$REWARD_FUNCS"
     --reward_weights "$REWARD_WEIGHTS"
-    --noscale 
-    --use_sft_loss
-    --sft_loss_coef "$SFT_LOSS_COEF"
+    --noscale
+    --use_prm
 )
 
 RUN_ARGS=("${COMMON_ARGS[@]}")
 
 if $DEBUG; then
-    export CUDA_VISIBLE_DEVICES=0
-    python -m src.rl.rl "${RUN_ARGS[@]}"
+    python -m src.rl.rl_new "${RUN_ARGS[@]}"
 else
-    export CUDA_VISIBLE_DEVICES=0,1,2,3
     mkdir -p log
     nohup accelerate launch \
         --config_file ./config/zero2_opt.yaml \
         --num_processes 4 --main_process_port 29503 \
-        --module src.rl.rl "${RUN_ARGS[@]}" \
-        > "$LOG_FILE" 2>&1 &
+        --module src.rl.rl_new "${RUN_ARGS[@]}" \
+        > >(tee "$LOG_FILE") 2>&1 &
 
     PID=$!
     echo "Training started with PID: $PID"
     echo "To stop training: kill $PID"
     echo "$LOG_FILE"
+    wait "$PID"
 fi

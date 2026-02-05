@@ -1,4 +1,14 @@
 #!/bin/bash
+source /mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/conda/bin/activate grec
+export LD_LIBRARY_PATH=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/conda/envs/grec/lib:$LD_LIBRARY_PATH
+export PATH=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/conda/envs/grec/bin:$PATH
+export CC=$CONDA_PREFIX/bin/conda-cc-with-crypt.sh
+export CXX=$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-c++
+export TRITON_CACHE_DIR=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/.cache/triton
+
+nvidia-smi -L
+echo $CUDA_VISIBLE_DEVICES
+
 set -euo pipefail
 
 DEBUG=false
@@ -15,7 +25,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+export HOME_DIR=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian
+export GREC_DIR=$HOME_DIR/GRec
+
+cd $GREC_DIR
 export WANDB_MODE=offline
+export WANDB_DIR=$GREC_DIR
+
 export WANDB_LOG_MODEL=false
 export WANDB_ENTITY=wncfht
 export WANDB_PROJECT=GRec_rl
@@ -26,39 +42,33 @@ export NCCL_IB_DISABLE=1        # 完全禁用 IB/RoCE
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
 DATASET=Instruments
-OUTPUT_DIR=ckpt/$DATASET/llava_rl_seqrec_ranking_noscale_clip
-DATA_PATH=./data
+CKPT_PATH=$HOME_DIR/ckpt
+OUTPUT_DIR=$CKPT_PATH/$DATASET/llava_rl_seqrec_ranking_noscale_32
+DATA_PATH=$HOME_DIR/data
 
-export WANDB_NAME=llava_rl_seqrec_ranking_noscale_clip
+export WANDB_NAME=llava_rl_seqrec_ranking_noscale_32
 INDEX_FILE=.index_qwen7B.json
 TASK=seqrec
 
-BASE_MODEL=ckpt/Instruments/Llava-onevision-finetune-item2index-seqrec-fusionseqrec/checkpoint-4098
+BASE_MODEL=$CKPT_PATH/Instruments/Llava-onevision-finetune-item2index-seqrec-fusionseqrec/checkpoint-4098
 MODEL_TYPE=llava_onevision
 
 CHECKPOINT_NAME=$(basename "$BASE_MODEL")
 MODEL_DIR_NAME=$(basename "$(dirname "$BASE_MODEL")")
-LOG_FILE="log/${MODEL_DIR_NAME}-${CHECKPOINT_NAME}-${TASK}-clip-${TIMESTAMP}.log"
+LOG_FILE="${GREC_DIR}/log/hope/${WANDB_NAME}-${MODEL_DIR_NAME}-${CHECKPOINT_NAME}-${TASK}-${TIMESTAMP}.log"
 REWARD_FUNCS="format,rule,ndcg"
 REWARD_WEIGHTS="1,1,1"
-
-# PPO-style clipping settings
-CLIP_RATIO=0.2
-CLIP_RATIO_LOW=0.2
-CLIP_RATIO_HIGH=0.28
-CLIP_RATIO_C=3.0
 
 COMMON_ARGS=(
     --model_type "$MODEL_TYPE"
     --base_model "$BASE_MODEL"
     --train_batch_size 64
     --eval_batch_size 128
-    --num_train_epochs 2
+    --num_train_epochs 1
     --gradient_accumulation_steps 2
     --eval_step 0.0999
-    --reward_type ranking
     --test_during_training
-    --num_generations 16
+    --num_generations 32
     --beam_search
     --temperature 1.0
     --max_completion_length 128
@@ -77,29 +87,23 @@ COMMON_ARGS=(
     --reward_funcs "$REWARD_FUNCS"
     --reward_weights "$REWARD_WEIGHTS"
     --noscale
-    --clip
-    --clip_ratio "$CLIP_RATIO"
-    --clip_ratio_low "$CLIP_RATIO_LOW"
-    --clip_ratio_high "$CLIP_RATIO_HIGH"
-    --clip_ratio_c "$CLIP_RATIO_C"
 )
 
 RUN_ARGS=("${COMMON_ARGS[@]}")
 
 if $DEBUG; then
-    export CUDA_VISIBLE_DEVICES=0
-    python -m src.rl.rl "${RUN_ARGS[@]}"
+    python -m src.rl.rl_new "${RUN_ARGS[@]}"
 else
-    export CUDA_VISIBLE_DEVICES=0,1,2,3
     mkdir -p log
     nohup accelerate launch \
         --config_file ./config/zero2_opt.yaml \
         --num_processes 4 --main_process_port 29503 \
-        --module src.rl.rl "${RUN_ARGS[@]}" \
-        > "$LOG_FILE" 2>&1 &
+        --module src.rl.rl_new "${RUN_ARGS[@]}" \
+        > >(tee "$LOG_FILE") 2>&1 &
 
     PID=$!
     echo "Training started with PID: $PID"
     echo "To stop training: kill $PID"
     echo "$LOG_FILE"
+    wait "$PID"
 fi

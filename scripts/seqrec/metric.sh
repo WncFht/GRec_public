@@ -2,10 +2,20 @@
 set -euo pipefail
 
 DEBUG=false
+FORCE_ROLLOUT=false
+SKIP_ROLLOUT=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --debug)
             DEBUG=true
+            shift
+            ;;
+        --force-rollout)
+            FORCE_ROLLOUT=true
+            shift
+            ;;
+        --skip-rollout)
+            SKIP_ROLLOUT=true
             shift
             ;;
         *)
@@ -16,7 +26,6 @@ while [[ $# -gt 0 ]]; do
 done
 
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-export CUDA_LAUNCH_BLOCKING=1
 
 TASK=seqrec
 DATASET=Instruments
@@ -27,30 +36,30 @@ HOME_DIR=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian
 # BASE_MODEL=./ckpt/base_model/Qwen2-VL-7B-Instruct
 # MODEL_TYPE=qwen2_vl
 
-# CKPT_PATH=ckpt/Instruments/Llava-onevision-finetune-item2index-seqrec-fusionseqrec/checkpoint-4098
-# BASE_MODEL=./ckpt/base_model/llava-onevision-qwen2-7b-ov-hf
-# MODEL_TYPE=llava_onevision
 
-CKPT_PATH=$HOME_DIR/ckpt/Arts,Automotive,Cell,Games,Instruments,Pet,Tools,Toys,Sports/Qwen2.5-3B-Instruct-multi-sft-index_qwen3-embedding-4B/checkpoint-43820
+CKPT_PATH=$HOME_DIR/ckpt/Instruments/Qwen2.5-3B-Instruct-sft-index_qwen3-embedding-4B-multi/checkpoint-11645
 MODEL_TYPE=qwen2_5_instruct
 
 DATA_PATH=$HOME_DIR/data
 INDEX_FILE=.index_qwen3-embedding-4B.json
-BATCH_SIZE=12
+BATCH_SIZE=16
 NUM_BEAMS=50
 MAX_NEW_TOKENS=4
-MASTER_PORT=33322
+MASTER_PORT=33320
 NUM_GPUS=4
 EVAL_SPLIT=test
-RESULTS_DIR=./results/"${EVAL_SPLIT}"
+RESULTS_BASE_DIR=./results/"${EVAL_SPLIT}"
 
 CHECKPOINT_NAME=$(basename "$CKPT_PATH")
 MODEL_DIR_NAME=$(basename "$(dirname "$CKPT_PATH")")
-RESULTS_FILE=${RESULTS_DIR}/${TASK}-constrained-${MODEL_DIR_NAME}-${CHECKPOINT_NAME}-${EVAL_SPLIT}.txt
-LOG_FILE=${RESULTS_FILE%.txt}_log.txt
+RUN_DIR=${RESULTS_BASE_DIR}/${TASK}-constrained/${MODEL_DIR_NAME}/${CHECKPOINT_NAME}
+RESULTS_FILE=${RUN_DIR}/results.json
+ROLLOUT_FILE=${RUN_DIR}/rollout.json
+LOG_FILE=${RUN_DIR}/log.txt
 
-mkdir -p "$RESULTS_DIR"
+mkdir -p "$RUN_DIR"
 echo "结果将保存到: $RESULTS_FILE"
+echo "Rollout 将保存到/读取自: $ROLLOUT_FILE"
 echo "日志将保存到: $LOG_FILE"
 
 COMMON_ARGS=(
@@ -66,12 +75,21 @@ COMMON_ARGS=(
     --index_file "$INDEX_FILE"
     --test_prompt_ids "0"
     --results_file "$RESULTS_FILE"
+    --rollout_file "$ROLLOUT_FILE"
     --eval_split "$EVAL_SPLIT"
     --metrics hit@1,hit@3,hit@5,hit@10,hit@20,hit@50,ndcg@1,ndcg@3,ndcg@5,ndcg@10,ndcg@20,ndcg@50
 )
 
 if $USE_LORA; then
     COMMON_ARGS+=(--lora --base_model "$BASE_MODEL")
+fi
+
+if $FORCE_ROLLOUT; then
+    COMMON_ARGS+=(--force_rollout)
+fi
+
+if $SKIP_ROLLOUT; then
+    COMMON_ARGS+=(--skip_rollout)
 fi
 
 if $DEBUG; then

@@ -6,10 +6,10 @@ export CC=$CONDA_PREFIX/bin/conda-cc-with-crypt.sh
 export CXX=$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-c++
 export TRITON_CACHE_DIR=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/.cache/triton
 
-export TORCH_NCCL_TRACE_BUFFER_SIZE=100000
-export TORCH_NCCL_DUMP_ON_TIMEOUT=1
-
 nvidia-smi -L
+echo $CUDA_VISIBLE_DEVICES
+
+set -euo pipefail
 
 DEBUG=false
 while [[ $# -gt 0 ]]; do
@@ -29,13 +29,12 @@ export HOME_DIR=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghao
 export GREC_DIR=$HOME_DIR/GRec
 
 cd $GREC_DIR
-
 export WANDB_MODE=offline
 export WANDB_DIR=$GREC_DIR
 
 export WANDB_LOG_MODEL=false
-export WANDB_ENTITY=generate_rec
-export WANDB_PROJECT=minionerec
+export WANDB_ENTITY=wncfht
+export WANDB_PROJECT=GRec_rl
 export CUDA_LAUNCH_BLOCKING=1
 export PYTHONUNBUFFERED=1
 export NCCL_IB_DISABLE=1        # 完全禁用 IB/RoCE
@@ -43,35 +42,34 @@ export NCCL_IB_DISABLE=1        # 完全禁用 IB/RoCE
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
 DATASET=Instruments
-CKPT_DIR=$HOME_DIR/ckpt
+CKPT_PATH=$HOME_DIR/ckpt
+OUTPUT_DIR=$CKPT_PATH/$DATASET/llava_rl_seqrec_rule_noscale
 DATA_PATH=$HOME_DIR/data
 
-export WANDB_NAME=qwen2.5_instruct_seqrec_ranking_nomean_kl1e-3_epoch4_rollout32
-OUTPUT_DIR=$CKPT_DIR/$DATASET/$WANDB_NAME
-INDEX_FILE=.index_qwen3-embedding-4B.json
+export WANDB_NAME=llava_rl_seqrec_rule_noscale
+INDEX_FILE=.index_qwen7B.json
 TASK=seqrec
 
-BASE_MODEL=$CKPT_DIR/Instruments/Qwen2.5-3B-Instruct-sft-index_qwen3-embedding-4B-5e-5/checkpoint-12294
-MODEL_TYPE=qwen2_5_instruct
+BASE_MODEL=$CKPT_PATH/Instruments/Llava-onevision-finetune-item2index-seqrec-fusionseqrec/checkpoint-4098
+MODEL_TYPE=llava_onevision
 
 CHECKPOINT_NAME=$(basename "$BASE_MODEL")
 MODEL_DIR_NAME=$(basename "$(dirname "$BASE_MODEL")")
-LOG_FILE="log/${MODEL_DIR_NAME}-${CHECKPOINT_NAME}-${TASK}-${TIMESTAMP}.log"
+LOG_FILE="${GREC_DIR}/log/hope/${WANDB_NAME}-${MODEL_DIR_NAME}-${CHECKPOINT_NAME}-${TASK}-${TIMESTAMP}.log"
 REWARD_FUNCS="format,rule,ndcg"
-REWARD_WEIGHTS="1,1,1"
+REWARD_WEIGHTS="1,1,0.0000001"
 
 COMMON_ARGS=(
     --model_type "$MODEL_TYPE"
     --base_model "$BASE_MODEL"
-    --train_batch_size 128
+    --train_batch_size 64
     --eval_batch_size 128
-    --num_train_epochs 4
+    --num_train_epochs 1
     --gradient_accumulation_steps 2
-    --eval_step 0.125
-    --eval_on_test
+    --eval_step 0.0999
+    --reward_type ranking
     --test_during_training
-    --num_generations 32
-    --test_beam 32
+    --num_generations 16
     --beam_search
     --temperature 1.0
     --max_completion_length 128
@@ -85,29 +83,28 @@ COMMON_ARGS=(
     --train_prompt_sample_num 1
     --train_data_sample_num 0
     --bf16
+    --log_completions
+    --completion_log_interval 100
     --reward_funcs "$REWARD_FUNCS"
     --reward_weights "$REWARD_WEIGHTS"
     --noscale
-    --nodemean
 )
 
 RUN_ARGS=("${COMMON_ARGS[@]}")
 
 if $DEBUG; then
-    export CUDA_VISIBLE_DEVICES=0
-    /mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/conda/bin/python -m src.rl.rl "${RUN_ARGS[@]}"
+    python -m src.rl.rl_new "${RUN_ARGS[@]}"
 else
-    export CUDA_VISIBLE_DEVICES=0,1,2,3
     mkdir -p log
     nohup accelerate launch \
         --config_file ./config/zero2_opt.yaml \
         --num_processes 4 --main_process_port 29503 \
-        --module src.rl.rl "${RUN_ARGS[@]}" \
+        --module src.rl.rl_new "${RUN_ARGS[@]}" \
         > >(tee "$LOG_FILE") 2>&1 &
-    # PID=$!
-    # echo "Training started with PID: $PID"
-    # echo "To stop training: kill $PID"
-    # echo "$LOG_FILE"
-    # wait "$PID"
-    tail -f /dev/null
+
+    PID=$!
+    echo "Training started with PID: $PID"
+    echo "To stop training: kill $PID"
+    echo "$LOG_FILE"
+    wait "$PID"
 fi

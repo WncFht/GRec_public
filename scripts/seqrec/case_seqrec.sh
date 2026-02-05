@@ -25,26 +25,31 @@ export CUDA_VISIBLE_DEVICES=1
 DATASET=Instruments
 RATIO=1
 
-CKPT_PATH=/opt/meituan/dolphinfs_zhangkangning02/zkn/verl/checkpoints/grec_verl/qwen2-vl-7b-n32/global_step_105/actor/merged
-BASE_MODEL=./ckpt/base_model/Qwen2-VL-7B-Instruct
-MODEL_TYPE=qwen2_vl
+# CKPT_PATH=/opt/meituan/dolphinfs_zhangkangning02/zkn/verl/checkpoints/grec_verl/qwen2-vl-7b-n32/global_step_105/actor/merged
+# BASE_MODEL=./ckpt/base_model/Qwen2-VL-7B-Instruct
+# MODEL_TYPE=qwen2_vl
 
-# CKPT_PATH=./ckpt/Instruments/Llava-onevision-lora-item2index,seqrec,fusionseqrec-1-qwen7B/checkpoint-5463
+# CKPT_PATH=ckpt/Instruments/No-format-reward/rl/checkpoint-3186
 # BASE_MODEL=./ckpt/base_model/llava-onevision-qwen2-7b-ov-hf
 # MODEL_TYPE=llava_onevision
+HOME_DIR=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian
 
-DATA_PATH=./data
+CKPT_PATH=$HOME_DIR/ckpt/Instruments/Qwen2.5-3B-Instruct-sft-index_qwen3-embedding-4B-5e-5/checkpoint-12294
+MODEL_TYPE=qwen2_5_instruct
+
+DATA_PATH=$HOME_DIR/data
+INDEX_FILE=.index_qwen3-embedding-4B-single.json
 
 COMMON_ARGS=(
     --model_type "$MODEL_TYPE"
     --ckpt_path "$CKPT_PATH"
-    --base_model "$BASE_MODEL"
     --dataset "$DATASET"
     --data_path "$DATA_PATH"
     --test_batch_size 1
-    --num_beams 10
+    --num_beams 16
     --ratio_dataset "$RATIO"
-    --index_file .index_qwen7B.json
+    --index_file $INDEX_FILE
+    # --base_model "$BASE_MODEL"
     # --lora
 )
 

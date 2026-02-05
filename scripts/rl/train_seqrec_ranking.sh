@@ -6,6 +6,9 @@ export CC=$CONDA_PREFIX/bin/conda-cc-with-crypt.sh
 export CXX=$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-c++
 export TRITON_CACHE_DIR=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/.cache/triton
 
+export TORCH_NCCL_TRACE_BUFFER_SIZE=100000
+export TORCH_NCCL_DUMP_ON_TIMEOUT=1
+
 nvidia-smi -L
 
 DEBUG=false
@@ -62,9 +65,9 @@ COMMON_ARGS=(
     --base_model "$BASE_MODEL"
     --train_batch_size 64
     --eval_batch_size 128
-    --num_train_epochs 10
+    --num_train_epochs 4
     --gradient_accumulation_steps 4
-    --eval_step 0.05
+    --eval_step 0.125
     --eval_on_test
     --test_during_training
     --num_generations 16

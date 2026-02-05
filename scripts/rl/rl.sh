@@ -15,6 +15,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+export WANDB_LOG_MODEL=false
 export WANDB_MODE=offline
 export WANDB_ENTITY=wncfht
 export WANDB_PROJECT=GRec_rl
@@ -38,8 +39,6 @@ MODEL_TYPE=llava_onevision
 CHECKPOINT_NAME=$(basename "$BASE_MODEL")
 MODEL_DIR_NAME=$(basename "$(dirname "$BASE_MODEL")")
 LOG_FILE="log/${MODEL_DIR_NAME}-${CHECKPOINT_NAME}-${TASK}-${TIMESTAMP}.log"
-REWARD_FUNCS="format,rule,ndcg"
-REWARD_WEIGHTS="1,1,1"
 
 COMMON_ARGS=(
     --model_type "$MODEL_TYPE"
@@ -50,6 +49,7 @@ COMMON_ARGS=(
     --gradient_accumulation_steps 2
     --eval_step 0.0999
     --reward_type ranking
+    --test_during_training
     --num_generations 16
     --beam_search
     --temperature 1.0
@@ -64,8 +64,7 @@ COMMON_ARGS=(
     --train_prompt_sample_num 1
     --train_data_sample_num 0
     --bf16
-    --reward_funcs "$REWARD_FUNCS"
-    --reward_weights "$REWARD_WEIGHTS"
+    --log_completions
 )
 
 RUN_ARGS=("${COMMON_ARGS[@]}")

@@ -26,12 +26,16 @@ USE_LORA=false
 # BASE_MODEL=./ckpt/base_model/Qwen2-VL-7B-Instruct
 # MODEL_TYPE=qwen2_vl
 
-CKPT_PATH=ckpt/Instruments/Llava-onevision-lora-item2index-index2item-seqrec-fusionseqrec-1-qwen7B-1024/checkpoint-855
-BASE_MODEL=./ckpt/base_model/llava-onevision-qwen2-7b-ov-hf
-MODEL_TYPE=llava_onevision
+# CKPT_PATH=ckpt/Instruments/Llava-onevision-lora-item2index-index2item-seqrec-fusionseqrec-1-qwen7B-1024/checkpoint-855
+# BASE_MODEL=./ckpt/base_model/llava-onevision-qwen2-7b-ov-hf
+# MODEL_TYPE=llava_onevision
 
-DATA_PATH=./data
-INDEX_FILE=.index_qwen7B.json
+CKPT_PATH=../ckpt/Instruments/Qwen2.5-7B-item2index_nosplit-seqrec-fusionseqrec-lemb/checkpoint-8256
+BASE_MODEL=../ckpt/base_model/Qwen2.5-7B
+MODEL_TYPE=qwen
+
+DATA_PATH=../data
+INDEX_FILE=.index_lemb.json
 BATCH_SIZE=16
 NUM_BEAMS=10
 MAX_NEW_TOKENS=4
@@ -71,7 +75,7 @@ if $DEBUG; then
     python -m src.seqrec.metric_constrained "${COMMON_ARGS[@]}"
 else
     nohup python -m src.seqrec.metric_constrained "${COMMON_ARGS[@]}" \
-        > "$LOG_FILE" 2>&1 &
+        > >(tee "$LOG_FILE") 2>&1 &
     PID=$!
     echo "Constrained testing started with PID: $PID"
     echo "Logs: $LOG_FILE"
