@@ -29,7 +29,7 @@ gen_one() {
   local output_dir="$DATA_ROOT/$dataset/"
   local output_file="${dataset}${OUTPUT_SUFFIX}"
 
-  python3 index/generate_indices.py \
+  python3 -m index.generate_indices \
     --dataset "$dataset" \
     --ckpt_path "$CKPT_PATH" \
     --data_path "$data_path" \
@@ -51,7 +51,7 @@ if [ ${#DATASETS[@]} -gt 0 ]; then
     exit 1
   fi
 
-  python3 index/generate_indices.py \
+  python3 -m index.generate_indices \
     --datasets "${DATASETS[@]}" \
     --ckpt_path "$CKPT_PATH" \
     --data_paths "${DATA_PATHS[@]}" \

@@ -6,11 +6,12 @@ import random
 import numpy as np
 import torch
 import torch.distributed as dist
-from datasets import EmbDataset, MultiEmbDataset
-from models.rqvae import RQVAE
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from trainer import Trainer
+
+from index.embedding_datasets import EmbDataset, MultiEmbDataset
+from index.models.rqvae import RQVAE
+from index.trainer import Trainer
 
 
 def parse_args():
@@ -218,7 +219,7 @@ def clean_dataset_embeddings(dataset):
 
     # 同步 ids（如果存在且长度对得上）
     if mask is not None and hasattr(dataset, "ids"):
-        ids = getattr(dataset, "ids")
+        ids = dataset.ids
         if isinstance(ids, (list, np.ndarray)) and len(ids) == len(mask):
             if isinstance(mask, torch.Tensor):
                 mask_np = mask.cpu().numpy()

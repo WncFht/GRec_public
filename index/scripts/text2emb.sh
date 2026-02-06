@@ -35,7 +35,7 @@ for dataset in "${datasets[@]}"; do
             continue
         fi
         echo "Embedding exists but ids missing, generating ids only: $OUT_IDS"
-        python3 index/text2ids.py \
+        python3 -m index.build_embedding_ids \
             --dataset "$dataset" \
             --root "$DATASET_DIR" \
             --plm_name "$PLM_NAME" \
@@ -49,7 +49,7 @@ for dataset in "${datasets[@]}"; do
     if [[ -n "$TMP_DIR" ]]; then
         TMP_ARGS+=(--tmp_dir "$TMP_DIR")
     fi
-    accelerate launch --num_processes "$NUM_PROCESSES" index/text2emb.py \
+    accelerate launch --num_processes "$NUM_PROCESSES" -m index.build_embeddings \
         --dataset "$dataset" \
         --root "$DATASET_DIR" \
         --plm_name "$PLM_NAME" \

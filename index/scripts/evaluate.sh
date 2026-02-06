@@ -43,7 +43,7 @@ echo "Starting evaluation for checkpoint: $CKPT_PATH"
 echo "Device: $DEVICE, Batch Size: $BATCH_SIZE"
 echo "======================================================"
 
-python3 index/evaluate_index.py \
+python3 -m index.evaluate_index \
   --ckpt_path "$CKPT_PATH" \
   --device "$DEVICE" \
   --batch_size "$BATCH_SIZE"

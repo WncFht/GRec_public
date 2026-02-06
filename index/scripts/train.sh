@@ -127,7 +127,7 @@ RUN_NAME="${RUN_NAME}-${CKPT_TAG}"
 
 WANDB_RUN_NAME="${WANDB_RUN_NAME:-$RUN_NAME}"
 
-LAUNCH_CMD=(python3 -u index/main.py)
+LAUNCH_CMD=(python3 -u -m index.train_index)
 if [ "${NPROC_PER_NODE}" -gt 1 ]; then
   if [ -z "${CUDA_VISIBLE_DEVICES:-}" ]; then
     CUDA_VISIBLE_DEVICES=""
@@ -144,7 +144,7 @@ if [ "${NPROC_PER_NODE}" -gt 1 ]; then
   if [ -z "${MASTER_ADDR:-}" ]; then
     TORCHRUN_ARGS=(--standalone "${TORCHRUN_ARGS[@]}")
   fi
-  LAUNCH_CMD=(torchrun "${TORCHRUN_ARGS[@]}" index/main.py)
+  LAUNCH_CMD=(torchrun "${TORCHRUN_ARGS[@]}" -m index.train_index)
 fi
 
 ${LAUNCH_CMD[@]} \

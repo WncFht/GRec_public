@@ -52,9 +52,9 @@ SID 的输入是一个二维 `.npy`，形状 `[num_items, dim]`。重要的是 *
 - 如果你的数据集 item_id 本身就是 `0..N-1` 且与 `.inter.json/.item.json` 的 ID 体系一致，那么直接用行号即可；
 - 如果你的 item_id 不是连续整数（或来自原始 asin/pid），强烈建议同时保存一份 `*.ids.json`，明确每一行对应的 item_id。
 
-### 1.1 用 `index/text2emb.py` 生成 text embedding（推荐有 ids）
+### 1.1 用 `index/build_embeddings.py` 生成 text embedding（推荐有 ids）
 
-`index/text2emb.py` 会从 `data/<DATASET>/<DATASET>.item.json` 读取文本字段（title/description），抽取 embedding，并输出：
+`index/build_embeddings.py` 会从 `data/<DATASET>/<DATASET>.item.json` 读取文本字段（title/description），抽取 embedding，并输出：
 
 - `data/<DATASET>/<DATASET>.emb-<PLM_NAME>-td.npy`
 - `data/<DATASET>/<DATASET>.emb-<PLM_NAME>-td.ids.json`
@@ -67,7 +67,7 @@ SID 的输入是一个二维 `.npy`，形状 `[num_items, dim]`。重要的是 *
 
 入口与脚本：
 
-- 训练：`index/main.py`（可用 `index/scripts/run.sh`/`train.sh` 包装）
+- 训练：`index/train_index.py`（可用 `index/scripts/train_nohup.sh`/`train.sh` 包装）
 - 生成 index json：`index/generate_indices.py`（可用 `index/scripts/generate.sh`）
 - 评估：`index/evaluate_index.py`（可用 `index/scripts/evaluate.sh`）
 - 详细架构说明：`index/README.md`
@@ -90,7 +90,7 @@ SID 的输入是一个二维 `.npy`，形状 `[num_items, dim]`。重要的是 *
 示例（请按实际路径改）：
 
 ```bash
-python3 index/main.py \
+python3 -m index.train_index \
   --data_path ./data/Instruments/Instruments.emb-qwen3-embedding-4B-td.npy \
   --ckpt_dir  ./data/Instruments/index/rqvae_qwen3-embedding-4B \
   --num_emb_list 8192 8192 8192 \
@@ -102,7 +102,7 @@ python3 index/main.py \
 ### 2.3 生成 `Dataset.index_*.json`
 
 ```bash
-python3 index/generate_indices.py \
+python3 -m index.generate_indices \
   --dataset Instruments \
   --ckpt_path  ./data/Instruments/index/rqvae_qwen3-embedding-4B/<TIMESTAMP>/best_collision_model.pth \
   --output_dir ./data/Instruments \

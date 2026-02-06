@@ -2,7 +2,8 @@ import argparse
 import os
 
 import numpy as np
-from utils import load_json
+
+from index.utils import load_json
 
 
 def parse_args():
@@ -28,7 +29,7 @@ def parse_args():
         "--sort_by_id",
         action="store_true",
         default=True,
-        help="Sort ids to match text2emb.py saving order (default: true).",
+        help="Sort ids to match build_embeddings.py saving order (default: true).",
     )
     parser.add_argument(
         "--no_sort_by_id",
@@ -71,7 +72,7 @@ def main():
             raise ValueError(
                 f"Row count mismatch: len(ids)={len(ids)} but emb has n={n} rows. "
                 "If embeddings were generated with a different ordering/filtered set, "
-                "please re-run text2emb.py to regenerate both .npy and .ids.json."
+                "please re-run build_embeddings.py to regenerate both .npy and .ids.json."
             )
 
     ids_path = os.path.join(

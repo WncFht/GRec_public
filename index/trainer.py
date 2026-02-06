@@ -13,7 +13,8 @@ from transformers import (
     get_constant_schedule_with_warmup,
     get_linear_schedule_with_warmup,
 )
-from utils import delete_file, ensure_dir, get_local_time, set_color
+
+from index.utils import delete_file, ensure_dir, get_local_time, set_color
 
 # wandb 变成可选依赖，没安装也能跑
 try:

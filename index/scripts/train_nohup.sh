@@ -21,7 +21,7 @@ WANDB_RUN_NAME="${DATASET}-${MODEL_NAME}${WANDB_SUFFIX}"
 
 mkdir -p ./log
 
-nohup python3 -u index/main.py \
+nohup python3 -u -m index.train_index \
   --lr 1e-4 \
   --epochs 10000 \
   --batch_size 2048 \

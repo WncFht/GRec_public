@@ -5,10 +5,11 @@ import os
 
 import numpy as np
 import torch
-from datasets import EmbDataset, MultiEmbDataset
-from models.rqvae import RQVAE
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+
+from index.embedding_datasets import EmbDataset, MultiEmbDataset
+from index.models.rqvae import RQVAE
 
 
 def check_collision(all_keys):

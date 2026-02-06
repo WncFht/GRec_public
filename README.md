@@ -20,7 +20,7 @@ GRec 聚焦**多模态生成式推荐**。整体流水线是：
 ## 项目结构（你需要知道的目录）
 
 - `data_process/`：数据增强、图片下载、embedding 抽取等工具
-- `index/`：SID 方式 A（RQVAE，深度离散化）+ `text2emb.py`（文本 embedding 抽取）
+- `index/`：SID 方式 A（RQVAE，深度离散化）+ `build_embeddings.py`（文本 embedding 抽取）
 - `tokenizer/`：SID 方式 B（Residual KMeans，OpenOneRec-style tokenizer）
 - `src/`：训练/评测核心代码（SFT、RL、SeqRec metric、Text generation 等）
 - `scripts/`：一键/模板脚本（finetune、seqrec、text_generate、rl…）
@@ -53,7 +53,7 @@ GRec 聚焦**多模态生成式推荐**。整体流水线是：
 
 现在 SID 有两套实现（建议先看 `docs/sid_readme.md`）：
 
-- **方式 A：`index/`（RQVAE）**：`index/main.py` 训练 → `index/generate_indices.py` 导出 `Dataset.index_*.json`
+- **方式 A：`index/`（RQVAE）**：`index/train_index.py` 训练 → `index/generate_indices.py` 导出 `Dataset.index_*.json`
 - **方式 B：`tokenizer/`（Residual KMeans）**：`tokenizer/train_res_kmeans.py` 训练 tokenizer → `tokenizer/build_index_json.py` 导出 `Dataset.index_*.json`
 
 导出的索引文件最终通过 `--index_file` 在训练/评测阶段加载（拼接规则见 `docs/sid_readme.md`）。

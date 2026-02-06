@@ -78,7 +78,7 @@ fi
 
 WANDB_RUN_NAME="$RUN_NAME"
 
-nohup python3 -u index/main.py \
+nohup python3 -u -m index.train_index \
   --lr 1e-3 \
   --epochs 10000 \
   --batch_size 2048 \

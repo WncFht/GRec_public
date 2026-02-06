@@ -8,7 +8,8 @@ import torch
 from accelerate import Accelerator
 from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer
-from utils import *
+
+from index.utils import clean_text, load_json
 
 
 def load_data(args):
@@ -71,7 +72,6 @@ def generate_item_embedding(
     - For embedding extraction, we only need a final concatenated `.npy`, so we can do a
       file-based gather: each rank writes a part file, then rank0 merges them.
     """
-
     all_ids, all_texts = zip(*item_text_list)
     total_items = len(all_texts)
 
@@ -342,7 +342,7 @@ def generate_item_embedding(
         final_fp.write(p_emb.tobytes(order="C"))
 
         with open(
-            f"{out_prefix}.{run_id}.part{r}.ids.json", "r", encoding="utf-8"
+            f"{out_prefix}.{run_id}.part{r}.ids.json", encoding="utf-8"
         ) as f:
             import json
 
