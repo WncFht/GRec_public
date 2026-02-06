@@ -27,7 +27,7 @@ NUM_EMB_LIST=()
 SK_EPSILONS=()
 for ((i = 0; i < OPENONEREC_N_LAYERS; i++)); do
   NUM_EMB_LIST+=("$OPENONEREC_CODEBOOK_SIZE")
-  if [ $i -ge 0 ]; then
+  if [ $i -eq $((OPENONEREC_N_LAYERS - 1)) ]; then
     SK_EPSILONS+=("$OPENONEREC_LAST_SK_EPSILON")
   else
     SK_EPSILONS+=("0.0")
@@ -52,6 +52,7 @@ DATASETS=(Instruments)
 # DATASETS=(Games)
 DATA_PATHS=() # 可选：手动指定多个 .npy 路径；留空则按默认规则拼接
 TRAIN_DATASET=$(IFS=-; echo "${DATASETS[*]}")
+: "${USE_MULTI_DATASETS:=true}"   # true: 优先使用 DATASETS；false: 使用 DATA_PATH
 
 # =========================
 # Train config
@@ -103,7 +104,7 @@ DATA_ARGS=()
 CKPT_ROOT=""
 RUN_NAME=""
 
-if [ ${#DATASETS[@]} -gt 0 ]; then
+if [ "${USE_MULTI_DATASETS,,}" = "true" ]; then
   if [ ${#DATA_PATHS[@]} -eq 0 ]; then
     for d in "${DATASETS[@]}"; do
       DATA_PATHS+=("${ROOT_DIR}/data/$d/${d}.emb-${MODEL_NAME}-td.npy")
@@ -119,13 +120,16 @@ else
 fi
 
 VQ_TAG="$(IFS=-; echo "${NUM_EMB_LIST[*]}")"
-CKPT_TAG_DEFAULT="rq${#NUM_EMB_LIST[@]}_cb${VQ_TAG}"
+SK_TAG="$(IFS=-; echo "${SK_EPSILONS[*]}")"
+KM_TAG="km${KMEANS_INIT_ARG}-lkm${LARGE_SCALE_KMEANS_ARG}-kmi${KMEANS_ITERS}"
+CKPT_TAG_DEFAULT="rq${#NUM_EMB_LIST[@]}_cb${VQ_TAG}_sk${SK_TAG}_${KM_TAG}"
 : "${CKPT_TAG:=$CKPT_TAG_DEFAULT}"
 
 : "${CKPT_DIR:=${CKPT_ROOT}${CKPT_TAG}/}"
 RUN_NAME="${RUN_NAME}-${CKPT_TAG}"
 
 WANDB_RUN_NAME="${WANDB_RUN_NAME:-$RUN_NAME}"
+RUN_NAME="${RUN_NAME}"
 
 LAUNCH_CMD=(python3 -u -m index.train_index)
 if [ "${NPROC_PER_NODE}" -gt 1 ]; then
@@ -167,10 +171,11 @@ ${LAUNCH_CMD[@]} \
   --device "$DEVICE" \
   "${DATA_ARGS[@]}" \
   --ckpt_dir "$CKPT_DIR" \
+  --run_name "$RUN_NAME" \
   --use_wandb "$USE_WANDB" \
   --wandb_project "$WANDB_PROJECT" \
-  --wandb_name "$WANDB_RUN_NAME" 
-  # > >(tee "$LOG_FILE") 2>&1 &
+  --wandb_name "$WANDB_RUN_NAME" \
+  > >(tee "$LOG_FILE") 2>&1
 
 echo "Index training started. Log file: $LOG_FILE"
 echo "W&B Run Name: $WANDB_RUN_NAME"

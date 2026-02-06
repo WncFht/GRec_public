@@ -14,6 +14,14 @@ from index.models.rqvae import RQVAE
 from index.trainer import Trainer
 
 
+def _validate_args(args):
+    if len(args.num_emb_list) != len(args.sk_epsilons):
+        raise ValueError(
+            "Length mismatch: --num_emb_list and --sk_epsilons must have "
+            f"the same length, got {len(args.num_emb_list)} vs {len(args.sk_epsilons)}"
+        )
+
+
 def parse_args():
     def str2bool(v):
         if isinstance(v, bool):
@@ -154,6 +162,12 @@ def parse_args():
     parser.add_argument(
         "--wandb_name", type=str, default=None, help="wandb run name"
     )
+    parser.add_argument(
+        "--run_name",
+        type=str,
+        default=None,
+        help="Optional experiment/run name to persist into run_meta.json.",
+    )
 
     return parser.parse_args()
 
@@ -246,6 +260,7 @@ if __name__ == "__main__":
     # 将字符串参数转换为布尔值
     args.kmeans_init = args.kmeans_init.lower() == "true"
     args.large_scale_kmeans = args.large_scale_kmeans.lower() == "true"
+    _validate_args(args)
 
     if is_main_process:
         print("=================================================")

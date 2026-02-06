@@ -8,6 +8,7 @@ GRec 聚焦**多模态生成式推荐**。整体流水线是：
 
 - 环境安装：`docs/install.md`
 - SID：`docs/sid_readme.md`（包含两种 SID 构建方式：`index/` 与 `tokenizer/`）
+- Index 构建全流程（RQVAE）：`docs/index_pipeline_readme.md`
 - SFT：`docs/finetune_readme.md`
 - RL：`docs/rl_readme.md`
 - 测试：`docs/test_readme.md`

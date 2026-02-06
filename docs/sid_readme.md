@@ -65,12 +65,14 @@ SID 的输入是一个二维 `.npy`，形状 `[num_items, dim]`。重要的是 *
 
 ## 2. 方式 A：`index/`（RQVAE / 深度 SID）
 
+> 实验追踪与完整流水线（含 `run_meta.json`）见：`docs/index_pipeline_readme.md`
+
 入口与脚本：
 
 - 训练：`index/train_index.py`（可用 `index/scripts/train_nohup.sh`/`train.sh` 包装）
 - 生成 index json：`index/generate_indices.py`（可用 `index/scripts/generate.sh`）
 - 评估：`index/evaluate_index.py`（可用 `index/scripts/evaluate.sh`）
-- 详细架构说明：`index/README.md`
+- 详细架构说明：`docs/index_pipeline_readme.md`
 
 ### 2.1 数据要求
 

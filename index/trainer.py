@@ -1,6 +1,10 @@
 import heapq
+import json
 import logging
 import os
+import platform
+import socket
+import subprocess
 from time import time
 
 import numpy as np
@@ -104,6 +108,7 @@ class Trainer:
             self.ckpt_dir, saved_model_dir
         )  # 完整的检查点保存路径
         ensure_dir(self.ckpt_dir)  # 确保检查点目录存在
+        self._write_run_meta()
 
         # 最佳损失和碰撞率记录
         self.best_loss = np.inf  # 记录最佳训练损失
@@ -120,6 +125,55 @@ class Trainer:
         self.optimizer = self._build_optimizer()  # 构建优化器
         self.scheduler = self._get_scheduler()  # 获取学习率调度器
         self.model = self.model.to(self.device)  # 将模型移动到指定设备
+
+    def _safe_git_output(self, args):
+        try:
+            out = subprocess.check_output(
+                args,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+            return out if out else None
+        except Exception:
+            return None
+
+    def _write_run_meta(self):
+        if not self.is_main_process:
+            return
+
+        args_dict = {}
+        if hasattr(self.args, "__dict__"):
+            args_dict = dict(vars(self.args))
+
+        train_data_paths = []
+        data_paths = args_dict.get("data_paths")
+        if isinstance(data_paths, list) and data_paths:
+            train_data_paths = [str(p) for p in data_paths]
+        else:
+            data_path = args_dict.get("data_path")
+            if data_path is not None:
+                train_data_paths = [str(data_path)]
+
+        meta = {
+            "run_name": args_dict.get("run_name"),
+            "wandb_name": args_dict.get("wandb_name"),
+            "created_at": get_local_time(),
+            "ckpt_dir": self.ckpt_dir,
+            "world_size": self.world_size,
+            "host": socket.gethostname(),
+            "platform": platform.platform(),
+            "python": platform.python_version(),
+            "git_commit": self._safe_git_output(["git", "rev-parse", "HEAD"]),
+            "git_branch": self._safe_git_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]),
+            "train_data_paths": train_data_paths,
+            "args": args_dict,
+        }
+
+        run_meta_path = os.path.join(self.ckpt_dir, "run_meta.json")
+        with open(run_meta_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False, indent=2, sort_keys=True)
+
+        self.logger.info(f"Saved run metadata: {run_meta_path}")
 
     def _unwrap_model(self):
         return (
