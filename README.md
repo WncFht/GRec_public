@@ -21,7 +21,8 @@ GRec 聚焦**多模态生成式推荐**。整体流水线是：
 
 - `data_process/`：数据增强、图片下载、embedding 抽取等工具
 - `index/`：SID 方式 A（RQVAE，深度离散化）+ `build_embeddings.py`（文本 embedding 抽取）
-- `tokenizer/`：SID 方式 B（Residual KMeans，OpenOneRec-style tokenizer）
+  - 训练引擎已拆分：`index/engine/train_loop.py`、`index/engine/eval.py`、`index/engine/checkpoint.py`
+- `tokenizer/`：SID 方式 B（Residual KMeans tokenizer）
 - `src/`：训练/评测核心代码（SFT、RL、SeqRec metric、Text generation 等）
 - `scripts/`：一键/模板脚本（finetune、seqrec、text_generate、rl…）
   - 统一模板入口说明：`scripts/finetune/README.md`、`scripts/rl/README.md`

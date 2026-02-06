@@ -8,7 +8,7 @@ SID（Semantic/Structured Indexing）在 GRec 里指：把连续的 item embeddi
 目前 SID 有两套实现（你提到的两种方式）：
 
 - **方式 A：`index/`（RQVAE / 深度模型）**：训练一个 Encoder→ResidualVQ→Decoder，把 embedding 映射到 codes，适合追求更强表达能力（训练更重）。
-- **方式 B：`tokenizer/`（Residual K-Means / OpenOneRec-style）**：逐层 residual KMeans 学 codebook，轻量、稳定，且天然适合“多数据集共享同一个 tokenizer/codebook”。
+- **方式 B：`tokenizer/`（Residual K-Means tokenizer）**：逐层 residual KMeans 学 codebook，轻量、稳定，且天然适合“多数据集共享同一个 tokenizer/codebook”。
 
 下游数据加载逻辑对两者完全一致：都输出 `Dataset.index_*.json`（key=item_id，value=token list）。
 
@@ -124,7 +124,7 @@ python3 -m index.generate_indices \
 
 ---
 
-## 3. 方式 B：`tokenizer/`（Residual K-Means / OpenOneRec-style）
+## 3. 方式 B：`tokenizer/`（Residual K-Means tokenizer）
 
 入口与脚本：
 
@@ -262,14 +262,14 @@ python3 tokenizer/build_index_json.py \
 `train.sh` 会自动构建：
 
 - `NUM_EMB_LIST`：每层 codebook 大小
-- `SK_EPSILONS`：默认前几层 `0.0`，最后一层 `OPENONEREC_LAST_SK_EPSILON`
+- `SK_EPSILONS`：默认前几层 `0.0`，最后一层 `INDEX_LAST_SK_EPSILON`
 
 可通过环境变量覆盖：
 
 ```bash
-OPENONEREC_N_LAYERS=4 \
-OPENONEREC_CODEBOOK_SIZE=1024 \
-OPENONEREC_LAST_SK_EPSILON=0.003 \
+INDEX_N_LAYERS=4 \
+INDEX_CODEBOOK_SIZE=1024 \
+INDEX_LAST_SK_EPSILON=0.003 \
 bash index/scripts/train.sh
 ```
 
@@ -329,7 +329,7 @@ python3 -m index.evaluate_index \
 
 你当前最常做的四维度：
 
-1. codebook 大小：`OPENONEREC_CODEBOOK_SIZE`
+1. codebook 大小：`INDEX_CODEBOOK_SIZE`
 2. `sk_epsilons`：重点是最后一层 epsilon
 3. dataset 组合：`DATASETS=(...)` + `USE_MULTI_DATASETS`
 4. embedding model：`MODEL_NAME`
@@ -345,7 +345,7 @@ python3 -m index.evaluate_index \
 ### 7. 当前已知限制
 
 - `index/generate_indices.py` 目前默认用行号 `0..N-1` 作为 key；如果你要严格保留原始 item_id，需要额外改造（或使用 `tokenizer/` 路线）。
-- `Trainer` 当前仍是单类多职责实现；后续可按 `train/eval/checkpoint` 拆分。
+- `Trainer` 已按职责拆分为 `index/engine/train_loop.py`、`index/engine/eval.py`、`index/engine/checkpoint.py`。
 
 ---
 
@@ -355,11 +355,10 @@ python3 -m index.evaluate_index \
 
 - 确认 `USE_MULTI_DATASETS` 与 `DATA_PATH` / `DATASETS` 对齐
 - 确认 `MODEL_NAME` 与 embedding 文件名一致
-- 确认 `OPENONEREC_N_LAYERS` 与 `num_emb_list/sk_epsilons` 预期一致
+- 确认 `INDEX_N_LAYERS` 与 `num_emb_list/sk_epsilons` 预期一致
 
 训练后：
 
 - 检查 `<run_dir>/run_meta.json` 是否存在
 - 检查 `best_collision_model.pth` 是否存在
 - 导出 index 后，检查输出文件名是否含本次实验标识
-

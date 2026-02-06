@@ -15,20 +15,19 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT" || exit 1
 
 # =========================
-# OpenOneRec tokenizer config
+# Index quantizer config
 # =========================
-# OpenOneRec 默认：n_layers=3, codebook_size=8192, dim=4096（dim 由输入数据决定）
-: "${OPENONEREC_N_LAYERS:=4}"
-: "${OPENONEREC_CODEBOOK_SIZE:=512}"
-: "${OPENONEREC_LAST_SK_EPSILON:=0.003}"
-: "${OPENONEREC_KMEANS_ITERS:=100}"
+: "${INDEX_N_LAYERS:=4}"
+: "${INDEX_CODEBOOK_SIZE:=512}"
+: "${INDEX_LAST_SK_EPSILON:=0.003}"
+: "${INDEX_KMEANS_ITERS:=100}"
 
 NUM_EMB_LIST=()
 SK_EPSILONS=()
-for ((i = 0; i < OPENONEREC_N_LAYERS; i++)); do
-  NUM_EMB_LIST+=("$OPENONEREC_CODEBOOK_SIZE")
-  if [ $i -eq $((OPENONEREC_N_LAYERS - 1)) ]; then
-    SK_EPSILONS+=("$OPENONEREC_LAST_SK_EPSILON")
+for ((i = 0; i < INDEX_N_LAYERS; i++)); do
+  NUM_EMB_LIST+=("$INDEX_CODEBOOK_SIZE")
+  if [ $i -eq $((INDEX_N_LAYERS - 1)) ]; then
+    SK_EPSILONS+=("$INDEX_LAST_SK_EPSILON")
   else
     SK_EPSILONS+=("0.0")
   fi
@@ -77,7 +76,7 @@ TRAIN_DATASET=$(IFS=-; echo "${DATASETS[*]}")
 
 : "${KMEANS_INIT_ARG:=true}"
 : "${LARGE_SCALE_KMEANS_ARG:=true}"
-: "${KMEANS_ITERS:=$OPENONEREC_KMEANS_ITERS}"
+: "${KMEANS_ITERS:=$INDEX_KMEANS_ITERS}"
 
 : "${USE_WANDB:=False}"
 : "${WANDB_PROJECT:=unifymmgrec}"

@@ -223,13 +223,7 @@ def main(args):
 
     all_indices = np.asarray(all_indices, dtype=np.int64)
 
-    # 设置除最后一层外的 RQ 量化器的 Sinkhorn-Knopp epsilon 为 0
-    for vq in model.rq.vq_layers[:-1]:
-        vq.sk_epsilon = 0.0
-    # model.rq.vq_layers[-1].sk_epsilon = 0.005  # 示例：最后一层 epsilon 值
-    # 如果最后一层的 Sinkhorn-Knopp epsilon 为 0，则设置为 0.003
-    if model.rq.vq_layers[-1].sk_epsilon == 0.0:
-        model.rq.vq_layers[-1].sk_epsilon = 0.003
+    # 复用 checkpoint 内保存的 sk_epsilon 配置，不在导出阶段覆盖。
 
     tt = 0  # 迭代计数器
     # There are often duplicate items in the dataset, and we no longer differentiate them
