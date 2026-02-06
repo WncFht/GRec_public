@@ -19,27 +19,39 @@ fi
 : "${DATASET:=Instruments}"
 : "${DATA_PATH:=${DATA_ROOT}/${DATASET}/${DATASET}.emb-${MODEL_NAME}-td.npy}"
 : "${DATASETS:=Arts Automotive Cell Games Pet Sports Tools Toys Instruments}"
-: "${OUTPUT_SUFFIX:=.index_${MODEL_NAME}.json}"
+: "${OUTPUT_SUFFIX:=}" # 留空时自动命名，包含 emb/rq/cb/ds/rid
 : "${DEVICE:=cuda:0}"
 : "${BATCH_SIZE:=64}"
 
 read -r -a DATASET_LIST <<< "$DATASETS"
 DATA_PATHS=(${DATA_PATHS:-})
 
+OUTPUT_ARGS=()
+if [[ -n "$OUTPUT_SUFFIX" ]]; then
+  OUTPUT_ARGS+=(--output_suffix "$OUTPUT_SUFFIX")
+fi
+
+echo "Generate config: USE_MULTI_DATASETS=${USE_MULTI_DATASETS}, MODEL_NAME=${MODEL_NAME}"
+echo "CKPT_PATH=${CKPT_PATH}"
+if [[ -n "$OUTPUT_SUFFIX" ]]; then
+  echo "OUTPUT_SUFFIX=${OUTPUT_SUFFIX}"
+else
+  echo "OUTPUT_SUFFIX=<auto>"
+fi
+
 gen_one() {
   local dataset="$1"
   local data_path="$2"
   local output_dir="${DATA_ROOT}/${dataset}/"
-  local output_file="${dataset}${OUTPUT_SUFFIX}"
 
   python3 -m index.generate_indices \
     --dataset "$dataset" \
     --ckpt_path "$CKPT_PATH" \
     --data_path "$data_path" \
     --output_dir "$output_dir" \
-    --output_file "$output_file" \
     --device "$DEVICE" \
-    --batch_size "$BATCH_SIZE"
+    --batch_size "$BATCH_SIZE" \
+    "${OUTPUT_ARGS[@]}"
 }
 
 if [ "${USE_MULTI_DATASETS,,}" = "true" ]; then
@@ -64,9 +76,9 @@ if [ "${USE_MULTI_DATASETS,,}" = "true" ]; then
     --ckpt_path "$CKPT_PATH" \
     --data_paths "${DATA_PATHS[@]}" \
     --output_dir "$DATA_ROOT" \
-    --output_suffix "$OUTPUT_SUFFIX" \
     --device "$DEVICE" \
-    --batch_size "$BATCH_SIZE"
+    --batch_size "$BATCH_SIZE" \
+    "${OUTPUT_ARGS[@]}"
 else
   gen_one "$DATASET" "$DATA_PATH"
 fi

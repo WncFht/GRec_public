@@ -2,6 +2,7 @@ import argparse
 import collections
 import json
 import os
+import re
 
 import numpy as np
 import torch
@@ -120,6 +121,145 @@ def _dataset_ids_for_global_indices(
     return dataset_ids
 
 
+def _get_attr(obj, name: str, default=None):
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return getattr(obj, name, default)
+
+
+def _as_str_list(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return [str(v) for v in value if str(v).strip()]
+    text = str(value).strip()
+    return [text] if text else []
+
+
+def _as_int_list(value) -> list[int]:
+    if value is None:
+        return []
+    values = value if isinstance(value, (list, tuple)) else [value]
+    out: list[int] = []
+    for item in values:
+        try:
+            out.append(int(item))
+        except Exception:
+            continue
+    return out
+
+
+def _unique_keep_order(items: list[str]) -> list[str]:
+    seen = set()
+    result: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
+
+
+def _infer_dataset_name_from_path(path: str) -> str | None:
+    if not path:
+        return None
+    parent = os.path.basename(os.path.dirname(os.path.normpath(path)))
+    return parent or None
+
+
+def _infer_embedding_model_from_path(path: str) -> str | None:
+    base = os.path.basename(path)
+    match = re.search(r"\.emb-(.+?)-td\.npy$", base)
+    if match:
+        return match.group(1)
+    match = re.search(r"\.emb-(.+?)\.npy$", base)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _slug(text: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9-]+", "-", text).strip("-")
+    return cleaned or "na"
+
+
+def _extract_train_data_paths(model_args) -> list[str]:
+    data_paths = _as_str_list(_get_attr(model_args, "data_paths", None))
+    if data_paths:
+        return data_paths
+    return _as_str_list(_get_attr(model_args, "data_path", None))
+
+
+def _build_auto_output_suffix(
+    ckpt_path: str, model_args, fallback_data_paths: list[str]
+) -> str:
+    train_data_paths = _extract_train_data_paths(model_args)
+    if not train_data_paths:
+        train_data_paths = list(fallback_data_paths)
+
+    train_datasets = _unique_keep_order(
+        [
+            ds
+            for ds in (
+                _infer_dataset_name_from_path(path)
+                for path in train_data_paths
+            )
+            if ds
+        ]
+    )
+    train_embeddings = _unique_keep_order(
+        [
+            emb
+            for emb in (
+                _infer_embedding_model_from_path(path)
+                for path in train_data_paths
+            )
+            if emb
+        ]
+    )
+
+    num_emb_list = _as_int_list(_get_attr(model_args, "num_emb_list", None))
+    rq_layers = len(num_emb_list)
+    cb_tag = "-".join(str(x) for x in num_emb_list) if num_emb_list else "na"
+
+    embedding_tag = (
+        "-".join(_slug(x) for x in train_embeddings)
+        if train_embeddings
+        else "unknown-emb"
+    )
+    dataset_tag = (
+        "-".join(_slug(x) for x in train_datasets)
+        if train_datasets
+        else "unknown-ds"
+    )
+
+    run_id = _slug(os.path.basename(os.path.dirname(os.path.abspath(ckpt_path))))
+    if run_id == "na":
+        run_id = _slug(os.path.splitext(os.path.basename(ckpt_path))[0])
+
+    suffix = (
+        f".index_emb-{embedding_tag}"
+        f"_rq{rq_layers}"
+        f"_cb{_slug(cb_tag)}"
+        f"_ds{dataset_tag}"
+        f"_rid{run_id}.json"
+    )
+    return suffix
+
+
+def _infer_datasets_from_data_paths(data_paths: list[str]) -> list[str]:
+    datasets: list[str] = []
+    for path in data_paths:
+        ds = _infer_dataset_name_from_path(path)
+        if not ds:
+            raise ValueError(
+                "Cannot infer dataset name from data_path. "
+                "Please pass --dataset/--datasets explicitly."
+            )
+        datasets.append(ds)
+    return datasets
+
+
 def main(args):
     device = torch.device(args.device)
 
@@ -129,18 +269,6 @@ def main(args):
     )  # 加载检查点到 CPU
     model_args = ckpt["args"]  # 从检查点中获取训练参数
     state_dict = ckpt["state_dict"]  # 从检查点中获取模型状态字典
-
-    datasets = _parse_datasets_arg(
-        getattr(args, "dataset", None), getattr(args, "datasets", None)
-    )
-    multi_output = (len(datasets) > 1) and (
-        getattr(args, "output_suffix", None) is not None
-    )
-
-    if multi_output and getattr(args, "output_file", None) is not None:
-        raise ValueError(
-            "In multi-output mode, please use --output_suffix, not --output_file."
-        )
 
     # 加载嵌入数据集：优先使用命令行传入的 data_path(s)，否则使用 checkpoint 中保存的 data_path(s)
     if (
@@ -156,15 +284,38 @@ def main(args):
     elif getattr(args, "data_path", None) is not None:
         data_paths = [args.data_path]
     else:
-        data_paths = getattr(model_args, "data_paths", None) or [
-            model_args.data_path
-        ]
+        data_paths = _extract_train_data_paths(model_args)
+
+    if not data_paths:
+        raise ValueError(
+            "Cannot infer input data_path(s). Please pass --data_path/--data_paths "
+            "or use a checkpoint with saved training data path(s)."
+        )
+
+    datasets = _parse_datasets_arg(
+        getattr(args, "dataset", None), getattr(args, "datasets", None)
+    )
+    if not datasets:
+        datasets = _infer_datasets_from_data_paths(data_paths)
+
+    multi_output = len(datasets) > 1
+    if multi_output and getattr(args, "output_file", None) is not None:
+        raise ValueError(
+            "In multi-output mode, please use --output_suffix, not --output_file."
+        )
 
     if multi_output and len(data_paths) != len(datasets):
         raise ValueError(
-            f"Multi-output mode requires one --data_paths entry per dataset. "
+            f"Multi-output mode requires one data_path per dataset. "
             f"Got datasets={len(datasets)}, data_paths={len(data_paths)}."
         )
+
+    output_suffix = args.output_suffix
+    if not output_suffix:
+        output_suffix = _build_auto_output_suffix(
+            args.ckpt_path, model_args, data_paths
+        )
+        print(f"[auto_name] output_suffix={output_suffix}")
 
     data = (
         MultiEmbDataset(data_paths)
@@ -219,7 +370,6 @@ def main(args):
             key = _build_key(index)
             all_indices.append(index.tolist())
             all_keys.append(key)
-        # break
 
     all_indices = np.asarray(all_indices, dtype=np.int64)
 
@@ -283,25 +433,26 @@ def main(args):
         for ds, start, end in spans:
             out_dir = os.path.join(args.output_dir, ds)
             os.makedirs(out_dir, exist_ok=True)
-            out_path = os.path.join(out_dir, f"{ds}{args.output_suffix}")
+            out_path = os.path.join(out_dir, f"{ds}{output_suffix}")
 
             ds_dict = {}
             for local_id, key in enumerate(all_keys[start:end]):
                 ds_dict[local_id] = _key_to_tokens(key, prefix)
 
-            with open(out_path, "w") as fp:
+            with open(out_path, "w", encoding="utf-8") as fp:
                 json.dump(ds_dict, fp)
             print(f"[output] {ds}: {out_path} (items={end - start})")
     else:
-        if not getattr(args, "output_file", None):
-            raise ValueError("Single-output mode requires --output_file.")
+        dataset_name = datasets[0]
+        output_file = args.output_file or f"{dataset_name}{output_suffix}"
+
         all_indices_dict = {}  # 字典，用于存储最终的索引映射
         for item, key in enumerate(all_keys):
             all_indices_dict[item] = _key_to_tokens(key, prefix)
 
         os.makedirs(args.output_dir, exist_ok=True)  # 确保输出目录存在
-        output_file_path = os.path.join(args.output_dir, args.output_file)
-        with open(output_file_path, "w") as fp:
+        output_file_path = os.path.join(args.output_dir, output_file)
+        with open(output_file_path, "w", encoding="utf-8") as fp:
             json.dump(all_indices_dict, fp)
         print(f"[output] {output_file_path} (items={len(all_keys)})")
 
@@ -321,7 +472,7 @@ if __name__ == "__main__":
         type=str,
         nargs="+",
         default=None,
-        help="Multiple dataset names (space separated). When set with --output_suffix, will export one index json per dataset.",
+        help="Multiple dataset names (space separated).",
     )
     parser.add_argument(
         "--ckpt_path", type=str, required=True, help="Path to model checkpoint"
@@ -346,15 +497,18 @@ if __name__ == "__main__":
         "--output_file",
         type=str,
         default=None,
-        help="Output JSON file name (single-output mode).",
+        help=(
+            "Output JSON file name (single-output mode). "
+            "If omitted, auto-naming is used."
+        ),
     )
     parser.add_argument(
         "--output_suffix",
         type=str,
         default=None,
         help=(
-            "Multi-output mode: write <dataset>/<dataset><output_suffix> under --output_dir. "
-            "Example: .index_qwen3-embedding-4B.json"
+            "Output suffix for auto output naming. "
+            "Default: auto-generated rich suffix with emb/rq/cb/ds/rid."
         ),
     )
     parser.add_argument(

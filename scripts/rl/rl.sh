@@ -19,7 +19,6 @@ export WANDB_LOG_MODEL=false
 export WANDB_MODE="${WANDB_MODE:-offline}"
 export WANDB_ENTITY="${WANDB_ENTITY:-wncfht}"
 export WANDB_PROJECT="${WANDB_PROJECT:-GRec_rl}"
-export WANDB_NAME="${WANDB_NAME:-rl_default}"
 export PYTHONUNBUFFERED=1
 export CUDA_LAUNCH_BLOCKING="${CUDA_LAUNCH_BLOCKING:-0}"
 export NCCL_IB_DISABLE="${NCCL_IB_DISABLE:-1}"
@@ -30,9 +29,16 @@ DATASET="${DATASET:-Instruments}"
 DATA_PATH="${DATA_PATH:-./data}"
 BASE_MODEL="${BASE_MODEL:-ckpt/Instruments/Llava-onevision-finetune-item2index-seqrec-fusionseqrec/checkpoint-4098}"
 MODEL_TYPE="${MODEL_TYPE:-llava_onevision}"
-OUTPUT_DIR="${OUTPUT_DIR:-ckpt/${DATASET}/rl_default}"
-
 INDEX_FILE="${INDEX_FILE:-.index_qwen7B.json}"
+INDEX_KEY="${INDEX_FILE#.}"
+INDEX_KEY="${INDEX_KEY%.json}"
+INDEX_KEY="${INDEX_KEY//\//_}"
+DATASET_TAG="${DATASET//,/-}"
+OUTPUT_DIR="${OUTPUT_DIR:-ckpt/${DATASET_TAG}/rl_default__idx-${INDEX_KEY}}"
+
+CHECK_INDEX_FILES="${CHECK_INDEX_FILES:-true}"
+export WANDB_NAME="${WANDB_NAME:-rl_${DATASET_TAG}__idx-${INDEX_KEY}}"
+
 TASK="${TASK:-seqrec}"
 
 TRAIN_BATCH_SIZE="${TRAIN_BATCH_SIZE:-64}"
@@ -62,10 +68,23 @@ NUM_PROCESSES="${NUM_PROCESSES:-4}"
 MAIN_PROCESS_PORT="${MAIN_PROCESS_PORT:-29503}"
 ACCELERATE_CONFIG="${ACCELERATE_CONFIG:-./config/zero2_opt.yaml}"
 
+if [[ "${CHECK_INDEX_FILES}" == "true" ]]; then
+    IFS=',' read -r -a DATASET_LIST <<< "${DATASET}"
+    for ds in "${DATASET_LIST[@]}"; do
+        ds="${ds// /}"
+        index_path="${DATA_PATH}/${ds}/${ds}${INDEX_FILE}"
+        if [[ ! -f "${index_path}" ]]; then
+            echo "[rl] Missing index file: ${index_path}" >&2
+            echo "[rl] Hint: check DATA_PATH/DATASET/INDEX_FILE." >&2
+            exit 1
+        fi
+    done
+fi
+
 mkdir -p log "${OUTPUT_DIR}"
 CHECKPOINT_NAME=$(basename "${BASE_MODEL}")
 MODEL_DIR_NAME=$(basename "$(dirname "${BASE_MODEL}")")
-LOG_FILE="log/${MODEL_DIR_NAME}-${CHECKPOINT_NAME}-${TASK}-${TIMESTAMP}.log"
+LOG_FILE="log/${MODEL_DIR_NAME}-${CHECKPOINT_NAME}-${TASK}-${INDEX_KEY}-${TIMESTAMP}.log"
 
 COMMON_ARGS=(
     --model_type "${MODEL_TYPE}"
@@ -119,6 +138,7 @@ RUN_ARGS=("${COMMON_ARGS[@]}")
 echo "[rl] OUTPUT_DIR=${OUTPUT_DIR}"
 echo "[rl] LOG_FILE=${LOG_FILE}"
 echo "[rl] MODEL_TYPE=${MODEL_TYPE} TASK=${TASK} REWARD_TYPE=${REWARD_TYPE}"
+echo "[rl] DATASET=${DATASET} INDEX_FILE=${INDEX_FILE} INDEX_KEY=${INDEX_KEY}"
 
 if $DEBUG; then
     export CUDA_VISIBLE_DEVICES="${DEBUG_GPU:-0}"

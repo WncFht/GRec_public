@@ -173,7 +173,9 @@ bash index/scripts/text2emb.sh
 
 - 必填：`CKPT_PATH`
 - 支持单数据集和多数据集
-- 默认输出后缀：`OUTPUT_SUFFIX=.index_<MODEL_NAME>.json`
+- 默认输出后缀：自动命名（包含 emb/rq/cb/ds/rid）
+- 命名模板：`.index_emb-<emb>_rq<layers>_cb<cb-list>_ds<train-datasets>_rid<train-id>.json`
+- 若你要强制自定义后缀，可显式设置 `OUTPUT_SUFFIX`
 
 单数据集：
 
@@ -185,12 +187,22 @@ CKPT_PATH=/path/to/best_collision_model.pth \
 bash index/scripts/generate.sh
 ```
 
+如果不传 `OUTPUT_SUFFIX`，脚本会自动生成包含训练关键信息的后缀；下游只需把该后缀作为 `INDEX_FILE` 传给 SFT/RL。
+
 多数据集：
 
 ```bash
 USE_MULTI_DATASETS=true \
 DATASETS="Arts Automotive Cell Games Pet Sports Tools Toys Instruments" \
 MODEL_NAME=qwen3-embedding-4B \
+CKPT_PATH=/path/to/best_collision_model.pth \
+bash index/scripts/generate.sh
+```
+
+如需手工覆盖命名：
+
+```bash
+OUTPUT_SUFFIX=.index_my_exp_tag.json \
 CKPT_PATH=/path/to/best_collision_model.pth \
 bash index/scripts/generate.sh
 ```

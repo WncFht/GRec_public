@@ -38,11 +38,11 @@ DATASET=Instruments \
 DATA_PATH=./data \
 BASE_MODEL=ckpt/base_model/Qwen2.5-3B-Instruct \
 MODEL_TYPE=qwen2_5_instruct \
-OUTPUT_DIR=./ckpt/Instruments/qwen2.5-3b-sft \
+OUTPUT_DIR=./ckpt/Instruments/qwen2.5-3b-sft__idx-index_emb-qwen3-embedding-4B_rq4_cb512-512-512-512_dsInstruments_ridJan-28-2026-05-54-58 \
 TASKS=item2index,seqrec \
 TRAIN_PROMPT_SAMPLE_NUM=1,1 \
 TRAIN_DATA_SAMPLE_NUM=0,0 \
-INDEX_FILE=.index_qwen3-embedding-4B.json \
+INDEX_FILE=.index_emb-qwen3-embedding-4B_rq4_cb512-512-512-512_dsInstruments_ridJan-28-2026-05-54-58.json \
 GPUS=0,1,2,3 \
 NPROC=4 \
 MASTER_PORT=33326 \
@@ -53,6 +53,8 @@ bash scripts/finetune/train_text.sh
 
 - 运行资源：`GPUS`, `NPROC`, `MASTER_PORT`
 - 数据/模型：`DATASET`, `DATA_PATH`, `BASE_MODEL`, `MODEL_TYPE`, `INDEX_FILE`, `OUTPUT_DIR`
+- 默认 `OUTPUT_DIR` 会自动带上 `INDEX_FILE` 的 key（避免不同 index 互相覆盖）
+- 脚本会先检查 `data/<dataset>/<dataset><INDEX_FILE>` 是否存在
 - 训练超参：`PER_DEVICE_BATCH_SIZE`, `GRAD_ACC`, `LEARNING_RATE`, `EPOCHS`, `NUM_WORKERS`
 - 训练行为：`USE_LORA`, `FREEZE`, `USE_GRADIENT_CHECKPOINTING`, `ONLY_TRAIN_RESPONSE`, `DETERMINISTIC`
 - 多数据集评估：`EVAL_BY_DATASET=true`, `EVAL_MAIN_DATASET=<dataset>`

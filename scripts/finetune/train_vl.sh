@@ -25,7 +25,15 @@ DATASET="${DATASET:-Instruments}"
 DATA_PATH="${DATA_PATH:-./data}"
 BASE_MODEL="${BASE_MODEL:-ckpt/base_model/llava-hf/llava-onevision-qwen2-7b-ov-hf}"
 MODEL_TYPE="${MODEL_TYPE:-llava_onevision}"
-OUTPUT_DIR="${OUTPUT_DIR:-./ckpt/${DATASET}/llava-onevision-sft}"
+INDEX_FILE="${INDEX_FILE:-.index_qwen7B.json}"
+INDEX_KEY="${INDEX_FILE#.}"
+INDEX_KEY="${INDEX_KEY%.json}"
+INDEX_KEY="${INDEX_KEY//\//_}"
+DATASET_TAG="${DATASET//,/-}"
+OUTPUT_DIR="${OUTPUT_DIR:-./ckpt/${DATASET_TAG}/llava-onevision-sft__idx-${INDEX_KEY}}"
+
+CHECK_INDEX_FILES="${CHECK_INDEX_FILES:-true}"
+export WANDB_NAME="${WANDB_NAME:-sft_vl_${DATASET_TAG}__idx-${INDEX_KEY}}"
 
 GPUS="${GPUS:-0,1,2,3}"
 NPROC="${NPROC:-4}"
@@ -46,7 +54,6 @@ TASKS="${TASKS:-item2index,seqrec,index2item,fusionseqrec}"
 TRAIN_PROMPT_SAMPLE_NUM="${TRAIN_PROMPT_SAMPLE_NUM:-1,1,1,1}"
 TRAIN_DATA_SAMPLE_NUM="${TRAIN_DATA_SAMPLE_NUM:-0,0,0,0}"
 RATIO_DATASET="${RATIO_DATASET:-1}"
-INDEX_FILE="${INDEX_FILE:-.index_qwen7B.json}"
 
 USE_LORA="${USE_LORA:-false}"
 LORA_MODULES_TO_SAVE="${LORA_MODULES_TO_SAVE:-embed_tokens,lm_head}"
@@ -55,6 +62,19 @@ ONLY_TRAIN_RESPONSE="${ONLY_TRAIN_RESPONSE:-true}"
 USE_GRADIENT_CHECKPOINTING="${USE_GRADIENT_CHECKPOINTING:-true}"
 REPORT_TO="${REPORT_TO:-wandb}"
 DETERMINISTIC="${DETERMINISTIC:-false}"
+
+if [[ "${CHECK_INDEX_FILES}" == "true" ]]; then
+    IFS=',' read -r -a DATASET_LIST <<< "${DATASET}"
+    for ds in "${DATASET_LIST[@]}"; do
+        ds="${ds// /}"
+        index_path="${DATA_PATH}/${ds}/${ds}${INDEX_FILE}"
+        if [[ ! -f "${index_path}" ]]; then
+            echo "[finetune/vl] Missing index file: ${index_path}" >&2
+            echo "[finetune/vl] Hint: check DATA_PATH/DATASET/INDEX_FILE." >&2
+            exit 1
+        fi
+    done
+fi
 
 mkdir -p "${OUTPUT_DIR}"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
@@ -108,6 +128,7 @@ fi
 echo "[finetune/vl] OUTPUT_DIR=${OUTPUT_DIR}"
 echo "[finetune/vl] LOG_FILE=${LOG_FILE}"
 echo "[finetune/vl] MODEL_TYPE=${MODEL_TYPE} TASKS=${TASKS}"
+echo "[finetune/vl] DATASET=${DATASET} INDEX_FILE=${INDEX_FILE} INDEX_KEY=${INDEX_KEY}"
 
 if [[ "${DEBUG}" == "true" ]]; then
     export CUDA_VISIBLE_DEVICES="${DEBUG_GPU:-0}"

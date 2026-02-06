@@ -33,9 +33,9 @@ DATASET=Instruments \
 DATA_PATH=./data \
 BASE_MODEL=ckpt/Instruments/qwen2.5-sft/checkpoint-1234 \
 MODEL_TYPE=qwen2_5_instruct \
-OUTPUT_DIR=ckpt/Instruments/qwen2.5-rl \
+OUTPUT_DIR=ckpt/Instruments/qwen2.5-rl__idx-index_emb-qwen3-embedding-4B_rq4_cb512-512-512-512_dsInstruments_ridJan-28-2026-05-54-58 \
 TASK=seqrec \
-INDEX_FILE=.index_qwen3-embedding-4B.json \
+INDEX_FILE=.index_emb-qwen3-embedding-4B_rq4_cb512-512-512-512_dsInstruments_ridJan-28-2026-05-54-58.json \
 REWARD_TYPE=ranking \
 TRAIN_BATCH_SIZE=64 \
 EVAL_BATCH_SIZE=128 \
@@ -54,6 +54,8 @@ bash scripts/rl/rl.sh
 
 - 运行资源：`GPUS`, `NUM_PROCESSES`, `MAIN_PROCESS_PORT`, `ACCELERATE_CONFIG`
 - 数据/模型：`DATASET`, `DATA_PATH`, `BASE_MODEL`, `MODEL_TYPE`, `OUTPUT_DIR`, `TASK`, `INDEX_FILE`
+- 默认 `OUTPUT_DIR` 与日志名会自动带上 `INDEX_FILE` key（避免混 run）
+- 脚本会先检查 `data/<dataset>/<dataset><INDEX_FILE>` 是否存在
 - 训练超参：`TRAIN_BATCH_SIZE`, `EVAL_BATCH_SIZE`, `NUM_TRAIN_EPOCHS`, `GRAD_ACC`, `LEARNING_RATE`, `BETA`
 - rollout / 解码：`NUM_GENERATIONS`, `USE_BEAM_SEARCH`, `MAX_COMPLETION_LENGTH`, `TEMPERATURE`
 - 训练行为：`TEST_DURING_TRAINING`, `EVAL_ON_TEST`, `LOG_COMPLETIONS`, `COMPLETION_LOG_INTERVAL`, `DETERMINISTIC`

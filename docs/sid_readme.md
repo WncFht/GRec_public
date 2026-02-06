@@ -185,10 +185,14 @@ python3 tokenizer/build_index_json.py \
 ```bash
 --data_path ./data \
 --dataset Instruments \
---index_file .index_qwen3-embedding-4B.json
+--index_file .index_emb-qwen3-embedding-4B_rq4_cb512-512-512-512_dsArts-Automotive-Cell-Games-Pet-Sports-Tools-Toys-Instruments_ridJan-28-2026-05-54-58.json
 ```
 
-请确保文件存在：`./data/Instruments/Instruments.index_qwen3-embedding-4B.json`。
+`index/scripts/generate.sh` 默认会自动命名后缀（`emb/rq/cb/ds/rid`），下游只要复制该后缀到 `INDEX_FILE` 即可。
+
+请确保文件存在：`./data/Instruments/Instruments<index_file>`。
+
+如果你要系统管理多个 index 版本，建议配合阅读：`docs/index_data_layout.md`。
 
 ---
 
@@ -309,10 +313,11 @@ python3 -m index.generate_indices \
   --dataset Instruments \
   --ckpt_path <ckpt_path> \
   --output_dir ./data/Instruments \
-  --output_file Instruments.index_qwen3-embedding-4B.json \
   --device cuda:0 \
   --batch_size 64
 ```
+
+默认会自动输出富信息命名的 index 文件（包含 embedding / 层数 / codebook / 训练数据集 / train id）。
 
 #### 5.2 评估
 

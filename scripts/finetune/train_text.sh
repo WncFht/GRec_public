@@ -25,7 +25,15 @@ DATASET="${DATASET:-Instruments}"
 DATA_PATH="${DATA_PATH:-./data}"
 BASE_MODEL="${BASE_MODEL:-ckpt/base_model/Qwen2.5-3B-Instruct}"
 MODEL_TYPE="${MODEL_TYPE:-qwen2_5_instruct}"
-OUTPUT_DIR="${OUTPUT_DIR:-./ckpt/${DATASET}/qwen2.5-3b-sft}"
+INDEX_FILE="${INDEX_FILE:-.index_qwen3-embedding-4B.json}"
+INDEX_KEY="${INDEX_FILE#.}"
+INDEX_KEY="${INDEX_KEY%.json}"
+INDEX_KEY="${INDEX_KEY//\//_}"
+DATASET_TAG="${DATASET//,/-}"
+OUTPUT_DIR="${OUTPUT_DIR:-./ckpt/${DATASET_TAG}/qwen2.5-3b-sft__idx-${INDEX_KEY}}"
+
+CHECK_INDEX_FILES="${CHECK_INDEX_FILES:-true}"
+export WANDB_NAME="${WANDB_NAME:-sft_text_${DATASET_TAG}__idx-${INDEX_KEY}}"
 
 GPUS="${GPUS:-0,1,2,3}"
 NPROC="${NPROC:-4}"
@@ -47,7 +55,6 @@ TASKS="${TASKS:-item2index,seqrec}"
 TRAIN_PROMPT_SAMPLE_NUM="${TRAIN_PROMPT_SAMPLE_NUM:-1,1}"
 TRAIN_DATA_SAMPLE_NUM="${TRAIN_DATA_SAMPLE_NUM:-0,0}"
 RATIO_DATASET="${RATIO_DATASET:-1}"
-INDEX_FILE="${INDEX_FILE:-.index_qwen3-embedding-4B.json}"
 
 USE_LORA="${USE_LORA:-false}"
 LORA_MODULES_TO_SAVE="${LORA_MODULES_TO_SAVE:-embed_tokens,lm_head}"
@@ -59,6 +66,19 @@ DETERMINISTIC="${DETERMINISTIC:-false}"
 
 EVAL_BY_DATASET="${EVAL_BY_DATASET:-false}"
 EVAL_MAIN_DATASET="${EVAL_MAIN_DATASET:-}"
+
+if [[ "${CHECK_INDEX_FILES}" == "true" ]]; then
+    IFS=',' read -r -a DATASET_LIST <<< "${DATASET}"
+    for ds in "${DATASET_LIST[@]}"; do
+        ds="${ds// /}"
+        index_path="${DATA_PATH}/${ds}/${ds}${INDEX_FILE}"
+        if [[ ! -f "${index_path}" ]]; then
+            echo "[finetune/text] Missing index file: ${index_path}" >&2
+            echo "[finetune/text] Hint: check DATA_PATH/DATASET/INDEX_FILE." >&2
+            exit 1
+        fi
+    done
+fi
 
 mkdir -p "${OUTPUT_DIR}"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
@@ -120,6 +140,7 @@ fi
 echo "[finetune/text] OUTPUT_DIR=${OUTPUT_DIR}"
 echo "[finetune/text] LOG_FILE=${LOG_FILE}"
 echo "[finetune/text] MODEL_TYPE=${MODEL_TYPE} TASKS=${TASKS}"
+echo "[finetune/text] DATASET=${DATASET} INDEX_FILE=${INDEX_FILE} INDEX_KEY=${INDEX_KEY}"
 
 if [[ "${DEBUG}" == "true" ]]; then
     export CUDA_VISIBLE_DEVICES="${DEBUG_GPU:-0}"
@@ -133,4 +154,3 @@ else
     echo "${PID}" >"${OUTPUT_DIR}/training.pid"
     echo "tail -f ${LOG_FILE}"
 fi
-
