@@ -1,105 +1,71 @@
 #!/bin/bash
+set -euo pipefail
 
-# Limit BLAS threads to avoid OpenBLAS "too many memory regions" on high-core machines.
-: "${INDEX_BLAS_NUM_THREADS:=32}"
-export INDEX_BLAS_NUM_THREADS
-export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-$INDEX_BLAS_NUM_THREADS}"
-export OMP_NUM_THREADS="${OMP_NUM_THREADS:-$INDEX_BLAS_NUM_THREADS}"
-export MKL_NUM_THREADS="${MKL_NUM_THREADS:-$INDEX_BLAS_NUM_THREADS}"
-export NUMEXPR_NUM_THREADS="${NUMEXPR_NUM_THREADS:-$INDEX_BLAS_NUM_THREADS}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$PROJECT_ROOT" || exit 1
 
-MODEL_NAME=qwen7b
+# K-Means ablation mode:
+# - large: kmeans_init=true,  large_scale_kmeans=true
+# - small: kmeans_init=true,  large_scale_kmeans=false
+# - none:  kmeans_init=false, large_scale_kmeans=false
+: "${KMEANS_MODE:=none}"
 
-# =========================
-# Single vs Multi dataset
-# =========================
-# 单数据集（兼容旧用法）：
-DATASET=Instruments
-DATA_PATH=./data/$DATASET/${DATASET}.emb-${MODEL_NAME}-td.npy
+case "${KMEANS_MODE}" in
+  large)
+    KMEANS_INIT_ARG=true
+    LARGE_SCALE_KMEANS_ARG=true
+    WANDB_SUFFIX="-LargeKMeans"
+    ;;
+  small)
+    KMEANS_INIT_ARG=true
+    LARGE_SCALE_KMEANS_ARG=false
+    WANDB_SUFFIX="-SmallKMeans"
+    ;;
+  none)
+    KMEANS_INIT_ARG=false
+    LARGE_SCALE_KMEANS_ARG=false
+    WANDB_SUFFIX="-NoKMeans"
+    ;;
+  *)
+    echo "Error: invalid KMEANS_MODE='${KMEANS_MODE}', expected one of: large|small|none"
+    exit 1
+    ;;
+esac
 
-# 多数据集合并训练（把下面 DATASETS 打开即可）：
-# - 训练只跑一次，学习共享 codebook / encoder
-# - 后续用 generate.sh 对每个数据集单独生成并落盘 index json
-DATASETS=() # 例如：(Arts Games Instruments)
-TRAIN_DATASET=Multi # 用于 ckpt_dir / wandb 命名（可改成 Arts+Games+...）
-DATA_PATHS=()       # 可选：手动指定多个 .npy 路径；留空则按默认规则拼接
+: "${ROOT_DIR:=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian}"
+: "${DATASET:=Instruments}"
+: "${MODEL_NAME:=qwen3-embedding-4B}"
+: "${DATA_PATH:=${ROOT_DIR}/data/${DATASET}/${DATASET}.emb-${MODEL_NAME}-td.npy}"
 
-LOG_FILE="./log/index_$(date +%Y%m%d%H%M%S).log"
+: "${USE_MULTI_DATASETS:=false}"
+: "${NPROC_PER_NODE:=1}"
+: "${EPOCHS:=10000}"
+: "${BATCH_SIZE:=2048}"
+: "${LR:=1e-3}"
 
-# --- A/B/C Test Configuration for K-Means ---
-# Set KMEANS_MODE to one of the following:
-# 'large': Use the new, large-scale K-Means initialization.
-# 'small': Use the original, small-batch K-Means initialization.
-# 'none':  Disable K-Means initialization completely.
-KMEANS_MODE='none'
+: "${INDEX_N_LAYERS:=4}"
+: "${INDEX_CODEBOOK_SIZE:=256}"
+: "${INDEX_LAST_SK_EPSILON:=0.003}"
+: "${INDEX_KMEANS_ITERS:=100}"
 
-# --- Logic to set arguments and wandb name based on mode ---
-KMEANS_INIT_ARG="false"
-LARGE_SCALE_KMEANS_ARG="false"
-WANDB_SUFFIX=""
-
-if [ "$KMEANS_MODE" = "large" ]; then
-  KMEANS_INIT_ARG="true"
-  LARGE_SCALE_KMEANS_ARG="true"
-  WANDB_SUFFIX="-LargeKMeans"
-elif [ "$KMEANS_MODE" = "small" ]; then
-  KMEANS_INIT_ARG="true"
-  LARGE_SCALE_KMEANS_ARG="false"
-  WANDB_SUFFIX="-SmallKMeans"
-else
-  KMEANS_INIT_ARG="false"
-  LARGE_SCALE_KMEANS_ARG="false"
-  WANDB_SUFFIX="-NoKMeans"
-fi
-
-WANDB_RUN_NAME="${DATASET}-${MODEL_NAME}${WANDB_SUFFIX}"
-# ----------------------------------------------------
+: "${USE_WANDB:=False}"
+: "${WANDB_PROJECT:=unifymmgrec}"
+: "${WANDB_RUN_NAME:=${DATASET}-${MODEL_NAME}${WANDB_SUFFIX}}"
 
 mkdir -p ./log
+: "${LOG_FILE:=./log/index_kmeans_${KMEANS_MODE}_$(date +%Y%m%d%H%M%S).log}"
 
-DATA_ARGS=()
-CKPT_DIR=""
-RUN_NAME=""
+export ROOT_DIR DATASET MODEL_NAME DATA_PATH
+export USE_MULTI_DATASETS NPROC_PER_NODE EPOCHS BATCH_SIZE LR
+export INDEX_N_LAYERS INDEX_CODEBOOK_SIZE INDEX_LAST_SK_EPSILON INDEX_KMEANS_ITERS
+export KMEANS_INIT_ARG LARGE_SCALE_KMEANS_ARG
+export USE_WANDB WANDB_PROJECT WANDB_RUN_NAME LOG_FILE
 
-if [ ${#DATASETS[@]} -gt 0 ]; then
-  if [ ${#DATA_PATHS[@]} -eq 0 ]; then
-    for d in "${DATASETS[@]}"; do
-      DATA_PATHS+=("./data/$d/${d}.emb-${MODEL_NAME}-td.npy")
-    done
-  fi
-  DATA_ARGS=(--data_paths "${DATA_PATHS[@]}")
-  CKPT_DIR="./data/$TRAIN_DATASET/index/$MODEL_NAME/"
-  RUN_NAME="${TRAIN_DATASET}-${MODEL_NAME}${WANDB_SUFFIX}"
-else
-  DATA_ARGS=(--data_path "$DATA_PATH")
-  CKPT_DIR="./data/$DATASET/index/$MODEL_NAME/"
-  RUN_NAME="${DATASET}-${MODEL_NAME}${WANDB_SUFFIX}"
-fi
+nohup bash index/scripts/train.sh >/dev/null 2>&1 &
+PID=$!
 
-WANDB_RUN_NAME="$RUN_NAME"
-
-nohup python3 -u -m index.train_index \
-  --lr 1e-3 \
-  --epochs 10000 \
-  --batch_size 2048 \
-  --weight_decay 1e-4 \
-  --lr_scheduler_type linear \
-  --dropout_prob 0.0 \
-  --bn False \
-  --e_dim 32 \
-  --quant_loss_weight 1.0 \
-  --beta 0.25 \
-  --num_emb_list 256 256 256 256 \
-  --sk_epsilons 0.0 0.0 0.0 0.003 \
-  --layers 2048 1024 512 256 128 64 \
-  --kmeans_init "$KMEANS_INIT_ARG" \
-  --large_scale_kmeans "$LARGE_SCALE_KMEANS_ARG" \
-  --device cuda:0 \
-  "${DATA_ARGS[@]}" \
-  --ckpt_dir "$CKPT_DIR" \
-  --use_wandb False \
-  --wandb_project unifymmgrec \
-  --wandb_name "$WANDB_RUN_NAME" > "$LOG_FILE" 2>&1 &
-  
-echo "Indexing started with K-Means Mode: $KMEANS_MODE. Log file: $LOG_FILE"
-echo "W&B Run Name: $WANDB_RUN_NAME"
+echo "K-Means ablation launched in background. PID=${PID}"
+echo "Mode: ${KMEANS_MODE}"
+echo "Log file: ${LOG_FILE}"
+echo "W&B Run Name: ${WANDB_RUN_NAME}"

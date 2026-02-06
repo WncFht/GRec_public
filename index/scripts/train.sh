@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # Limit BLAS threads to avoid OpenBLAS "too many memory regions" on high-core machines.
 : "${INDEX_BLAS_NUM_THREADS:=32}"
@@ -8,8 +9,6 @@ export OMP_NUM_THREADS="${OMP_NUM_THREADS:-$INDEX_BLAS_NUM_THREADS}"
 export MKL_NUM_THREADS="${MKL_NUM_THREADS:-$INDEX_BLAS_NUM_THREADS}"
 export NUMEXPR_NUM_THREADS="${NUMEXPR_NUM_THREADS:-$INDEX_BLAS_NUM_THREADS}"
 
-# 建议在项目根目录（src/GRec）下执行：
-#   bash index/scripts/train.sh
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT" || exit 1
@@ -26,42 +25,36 @@ NUM_EMB_LIST=()
 SK_EPSILONS=()
 for ((i = 0; i < INDEX_N_LAYERS; i++)); do
   NUM_EMB_LIST+=("$INDEX_CODEBOOK_SIZE")
-  if [ $i -eq $((INDEX_N_LAYERS - 1)) ]; then
+  if [ "$i" -eq $((INDEX_N_LAYERS - 1)) ]; then
     SK_EPSILONS+=("$INDEX_LAST_SK_EPSILON")
   else
     SK_EPSILONS+=("0.0")
   fi
 done
 
-echo $SK_EPSILONS
-
 # =========================
 # Data config
 # =========================
-# 单数据集（兼容旧用法）
-
 : "${ROOT_DIR:=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian}"
 : "${DATASET:=Instruments}"
 : "${MODEL_NAME:=qwen3-embedding-4B}"
 : "${DATA_PATH:=${ROOT_DIR}/data/$DATASET/${DATASET}.emb-${MODEL_NAME}-td.npy}"
 
-# 多数据集合并训练（需要时手动修改数组）
-DATASETS=(Instruments)
-# DATASETS=(Arts Automotive Cell Games Pet Sports Tools Toys Instruments)   # 例如：(Arts Games Instruments)
-# DATASETS=(Games)
-DATA_PATHS=() # 可选：手动指定多个 .npy 路径；留空则按默认规则拼接
+# Multi-dataset mode
+DATASETS=(${DATASETS:-Instruments})
+DATA_PATHS=(${DATA_PATHS:-})
 TRAIN_DATASET=$(IFS=-; echo "${DATASETS[*]}")
-: "${USE_MULTI_DATASETS:=true}"   # true: 优先使用 DATASETS；false: 使用 DATA_PATH
+: "${USE_MULTI_DATASETS:=true}"   # true: use DATASETS; false: use DATA_PATH
 
 # =========================
 # Train config
 # =========================
 : "${DEVICE:=cuda:0}"
-: "${NPROC_PER_NODE:=4}"          # >1 时使用 torchrun 多卡训练（DDP）
-: "${MASTER_PORT:=29600}"         # torchrun 用端口（单机多卡可随意换个空闲端口）
+: "${NPROC_PER_NODE:=4}"          # >1 uses torchrun DDP
+: "${MASTER_PORT:=29600}"
 : "${EPOCHS:=10000}"
-: "${BATCH_SIZE:=256}"           # per-GPU batch size; global batch = BATCH_SIZE * NPROC_PER_NODE
-: "${AUTO_LR:=true}"              # true: 按 global batch 线性缩放 LR（未显式设置 LR 时生效）
+: "${BATCH_SIZE:=256}"            # per-GPU batch size
+: "${AUTO_LR:=true}"              # true: scale LR by global batch when LR not set
 : "${BASE_LR:=1e-3}"
 : "${BASE_BATCH_SIZE:=1024}"
 : "${BASE_NPROC_PER_NODE:=1}"
@@ -94,7 +87,6 @@ PY
 )"
 fi
 : "${LR:=$BASE_LR}"
-echo "Train config: NPROC_PER_NODE=${NPROC_PER_NODE}, BATCH_SIZE=${BATCH_SIZE} (global=${GLOBAL_BATCH}), LR=${LR}, AUTO_LR=${AUTO_LR}"
 
 mkdir -p ./log
 LOG_FILE="${LOG_FILE:-./log/index_train_$(date +%Y%m%d%H%M%S).log}"
@@ -104,9 +96,13 @@ CKPT_ROOT=""
 RUN_NAME=""
 
 if [ "${USE_MULTI_DATASETS,,}" = "true" ]; then
+  if [ ${#DATASETS[@]} -eq 0 ]; then
+    echo "Error: USE_MULTI_DATASETS=true but DATASETS is empty."
+    exit 1
+  fi
   if [ ${#DATA_PATHS[@]} -eq 0 ]; then
-    for d in "${DATASETS[@]}"; do
-      DATA_PATHS+=("${ROOT_DIR}/data/$d/${d}.emb-${MODEL_NAME}-td.npy")
+    for dataset_name in "${DATASETS[@]}"; do
+      DATA_PATHS+=("${ROOT_DIR}/data/$dataset_name/${dataset_name}.emb-${MODEL_NAME}-td.npy")
     done
   fi
   DATA_ARGS=(--data_paths "${DATA_PATHS[@]}")
@@ -126,9 +122,13 @@ CKPT_TAG_DEFAULT="rq${#NUM_EMB_LIST[@]}_cb${VQ_TAG}_sk${SK_TAG}_${KM_TAG}"
 
 : "${CKPT_DIR:=${CKPT_ROOT}${CKPT_TAG}/}"
 RUN_NAME="${RUN_NAME}-${CKPT_TAG}"
-
 WANDB_RUN_NAME="${WANDB_RUN_NAME:-$RUN_NAME}"
-RUN_NAME="${RUN_NAME}"
+
+echo "Train config: NPROC_PER_NODE=${NPROC_PER_NODE}, BATCH_SIZE=${BATCH_SIZE} (global=${GLOBAL_BATCH}), LR=${LR}, AUTO_LR=${AUTO_LR}"
+echo "Train data mode: USE_MULTI_DATASETS=${USE_MULTI_DATASETS}, MODEL_NAME=${MODEL_NAME}"
+echo "NUM_EMB_LIST=${NUM_EMB_LIST[*]}"
+echo "SK_EPSILONS=${SK_EPSILONS[*]}"
+echo "CKPT_DIR=${CKPT_DIR}"
 
 LAUNCH_CMD=(python3 -u -m index.train_index)
 if [ "${NPROC_PER_NODE}" -gt 1 ]; then

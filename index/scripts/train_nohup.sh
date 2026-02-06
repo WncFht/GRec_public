@@ -1,48 +1,45 @@
-DATASET=Instruments
-MODEL_NAME=qwen3-embedding-4B
-export WANDB_MODE=offline
-# DATA_PATH=./data/$DATASET/$DATASET.emb-$MODEL_NAME.npy
-# DATA_PATH=./data/Instruments/Qwen/Qwen2.5-VL-7B-Instruct_rep.npy
-DATA_PATH=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/data/Instruments/Instruments.emb-qwen-td.npy
+#!/bin/bash
+set -euo pipefail
 
-LOG_FILE="./log/index/index_$(date +%Y%m%d%H%M%S).log"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$PROJECT_ROOT" || exit 1
+
+: "${ROOT_DIR:=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian}"
+: "${DATASET:=Instruments}"
+: "${MODEL_NAME:=qwen3-embedding-4B}"
+: "${DATA_PATH:=${ROOT_DIR}/data/${DATASET}/${DATASET}.emb-${MODEL_NAME}-td.npy}"
+
+: "${NPROC_PER_NODE:=1}"
+: "${EPOCHS:=10000}"
+: "${BATCH_SIZE:=2048}"
+: "${LR:=1e-4}"
+: "${USE_MULTI_DATASETS:=false}"
+
+: "${INDEX_N_LAYERS:=4}"
+: "${INDEX_CODEBOOK_SIZE:=256}"
+: "${INDEX_LAST_SK_EPSILON:=0.003}"
+: "${INDEX_KMEANS_ITERS:=100}"
+
+: "${KMEANS_INIT_ARG:=true}"
+: "${LARGE_SCALE_KMEANS_ARG:=true}"
+
+: "${USE_WANDB:=False}"
+: "${WANDB_PROJECT:=unifymmgrec}"
+: "${WANDB_RUN_NAME:=${DATASET}-${MODEL_NAME}-nohup}"
 
 mkdir -p ./log/index
-KMEANS_MODE='large'
+: "${LOG_FILE:=./log/index/index_$(date +%Y%m%d%H%M%S).log}"
 
-# --- Logic to set arguments and wandb name based on mode ---
+export ROOT_DIR DATASET MODEL_NAME DATA_PATH
+export NPROC_PER_NODE EPOCHS BATCH_SIZE LR USE_MULTI_DATASETS
+export INDEX_N_LAYERS INDEX_CODEBOOK_SIZE INDEX_LAST_SK_EPSILON INDEX_KMEANS_ITERS
+export KMEANS_INIT_ARG LARGE_SCALE_KMEANS_ARG
+export USE_WANDB WANDB_PROJECT WANDB_RUN_NAME LOG_FILE
 
-KMEANS_INIT_ARG="true"
-LARGE_SCALE_KMEANS_ARG="true"
-WANDB_SUFFIX=""
+nohup bash index/scripts/train.sh >/dev/null 2>&1 &
+PID=$!
 
-WANDB_RUN_NAME="${DATASET}-${MODEL_NAME}${WANDB_SUFFIX}"
-# ----------------------------------------------------
-
-mkdir -p ./log
-
-nohup python3 -u -m index.train_index \
-  --lr 1e-4 \
-  --epochs 10000 \
-  --batch_size 2048 \
-  --weight_decay 1e-4 \
-  --lr_scheduler_type linear \
-  --dropout_prob 0.0 \
-  --bn False \
-  --e_dim 32 \
-  --quant_loss_weight 1.0 \
-  --beta 0.25 \
-  --num_emb_list 256 256 256 256 \
-  --sk_epsilons 0.0 0.0 0.0 0.003 \
-  --layers 2048 1024 512 256 128 64 \
-  --kmeans_init "$KMEANS_INIT_ARG" \
-  --large_scale_kmeans "$LARGE_SCALE_KMEANS_ARG" \
-  --device cuda:0 \
-  --data_path $DATA_PATH \
-  --ckpt_dir ./data/$DATASET/index/$MODEL_NAME/ \
-  --use_wandb False \
-  --wandb_project unifymmgrec \
-  --wandb_name "$WANDB_RUN_NAME" > "$LOG_FILE" 2>&1 &
-  
-echo "Indexing started with K-Means Mode: $KMEANS_MODE. Log file: $LOG_FILE"
-echo "W&B Run Name: $WANDB_RUN_NAME"
+echo "Index training launched in background. PID=${PID}"
+echo "Log file: ${LOG_FILE}"
+echo "W&B Run Name: ${WANDB_RUN_NAME}"

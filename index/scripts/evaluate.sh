@@ -1,41 +1,34 @@
 #!/bin/bash
+set -euo pipefail
 
-# === Configuration ===
-# 1. The dataset name, used to locate the model checkpoint.
-DATASET=Instruments
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$PROJECT_ROOT" || exit 1
 
-# 2. The model name, part of the directory structure.
-# MODEL_NAME=llama-td
-MODEL_NAME=qwen7B
-# 3. The specific trained model file to evaluate.
-# You can choose: best_loss_model.pth, best_collision_model.pth, best_utilization_model.pth, or a specific epoch's model.
-MODEL_FILE=best_collision_model.pth
+: "${DATASET:=Instruments}"
+: "${MODEL_NAME:=qwen7B}"
+: "${MODEL_FILE:=best_collision_model.pth}"
+: "${TIMESTAMP:=}"
+: "${CKPT_BASE_DIR:=}"
+: "${CKPT_PATH:=}"
 
-# 4. The base directory where model checkpoints are stored.
-#    This needs to match the structure from your training run. It usually includes a timestamp.
-#    PLEASE UPDATE THIS PATH to point to your actual training output directory.
-#    Example: CKPT_BASE_DIR=./data/Instruments/index/llama-td/Jul-10-2024_10-30-00
-# TIMESTAMP=Jul-09-2025_15-16-54
-TIMESTAMP=Jul-08-2025_13-00-53
-CKPT_BASE_DIR=./data/$DATASET/index/$MODEL_NAME/$TIMESTAMP
+if [[ -z "$CKPT_PATH" ]]; then
+  if [[ -z "$CKPT_BASE_DIR" ]]; then
+    if [[ -z "$TIMESTAMP" ]]; then
+      echo "Error: please set one of CKPT_PATH or CKPT_BASE_DIR (or provide TIMESTAMP to auto-build CKPT_BASE_DIR)."
+      exit 1
+    fi
+    CKPT_BASE_DIR="./data/${DATASET}/index/${MODEL_NAME}/${TIMESTAMP}"
+  fi
+  CKPT_PATH="${CKPT_BASE_DIR}/${MODEL_FILE}"
+fi
 
-# 5. The device to run evaluation on.
-DEVICE=cuda:0
+: "${DEVICE:=cuda:0}"
+: "${BATCH_SIZE:=2048}"
 
-# 6. Batch size for evaluation. Use a larger value if your GPU memory allows.
-BATCH_SIZE=2048
-# =====================
-
-
-# --- DO NOT EDIT BELOW THIS LINE ---
-# Construct the full path to the checkpoint
-CKPT_PATH=${CKPT_BASE_DIR}/${MODEL_FILE}
-
-# Check if the checkpoint file exists
 if [ ! -f "$CKPT_PATH" ]; then
-    echo "Error: Checkpoint file not found at '$CKPT_PATH'"
-    echo "Please ensure the 'DATASET', 'MODEL_NAME', 'TIMESTAMP', and 'MODEL_FILE' variables are set correctly in evaluate.sh."
-    exit 1
+  echo "Error: Checkpoint file not found at '$CKPT_PATH'"
+  exit 1
 fi
 
 echo "======================================================"
@@ -50,4 +43,4 @@ python3 -m index.evaluate_index \
 
 echo "======================================================"
 echo "Evaluation finished."
-echo "======================================================" 
+echo "======================================================"
