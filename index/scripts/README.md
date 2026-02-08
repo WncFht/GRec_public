@@ -65,8 +65,9 @@
 
 输出相关：
 
+- `INDEX_TRAIN_ROOT`：index 训练产物根目录（默认 `./index_train_runs`）
 - `CKPT_TAG`：run 命名标签（默认自动拼接）
-- `CKPT_DIR`：checkpoint 输出目录（默认自动拼接）
+- `CKPT_DIR`：checkpoint 输出目录（默认 `${INDEX_TRAIN_ROOT}/<dataset>/index/<model>/<ckpt_tag>/`）
 - `LOG_FILE`：训练日志文件路径
 
 ### 3.2 常用示例
@@ -101,6 +102,13 @@ bash index/scripts/train.sh
 ```bash
 CKPT_TAG="rq4_cb1024_sk0-0-0-0.003_expA" \
 WANDB_RUN_NAME="rq4-expA" \
+bash index/scripts/train.sh
+```
+
+指定 index 模型统一存储根目录（避免混在 `data/`）：
+
+```bash
+INDEX_TRAIN_ROOT=./index_train_runs \
 bash index/scripts/train.sh
 ```
 
@@ -220,7 +228,7 @@ BATCH_SIZE=2048 \
 bash index/scripts/evaluate.sh
 ```
 
-也支持 `CKPT_BASE_DIR + MODEL_FILE`，或 `TIMESTAMP` 自动拼接。
+也支持 `CKPT_BASE_DIR + MODEL_FILE`，或 `TIMESTAMP` 自动拼接（默认按 `INDEX_TRAIN_ROOT/<dataset>/index/<model>/<timestamp>`）。
 
 ---
 

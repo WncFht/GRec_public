@@ -92,7 +92,7 @@ SID 的输入是一个二维 `.npy`，形状 `[num_items, dim]`。重要的是 *
 ```bash
 python3 -m index.train_index \
   --data_path ./data/Instruments/Instruments.emb-qwen3-embedding-4B-td.npy \
-  --ckpt_dir  ./data/Instruments/index/rqvae_qwen3-embedding-4B \
+  --ckpt_dir  ./index_train_runs/Instruments/index/qwen3-embedding-4B/rqvae_qwen3-embedding-4B \
   --num_emb_list 8192 8192 8192 \
   --layers 2048 1024 512 256 128 64 \
   --e_dim 32 \
@@ -104,7 +104,7 @@ python3 -m index.train_index \
 ```bash
 python3 -m index.generate_indices \
   --dataset Instruments \
-  --ckpt_path  ./data/Instruments/index/rqvae_qwen3-embedding-4B/<TIMESTAMP>/best_collision_model.pth \
+  --ckpt_path  ./index_train_runs/Instruments/index/qwen3-embedding-4B/rqvae_qwen3-embedding-4B/<TIMESTAMP>/best_collision_model.pth \
   --output_dir ./data/Instruments \
   --output_file Instruments.index_rqvae_qwen3-embedding-4B.json \
   --device cuda:0 \
@@ -237,12 +237,26 @@ python3 tokenizer/build_index_json.py \
 - embedding 文件：`data/<DATASET>/<DATASET>.emb-<MODEL>-td.npy`
 -（推荐）row 对应 item_id：`data/<DATASET>/<DATASET>.emb-<MODEL>-td.ids.json`
 
-#### 2.2 训练输出目录结构
+#### 2.2 训练输出目录结构（`index_train_runs`）
 
-训练命令里的 `--ckpt_dir` 是“根目录”，真正输出在其时间戳子目录中：
+训练命令里的 `--ckpt_dir` 是“根目录”，真正输出在其时间戳子目录中。
+
+如果你走 `index/scripts/train.sh` 且不手动传 `CKPT_DIR`，默认目录会是：
 
 ```text
-<ckpt_dir>/<timestamp>/
+<INDEX_TRAIN_ROOT>/<TRAIN_DATASET>/index/<MODEL_NAME>/<CKPT_TAG>/<TIMESTAMP>/
+```
+
+- `INDEX_TRAIN_ROOT`：默认 `./index_train_runs`
+- `TRAIN_DATASET`：多数据集时把 `DATASETS` 按当前顺序用 `-` 拼接（顺序变化会导致目录名变化）
+- `MODEL_NAME`：embedding 模型名
+- `CKPT_TAG`：由量化/初始化参数自动拼接（下节详述）
+- `TIMESTAMP`：训练启动时自动生成的时间戳目录（格式 `%b-%d-%Y_%H-%M-%S`，例如 `Feb-08-2026_23-41-10`）
+
+最终 run 目录内文件结构：
+
+```text
+<...>/<CKPT_TAG>/<TIMESTAMP>/
   run_meta.json
   best_loss_model.pth
   best_collision_model.pth
@@ -260,6 +274,7 @@ python3 tokenizer/build_index_json.py \
 
 - `USE_MULTI_DATASETS=true`：使用 `DATASETS` / `DATA_PATHS`（多数据集联合训练）
 - `USE_MULTI_DATASETS=false`：使用 `DATA_PATH`（单数据集训练）
+- `INDEX_TRAIN_ROOT`：index checkpoint 根目录（`train.sh` 默认 `./index_train_runs`，避免与 `data/` 混淆）
 
 #### 3.2 Codebook 与 SK 参数
 
@@ -277,15 +292,31 @@ INDEX_LAST_SK_EPSILON=0.003 \
 bash index/scripts/train.sh
 ```
 
-#### 3.3 自动命名（防冲突）
+#### 3.3 自动命名（`CKPT_TAG` / `RUN_NAME` / 时间戳）
 
-`train.sh` 默认把以下信息编码进 `CKPT_TAG` / `RUN_NAME`：
+`train.sh` 默认命名机制如下。
 
-- 量化层数与 codebook：`rq*_cb*`
-- 各层 `sk_epsilons`：`sk*`
-- KMeans 配置：`km*-lkm*-kmi*`
+`CKPT_TAG` 默认值：
 
-这能显著降低“目录名字不同但配置不清楚”的问题。
+```text
+rq<层数>_cb<每层codebook列表>_sk<每层sk列表>_km<kmeans_init>-lkm<large_scale_kmeans>-kmi<kmeans_iters>
+```
+
+对应脚本变量关系：
+
+- `<层数>`：`len(NUM_EMB_LIST)`
+- `<每层codebook列表>`：`NUM_EMB_LIST` 用 `-` 连接
+- `<每层sk列表>`：`SK_EPSILONS` 用 `-` 连接
+- `km/lkm/kmi`：分别来自 `KMEANS_INIT_ARG`、`LARGE_SCALE_KMEANS_ARG`、`KMEANS_ITERS`
+
+`RUN_NAME` 默认值：
+
+- 单数据集：`<DATASET>-<MODEL_NAME>-<CKPT_TAG>`
+- 多数据集：`<TRAIN_DATASET>-<MODEL_NAME>-<CKPT_TAG>`（`TRAIN_DATASET` 为拼接名）
+
+`WANDB_RUN_NAME` 未手动指定时默认等于 `RUN_NAME`。
+
+这套规则能显著降低“目录看起来不同但配置说不清”的问题；排查实验建议优先读同目录下的 `run_meta.json`。
 
 ---
 

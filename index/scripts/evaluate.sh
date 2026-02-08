@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT" || exit 1
 
+: "${INDEX_TRAIN_ROOT:=./index_train_runs}"
+
 : "${DATASET:=Instruments}"
 : "${MODEL_NAME:=qwen7B}"
 : "${MODEL_FILE:=best_collision_model.pth}"
@@ -18,7 +20,7 @@ if [[ -z "$CKPT_PATH" ]]; then
       echo "Error: please set one of CKPT_PATH or CKPT_BASE_DIR (or provide TIMESTAMP to auto-build CKPT_BASE_DIR)."
       exit 1
     fi
-    CKPT_BASE_DIR="./data/${DATASET}/index/${MODEL_NAME}/${TIMESTAMP}"
+    CKPT_BASE_DIR="${INDEX_TRAIN_ROOT}/${DATASET}/index/${MODEL_NAME}/${TIMESTAMP}"
   fi
   CKPT_PATH="${CKPT_BASE_DIR}/${MODEL_FILE}"
 fi

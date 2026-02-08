@@ -13,6 +13,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT" || exit 1
 
+: "${INDEX_TRAIN_ROOT:=./index_train_runs}"
+
 # =========================
 # Index quantizer config
 # =========================
@@ -106,11 +108,11 @@ if [ "${USE_MULTI_DATASETS,,}" = "true" ]; then
     done
   fi
   DATA_ARGS=(--data_paths "${DATA_PATHS[@]}")
-  CKPT_ROOT="./data/$TRAIN_DATASET/index/$MODEL_NAME/"
+  CKPT_ROOT="${INDEX_TRAIN_ROOT}/$TRAIN_DATASET/index/$MODEL_NAME/"
   RUN_NAME="${TRAIN_DATASET}-${MODEL_NAME}"
 else
   DATA_ARGS=(--data_path "$DATA_PATH")
-  CKPT_ROOT="./data/$DATASET/index/$MODEL_NAME/"
+  CKPT_ROOT="${INDEX_TRAIN_ROOT}/$DATASET/index/$MODEL_NAME/"
   RUN_NAME="${DATASET}-${MODEL_NAME}"
 fi
 
@@ -126,6 +128,7 @@ WANDB_RUN_NAME="${WANDB_RUN_NAME:-$RUN_NAME}"
 
 echo "Train config: NPROC_PER_NODE=${NPROC_PER_NODE}, BATCH_SIZE=${BATCH_SIZE} (global=${GLOBAL_BATCH}), LR=${LR}, AUTO_LR=${AUTO_LR}"
 echo "Train data mode: USE_MULTI_DATASETS=${USE_MULTI_DATASETS}, MODEL_NAME=${MODEL_NAME}"
+echo "Index checkpoint root: INDEX_TRAIN_ROOT=${INDEX_TRAIN_ROOT}"
 echo "NUM_EMB_LIST=${NUM_EMB_LIST[*]}"
 echo "SK_EPSILONS=${SK_EPSILONS[*]}"
 echo "CKPT_DIR=${CKPT_DIR}"
