@@ -1,9 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-cd "$PROJECT_ROOT" || exit 1
+DEFAULT_GREC_ROOT="/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/GRec"
+: "${GREC_ROOT:=$DEFAULT_GREC_ROOT}"
+
+if [[ ! -d "$GREC_ROOT" ]]; then
+  echo "Error: GREC_ROOT does not exist: $GREC_ROOT" >&2
+  exit 1
+fi
+
+cd "$GREC_ROOT" || exit 1
 
 # IAG: Instruments + Arts + Games
 : "${ROOT_DIR:=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian}"
@@ -24,4 +30,4 @@ export ROOT_DIR DATA_ROOT MODEL_NAME USE_MULTI_DATASETS DATASETS CKPT_PATH
 
 # Optional overrides (examples):
 #   BATCH_SIZE=64 DEVICE=cuda:0 OUTPUT_SUFFIX=.index_custom.json
-bash scripts/index/base/generate.sh
+bash "$GREC_ROOT/scripts/index/base/generate.sh"

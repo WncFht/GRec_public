@@ -1,9 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-cd "$PROJECT_ROOT" || exit 1
+DEFAULT_GREC_ROOT="/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/GRec"
+: "${GREC_ROOT:=$DEFAULT_GREC_ROOT}"
+
+if [[ ! -d "$GREC_ROOT" ]]; then
+  echo "Error: GREC_ROOT does not exist: $GREC_ROOT" >&2
+  exit 1
+fi
+
+cd "$GREC_ROOT" || exit 1
 
 : "${INDEX_TRAIN_ROOT:=./index_train_runs}"
 
