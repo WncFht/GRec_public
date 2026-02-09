@@ -12,11 +12,17 @@ fi
 cd "$GREC_ROOT" || exit 1
 
 INDEX_TAG="rq4_cb128-128-128-128_sk0.0-0.0-0.0-0.003"
+INDEX_MATCH_TAG="${INDEX_TAG%%_sk*}"
 : "${DATASET:=Instruments}"
 : "${DATA_PATH:=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/data}"
+: "${INDEX_EMB_MODEL:=qwen3-embedding-4B}"
+: "${INDEX_DATASETS:=Instruments}"
+
+INDEX_DATASETS_TAG="${INDEX_DATASETS// /}"
+INDEX_DATASETS_TAG="${INDEX_DATASETS_TAG//,/-}"
 
 if [[ -z "${INDEX_FILE:-}" ]]; then
-  pattern="$DATA_PATH/$DATASET/${DATASET}.index_emb-*_${INDEX_TAG}_*.json"
+  pattern="$DATA_PATH/$DATASET/${DATASET}.index_emb-${INDEX_EMB_MODEL}_${INDEX_MATCH_TAG}_ds${INDEX_DATASETS_TAG}_rid*.json"
   latest_index="$(ls -1t $pattern 2>/dev/null | head -n 1 || true)"
   if [[ -z "$latest_index" ]]; then
     echo "Error: cannot find index file for tag $INDEX_TAG under $DATA_PATH/$DATASET" >&2
@@ -35,6 +41,7 @@ export DATASET DATA_PATH INDEX_FILE
 export OUTPUT_DIR="${OUTPUT_DIR:-$OUTPUT_DIR_DEFAULT}"
 
 echo "[bundle/train] DATASET=$DATASET INDEX_FILE=$INDEX_FILE"
+echo "[bundle/train] INDEX_EMB_MODEL=$INDEX_EMB_MODEL INDEX_DATASETS=$INDEX_DATASETS"
 echo "[bundle/train] OUTPUT_DIR=$OUTPUT_DIR"
 
 bash "$GREC_ROOT/scripts/finetune/train_text.sh" "$@"

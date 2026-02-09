@@ -5,6 +5,7 @@ DEFAULT_GREC_ROOT="/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fang
 : "${GREC_ROOT:=$DEFAULT_GREC_ROOT}"
 : "${CONTINUE_ON_ERROR:=false}"
 : "${SKIP_IF_CKPT_EXISTS:=true}"
+: "${COOLDOWN_SECONDS:=30}"
 
 TARGET_DATASETS=""
 POSITIONAL_PRESETS=()
@@ -143,6 +144,7 @@ echo "GREC_ROOT=$GREC_ROOT"
 echo "AUTO_GENERATE_AFTER_TRAIN=${AUTO_GENERATE_AFTER_TRAIN:-true}"
 echo "CONTINUE_ON_ERROR=$CONTINUE_ON_ERROR"
 echo "SKIP_IF_CKPT_EXISTS=$SKIP_IF_CKPT_EXISTS"
+echo "COOLDOWN_SECONDS=$COOLDOWN_SECONDS"
 echo "TARGET_DATASETS=${TARGET_DATASETS:-<all>}"
 echo "Total jobs: ${#TRAIN_SCRIPTS[@]}"
 printf ' - %s\n' "${TRAIN_SCRIPTS[@]}"
@@ -150,8 +152,11 @@ printf ' - %s\n' "${TRAIN_SCRIPTS[@]}"
 success=0
 failed=0
 failed_list=()
+total_jobs=${#TRAIN_SCRIPTS[@]}
 
-for script in "${TRAIN_SCRIPTS[@]}"; do
+for ((job_idx = 0; job_idx < total_jobs; job_idx++)); do
+  script="${TRAIN_SCRIPTS[$job_idx]}"
+
   if [[ "${SKIP_IF_CKPT_EXISTS,,}" == "true" ]]; then
     if should_skip_existing_ckpt "$script"; then
       continue
@@ -175,6 +180,11 @@ for script in "${TRAIN_SCRIPTS[@]}"; do
       echo "Stopped because CONTINUE_ON_ERROR=false" >&2
       break
     fi
+  fi
+
+  if [[ $COOLDOWN_SECONDS -gt 0 && $job_idx -lt $((total_jobs - 1)) ]]; then
+    echo "[COOLDOWN] sleeping ${COOLDOWN_SECONDS}s before next job..."
+    sleep "$COOLDOWN_SECONDS"
   fi
 done
 

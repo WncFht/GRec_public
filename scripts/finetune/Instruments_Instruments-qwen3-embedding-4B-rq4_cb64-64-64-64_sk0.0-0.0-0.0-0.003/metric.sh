@@ -24,11 +24,17 @@ fi
 cd "$GREC_ROOT" || exit 1
 
 INDEX_TAG="rq4_cb64-64-64-64_sk0.0-0.0-0.0-0.003"
+INDEX_MATCH_TAG="${INDEX_TAG%%_sk*}"
 : "${TASK:=seqrec}"
 : "${DATASET:=Instruments}"
 : "${RATIO:=1}"
 : "${MODEL_TYPE:=qwen2_5_instruct}"
 : "${DATA_PATH:=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/data}"
+: "${INDEX_EMB_MODEL:=qwen3-embedding-4B}"
+: "${INDEX_DATASETS:=Instruments}"
+
+INDEX_DATASETS_TAG="${INDEX_DATASETS// /}"
+INDEX_DATASETS_TAG="${INDEX_DATASETS_TAG//,/-}"
 : "${NUM_GPUS:=4}"
 : "${MASTER_PORT:=33320}"
 : "${BATCH_SIZE:=16}"
@@ -38,7 +44,7 @@ INDEX_TAG="rq4_cb64-64-64-64_sk0.0-0.0-0.0-0.003"
 : "${RESULTS_BASE_DIR:=./results/$EVAL_SPLIT}"
 
 if [[ -z "${INDEX_FILE:-}" ]]; then
-  pattern="$DATA_PATH/$DATASET/${DATASET}.index_emb-*_${INDEX_TAG}_*.json"
+  pattern="$DATA_PATH/$DATASET/${DATASET}.index_emb-${INDEX_EMB_MODEL}_${INDEX_MATCH_TAG}_ds${INDEX_DATASETS_TAG}_rid*.json"
   latest_index="$(ls -1t $pattern 2>/dev/null | head -n 1 || true)"
   if [[ -z "$latest_index" ]]; then
     echo "Error: cannot find index file for tag $INDEX_TAG under $DATA_PATH/$DATASET" >&2
@@ -72,6 +78,7 @@ mkdir -p "$RUN_DIR"
 
 echo "[bundle/metric] CKPT_PATH=$CKPT_PATH"
 echo "[bundle/metric] INDEX_FILE=$INDEX_FILE"
+echo "[bundle/metric] INDEX_EMB_MODEL=$INDEX_EMB_MODEL INDEX_DATASETS=$INDEX_DATASETS"
 echo "[bundle/metric] RESULTS_FILE=$RESULTS_FILE"
 echo "[bundle/metric] ROLLOUT_FILE=$ROLLOUT_FILE"
 
