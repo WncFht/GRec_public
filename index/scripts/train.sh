@@ -54,7 +54,7 @@ TRAIN_DATASET=$(IFS=-; echo "${DATASETS[*]}")
 : "${DEVICE:=cuda:0}"
 : "${NPROC_PER_NODE:=4}"          # >1 uses torchrun DDP
 : "${MASTER_PORT:=29600}"
-: "${EPOCHS:=10000}"
+: "${EPOCHS:=2000}"
 : "${BATCH_SIZE:=256}"            # per-GPU batch size
 : "${AUTO_LR:=true}"              # true: scale LR by global batch when LR not set
 : "${BASE_LR:=1e-3}"
