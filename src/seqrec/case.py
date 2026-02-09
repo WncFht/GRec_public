@@ -2,6 +2,8 @@ import argparse
 import re
 
 import torch
+from transformers import GenerationConfig
+
 from src.collator import (
     ChatTemplateTestCollator,
     TestCollator,
@@ -9,7 +11,6 @@ from src.collator import (
 )
 from src.parser import parse_dataset_args, parse_global_args, parse_test_args
 from src.utils import get_tokenizer, load_model_for_inference, load_test_dataset
-from transformers import GenerationConfig
 
 
 def main(args: argparse.Namespace):

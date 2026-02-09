@@ -2,9 +2,14 @@ import argparse
 import json
 import os
 import time
-from typing import Any, Callable, Dict, List, Tuple
+from collections.abc import Callable
+from typing import Any
 
 import torch
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+from transformers import LogitsProcessorList
+
 from src.collator import (
     ChatTemplateTestCollator,
     TestCollator,
@@ -20,9 +25,6 @@ from src.parser import parse_dataset_args, parse_global_args, parse_test_args
 from src.prompt import all_prompt
 from src.rl.LogitProcessor import ConstrainedLogitsProcessor
 from src.utils import load_model_for_inference, set_seed
-from torch.utils.data import DataLoader
-from tqdm import tqdm
-from transformers import LogitsProcessorList
 
 
 class _IndexedDataset(torch.utils.data.Dataset):
@@ -32,7 +34,7 @@ class _IndexedDataset(torch.utils.data.Dataset):
     def __len__(self) -> int:
         return len(self.dataset)
 
-    def __getitem__(self, index: int) -> Tuple[int, Any]:
+    def __getitem__(self, index: int) -> tuple[int, Any]:
         return index, self.dataset[index]
 
     def set_prompt(self, prompt_id: int) -> None:
@@ -83,7 +85,7 @@ def _rollout_key_from_args(args: argparse.Namespace, eval_split: str) -> dict:
 
 
 def _load_rollout_cache(path: str) -> dict:
-    with open(path, "r") as f:
+    with open(path) as f:
         return json.load(f)
 
 
@@ -91,8 +93,8 @@ def _validate_rollout_cache(
     cache: dict,
     args: argparse.Namespace,
     eval_split: str,
-    prompt_ids: List[int],
-) -> Tuple[bool, str]:
+    prompt_ids: list[int],
+) -> tuple[bool, str]:
     if not isinstance(cache, dict):
         return False, "cache is not a dict"
     if cache.get("schema_version") != 1:
@@ -122,7 +124,7 @@ def _validate_rollout_cache(
     return True, "ok"
 
 
-def _parse_prompt_ids(test_prompt_ids: str) -> List[int]:
+def _parse_prompt_ids(test_prompt_ids: str) -> list[int]:
     if test_prompt_ids == "all":
         return list(range(len(all_prompt["seqrec"])))
     return [int(_) for _ in test_prompt_ids.split(",") if str(_).strip()]
@@ -130,7 +132,6 @@ def _parse_prompt_ids(test_prompt_ids: str) -> List[int]:
 
 def load_test_dataset_rl(args: argparse.Namespace, logger=None, local_rank=0):
     """加载 data_rl 中实现的测试数据集，目前支持 seqrec 和 fusionseqrec。"""
-
     dataset_list = args.dataset.split(",")
     test_task = args.test_task.lower()
     eval_split = getattr(args, "eval_split", "test").lower()
@@ -180,7 +181,7 @@ def infer_prefix_index(base_model: str) -> int:
     return 3
 
 
-def build_prefix_allowed_tokens_fn(hash_dict: Dict[str, List[int]]) -> Callable:
+def build_prefix_allowed_tokens_fn(hash_dict: dict[str, list[int]]) -> Callable:
     def get_hash(x) -> str:
         if isinstance(x, torch.Tensor):
             seq = x.tolist()
