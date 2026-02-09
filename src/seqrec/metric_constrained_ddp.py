@@ -2,8 +2,13 @@ import argparse
 import json
 import os
 import time
+from typing import Any
 
 import torch
+from torch.utils.data import DataLoader, Sampler
+from tqdm import tqdm
+from transformers import LogitsProcessorList
+
 from src.collator import (
     ChatTemplateTestCollator,
     TestCollator,
@@ -29,9 +34,6 @@ from src.seqrec.metric_constrained import (
     load_test_dataset_rl,
 )
 from src.utils import load_model_for_inference, set_seed
-from torch.utils.data import DataLoader, Sampler
-from tqdm import tqdm
-from transformers import LogitsProcessorList
 
 
 class _DistributedEvalSampler(Sampler[int]):
@@ -93,6 +95,99 @@ def setup_process():
     return rank, world_size, local_rank
 
 
+def _extract_first_sample_prompt(test_data, prompt_id: int) -> str:
+    try:
+        test_data.set_prompt(prompt_id)
+        sample = test_data[0]
+        text = getattr(sample, "input_text", None)
+        if isinstance(text, str) and text:
+            return text
+        return str(sample)
+    except Exception as exc:
+        return f"<prompt_unavailable: {exc}>"
+
+
+def _build_first_sample_debug_report(
+    rollout_payload: dict[str, Any],
+    prompt_id: int,
+    num_beams: int,
+    prompt_text: str,
+) -> dict[str, Any]:
+    targets = rollout_payload.get("targets", [])
+    prompts = rollout_payload.get("prompts", {})
+    pid = str(prompt_id)
+
+    if not targets or pid not in prompts:
+        return {
+            "prompt_id": prompt_id,
+            "error": "missing targets/prompts in rollout payload",
+        }
+
+    target = targets[0]
+    preds = prompts[pid]["predictions"][0]
+    scores = prompts[pid]["scores"][0]
+
+    pairs = list(zip(preds, scores, strict=False))
+    sorted_pairs = sorted(pairs, key=lambda x: x[1], reverse=True)
+
+    rollout_rows = []
+    hit_flags = []
+    for rank, (pred, score) in enumerate(sorted_pairs, start=1):
+        hit = int(pred == target)
+        hit_flags.append(hit)
+        rollout_rows.append(
+            {
+                "rank": rank,
+                "prediction": pred,
+                "score": float(score),
+                "hit": hit,
+            }
+        )
+
+    hit_at = {}
+    for k in [1, 3, 5, 10, 20, 50]:
+        kk = min(k, num_beams, len(hit_flags))
+        if kk <= 0:
+            continue
+        hit_at[f"hit@{k}"] = int(sum(hit_flags[:kk]) > 0)
+
+    return {
+        "sample_index": 0,
+        "prompt_id": prompt_id,
+        "prompt_text": prompt_text,
+        "target": target,
+        "num_beams": num_beams,
+        "rollout": rollout_rows,
+        "hit_at": hit_at,
+    }
+
+
+def _emit_first_sample_debug(report: dict[str, Any], results_file: str) -> str:
+    print("================ FIRST SAMPLE DEBUG ================")
+    print(f"prompt_id: {report.get('prompt_id')}")
+    print(f"target: {report.get('target')}")
+    print("prompt:")
+    print(report.get("prompt_text", ""))
+    print("rollout(top beams):")
+    for row in report.get("rollout", []):
+        print(
+            f"  rank={row['rank']:>2} pred={row['prediction']} "
+            f"score={row['score']:.6f} hit={row['hit']}"
+        )
+    print("hit_at:", report.get("hit_at", {}))
+    print("====================================================")
+
+    debug_file = os.path.join(
+        os.path.dirname(results_file) or ".",
+        "first_sample_rollout_debug.json",
+    )
+    os.makedirs(os.path.dirname(debug_file) or ".", exist_ok=True)
+    with open(debug_file, "w", encoding="utf-8") as fp:
+        json.dump(report, fp, indent=2, ensure_ascii=False)
+    print(f"First-sample debug saved to: {debug_file}")
+    return debug_file
+
+
 def test(args: argparse.Namespace):
     rank, world_size, local_rank = setup_process()
     device = (
@@ -121,10 +216,16 @@ def test(args: argparse.Namespace):
                 if rank == 0:
                     print(f"使用缓存 rollout 结果: {rollout_file}")
 
+                    test_data_for_debug = load_test_dataset_rl(
+                        args, local_rank=rank
+                    )
+                    first_prompt_text = _extract_first_sample_prompt(
+                        test_data_for_debug, prompt_ids[0]
+                    )
+
                     all_items = None
                     if args.filter_items:
-                        test_data = load_test_dataset_rl(args, local_rank=rank)
-                        all_items = test_data.get_all_items()
+                        all_items = test_data_for_debug.get_all_items()
 
                     metrics = args.metrics.split(",")
                     all_prompt_results = []
@@ -201,6 +302,21 @@ def test(args: argparse.Namespace):
                         "rollout_file": rollout_file,
                         "rollout_cached": True,
                     }
+
+                    first_sample_debug = _build_first_sample_debug_report(
+                        {
+                            "targets": cache["targets"],
+                            "prompts": cache["prompts"],
+                        },
+                        prompt_id=prompt_ids[0],
+                        num_beams=args.num_beams,
+                        prompt_text=first_prompt_text,
+                    )
+                    debug_file = _emit_first_sample_debug(
+                        first_sample_debug, args.results_file
+                    )
+                    save_data["first_sample_debug"] = first_sample_debug
+                    save_data["first_sample_debug_file"] = debug_file
 
                     os.makedirs(
                         os.path.dirname(args.results_file) or ".", exist_ok=True
@@ -427,7 +543,7 @@ def test(args: argparse.Namespace):
                 path = f"{rollout_file}.rank{r}.jsonl"
                 if not os.path.exists(path):
                     raise FileNotFoundError(f"Missing rollout shard: {path}")
-                with open(path, "r") as fp:
+                with open(path) as fp:
                     for line in fp:
                         if not line.strip():
                             continue
@@ -536,6 +652,21 @@ def test(args: argparse.Namespace):
                 "rollout_file": rollout_file,
                 "rollout_cached": False,
             }
+
+            first_prompt_text = _extract_first_sample_prompt(
+                test_data, prompt_ids[0]
+            )
+            first_sample_debug = _build_first_sample_debug_report(
+                rollout_payload,
+                prompt_id=prompt_ids[0],
+                num_beams=args.num_beams,
+                prompt_text=first_prompt_text,
+            )
+            debug_file = _emit_first_sample_debug(
+                first_sample_debug, args.results_file
+            )
+            save_data["first_sample_debug"] = first_sample_debug
+            save_data["first_sample_debug_file"] = debug_file
 
             os.makedirs(
                 os.path.dirname(args.results_file) or ".", exist_ok=True

@@ -21,6 +21,31 @@ if [[ -z "$CKPT_PATH" ]]; then
   exit 1
 fi
 
+if [[ "$CKPT_PATH" == *"/run_time/"* ]]; then
+  ckpt_prefix="${CKPT_PATH%%/run_time/*}"
+  ckpt_suffix="${CKPT_PATH#*/run_time/}"
+
+  if [[ ! -d "$ckpt_prefix" ]]; then
+    echo "Error: checkpoint root does not exist: $ckpt_prefix" >&2
+    exit 1
+  fi
+
+  latest_run_dir="$(ls -1dt "$ckpt_prefix"/*/ 2>/dev/null | head -n 1 || true)"
+  latest_run_dir="${latest_run_dir%/}"
+  if [[ -z "$latest_run_dir" || ! -d "$latest_run_dir" ]]; then
+    echo "Error: cannot find any run_time directory under: $ckpt_prefix" >&2
+    exit 1
+  fi
+
+  CKPT_PATH="${latest_run_dir}/${ckpt_suffix}"
+  echo "Resolved CKPT_PATH from run_time to latest: $CKPT_PATH"
+fi
+
+if [[ ! -f "$CKPT_PATH" ]]; then
+  echo "Error: checkpoint file not found: $CKPT_PATH" >&2
+  exit 1
+fi
+
 : "${USE_MULTI_DATASETS:=true}"
 : "${DATASET:=Instruments}"
 : "${DATA_PATH:=${DATA_ROOT}/${DATASET}/${DATASET}.emb-${MODEL_NAME}-td.npy}"

@@ -1135,7 +1135,7 @@ def make_run_name(args: argparse.Namespace) -> str:
 
     lr = args.learning_rate
 
-    return f"{base_name}__{dataset}__{method}__lr{lr}__b{batch_size}__gc{gc_flag}__{tasks}__p{prompt_num}__idx{idx_key}__{timestamp}"
+    return f"idx{idx_key}__{base_name}__{dataset}__{method}__lr{lr}__b{batch_size}__gc{gc_flag}__{tasks}__p{prompt_num}__{timestamp}"
 
 
 def verify_token_ordering(
