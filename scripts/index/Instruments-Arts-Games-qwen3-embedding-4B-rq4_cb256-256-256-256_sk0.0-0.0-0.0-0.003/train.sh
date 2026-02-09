@@ -11,8 +11,14 @@ cd "$PROJECT_ROOT" || exit 1
 : "${USE_MULTI_DATASETS:=true}"
 : "${DATASETS:=Instruments Arts Games}"
 
+# RQ config: 4 layers, 256 codebook
+: "${INDEX_N_LAYERS:=4}"
+: "${INDEX_CODEBOOK_SIZE:=256}"
+: "${INDEX_LAST_SK_EPSILON:=0.003}"
+
 export ROOT_DIR MODEL_NAME USE_MULTI_DATASETS DATASETS
+export INDEX_N_LAYERS INDEX_CODEBOOK_SIZE INDEX_LAST_SK_EPSILON
 
 # Optional overrides (examples):
-#   NPROC_PER_NODE=4 BATCH_SIZE=128 EPOCHS=1000 INDEX_CODEBOOK_SIZE=512
+#   NPROC_PER_NODE=4 BATCH_SIZE=128 EPOCHS=1000
 bash scripts/index/base/train.sh

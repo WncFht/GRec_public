@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 cd "$PROJECT_ROOT" || exit 1
 
 # K-Means ablation mode:
@@ -62,7 +62,7 @@ export INDEX_N_LAYERS INDEX_CODEBOOK_SIZE INDEX_LAST_SK_EPSILON INDEX_KMEANS_ITE
 export KMEANS_INIT_ARG LARGE_SCALE_KMEANS_ARG
 export USE_WANDB WANDB_PROJECT WANDB_RUN_NAME LOG_FILE
 
-nohup bash index/scripts/train.sh >/dev/null 2>&1 &
+nohup bash scripts/index/base/train.sh >/dev/null 2>&1 &
 PID=$!
 
 echo "K-Means ablation launched in background. PID=${PID}"

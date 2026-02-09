@@ -16,7 +16,7 @@ cd "$PROJECT_ROOT" || exit 1
 : "${CKPT_PATH:=}"
 if [[ -z "$CKPT_PATH" ]]; then
   echo "Error: CKPT_PATH is empty."
-  echo "Example: CKPT_PATH=./index_train_runs/Instruments-Arts-Games/index/qwen3-embedding-4B/run_tag/run_time/best_collision_model.pth bash scripts/index/generate.sh"
+  echo "Example: CKPT_PATH=./index_train_runs/Instruments-Arts-Games/index/qwen3-embedding-4B/run_tag/run_time/best_collision_model.pth bash scripts/index/Instruments-Arts-Games-qwen3-embedding-4B-rq4_cb256-256-256-256_sk0.0-0.0-0.0-0.003/generate.sh"
   exit 1
 fi
 

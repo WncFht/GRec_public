@@ -80,7 +80,7 @@ DATASET=Instruments \
 MODEL_NAME=qwen3-embedding-4B \
 NPROC_PER_NODE=1 \
 BATCH_SIZE=2048 \
-bash index/scripts/train.sh
+bash scripts/index/base/train.sh
 ```
 
 多数据集：
@@ -94,7 +94,7 @@ INDEX_N_LAYERS=4 \
 INDEX_LAST_SK_EPSILON=0.003 \
 NPROC_PER_NODE=4 \
 BATCH_SIZE=256 \
-bash index/scripts/train.sh
+bash scripts/index/base/train.sh
 ```
 
 指定自定义 run 标签（推荐）：
@@ -102,14 +102,14 @@ bash index/scripts/train.sh
 ```bash
 CKPT_TAG="rq4_cb1024_sk0-0-0-0.003_expA" \
 WANDB_RUN_NAME="rq4-expA" \
-bash index/scripts/train.sh
+bash scripts/index/base/train.sh
 ```
 
 指定 index 模型统一存储根目录（避免混在 `data/`）：
 
 ```bash
 INDEX_TRAIN_ROOT=./index_train_runs \
-bash index/scripts/train.sh
+bash scripts/index/base/train.sh
 ```
 
 ---
@@ -192,7 +192,7 @@ USE_MULTI_DATASETS=false \
 DATASET=Instruments \
 MODEL_NAME=qwen3-embedding-4B \
 CKPT_PATH=/path/to/best_collision_model.pth \
-bash index/scripts/generate.sh
+bash scripts/index/base/generate.sh
 ```
 
 如果不传 `OUTPUT_SUFFIX`，脚本会自动生成包含训练关键信息的后缀；下游只需把该后缀作为 `INDEX_FILE` 传给 SFT/RL。
@@ -204,7 +204,7 @@ USE_MULTI_DATASETS=true \
 DATASETS="Arts Automotive Cell Games Pet Sports Tools Toys Instruments" \
 MODEL_NAME=qwen3-embedding-4B \
 CKPT_PATH=/path/to/best_collision_model.pth \
-bash index/scripts/generate.sh
+bash scripts/index/base/generate.sh
 ```
 
 如需手工覆盖命名：
@@ -212,7 +212,7 @@ bash index/scripts/generate.sh
 ```bash
 OUTPUT_SUFFIX=.index_my_exp_tag.json \
 CKPT_PATH=/path/to/best_collision_model.pth \
-bash index/scripts/generate.sh
+bash scripts/index/base/generate.sh
 ```
 
 ---
