@@ -16,8 +16,9 @@ cd "$GREC_ROOT" || exit 1
 : "${MODEL_NAME:=qwen3-embedding-4B}"
 : "${USE_MULTI_DATASETS:=true}"
 : "${DATASETS:=Instruments Arts Games}"
+: "${INDEX_RUN_SCRIPT_DIR:=Instruments-Arts-Games-qwen3-embedding-4B-rq4_cb512-512-512-512_sk0.0-0.0-0.0-0.003}"
 
-export ROOT_DIR MODEL_NAME USE_MULTI_DATASETS DATASETS
+export ROOT_DIR MODEL_NAME USE_MULTI_DATASETS DATASETS INDEX_RUN_SCRIPT_DIR
 
 # Optional overrides (examples):
 #   NPROC_PER_NODE=4 BATCH_SIZE=128 EPOCHS=1000 INDEX_CODEBOOK_SIZE=512

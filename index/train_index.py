@@ -39,7 +39,7 @@ def parse_args():
 
     parser.add_argument("--lr", type=float, default=1e-3, help="learning rate")
     parser.add_argument(
-        "--epochs", type=int, default=5000, help="number of epochs"
+        "--epochs", type=int, default=500, help="number of epochs"
     )
     parser.add_argument(
         "--batch_size", type=int, default=2048, help="batch size"
@@ -156,7 +156,7 @@ def parse_args():
     parser.add_argument(
         "--wandb_project",
         type=str,
-        default="unifymmgrec",
+        default="grec_index",
         help="wandb project",
     )
     parser.add_argument(

@@ -25,6 +25,8 @@ Description:
   - Excludes macOS metadata files (e.g. .DS_Store, ._*, __MACOSX).
   - Uses tar.gz format only.
   - Always writes output archive under repository root.
+  - If existing core archives are found, overwrite the latest one by default.
+  - Clean up old core archives/parts before packing to keep only one version.
   - If archive size > 10MB, splits into 10MB parts:
       <archive>.part.000
       <archive>.part.001
@@ -60,7 +62,27 @@ done
 if [[ $# -eq 1 ]]; then
   archive_basename="$(basename "$1")"
 else
-  archive_basename="grec_core_dirs_$(date +%Y%m%d_%H%M%S).tar.gz"
+  shopt -s nullglob
+  existing_candidates=(
+    "${PROJECT_ROOT}/grec_core_dirs_"*.tar.gz
+    "${PROJECT_ROOT}/grec_core_dirs_"*.tar.gz.part.[0-9][0-9][0-9]
+  )
+  shopt -u nullglob
+
+  if [[ ${#existing_candidates[@]} -gt 0 ]]; then
+    latest_file="$(ls -1t "${existing_candidates[@]}" | head -n 1)"
+
+    if [[ "$latest_file" =~ \.part\.[0-9]{3}$ ]]; then
+      latest_archive="${latest_file%.part.[0-9][0-9][0-9]}"
+    else
+      latest_archive="$latest_file"
+    fi
+
+    archive_basename="$(basename "$latest_archive")"
+    echo "Found existing archive set; will overwrite latest: $archive_basename"
+  else
+    archive_basename="grec_core_dirs_$(date +%Y%m%d_%H%M%S).tar.gz"
+  fi
 fi
 
 if [[ "$archive_basename" != *.tar.gz ]]; then
@@ -69,7 +91,19 @@ fi
 
 archive_path="${PROJECT_ROOT}/${archive_basename}"
 
-rm -f "$archive_path"
+shopt -s nullglob
+old_core_archives=(
+  "${PROJECT_ROOT}/grec_core_dirs_"*.tar.gz
+  "${PROJECT_ROOT}/grec_core_dirs_"*.tar.gz.part.[0-9][0-9][0-9]
+)
+shopt -u nullglob
+
+if [[ ${#old_core_archives[@]} -gt 0 ]]; then
+  rm -f "${old_core_archives[@]}"
+  echo "Removed old core archive file(s): ${#old_core_archives[@]}"
+fi
+
+rm -f "$archive_path" "${archive_path}.part."*
 
 tar_create_opts=()
 if tar_supports_flag "--no-xattrs"; then

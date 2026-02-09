@@ -60,7 +60,7 @@ TRAIN_DATASET=$(IFS=-; echo "${DATASETS[*]}")
 : "${DEVICE:=cuda:0}"
 : "${NPROC_PER_NODE:=4}"          # >1 uses torchrun DDP
 : "${MASTER_PORT:=29600}"
-: "${EPOCHS:=2000}"
+: "${EPOCHS:=500}"
 : "${BATCH_SIZE:=256}"            # per-GPU batch size
 : "${AUTO_LR:=true}"              # true: scale LR by global batch when LR not set
 : "${BASE_LR:=1e-3}"
@@ -80,7 +80,7 @@ TRAIN_DATASET=$(IFS=-; echo "${DATASETS[*]}")
 : "${KMEANS_ITERS:=$INDEX_KMEANS_ITERS}"
 
 : "${USE_WANDB:=False}"
-: "${WANDB_PROJECT:=unifymmgrec}"
+: "${WANDB_PROJECT:=grec_index}"
 
 BASE_GLOBAL_BATCH=$((BASE_BATCH_SIZE * BASE_NPROC_PER_NODE))
 GLOBAL_BATCH=$((BATCH_SIZE * NPROC_PER_NODE))
@@ -130,7 +130,10 @@ CKPT_TAG_DEFAULT="rq${#NUM_EMB_LIST[@]}_cb${VQ_TAG}_sk${SK_TAG}_${KM_TAG}"
 
 : "${CKPT_DIR:=${CKPT_ROOT}${CKPT_TAG}/}"
 RUN_NAME="${RUN_NAME}-${CKPT_TAG}"
-WANDB_RUN_NAME="${WANDB_RUN_NAME:-$RUN_NAME}"
+
+RUN_SCRIPT_DIR_NAME="${INDEX_RUN_SCRIPT_DIR:-base}"
+WANDB_RUN_NAME_DEFAULT="${RUN_SCRIPT_DIR_NAME}-bs${BATCH_SIZE}-lr${LR}-ep${EPOCHS}-np${NPROC_PER_NODE}"
+WANDB_RUN_NAME="${WANDB_RUN_NAME:-$WANDB_RUN_NAME_DEFAULT}"
 
 echo "Train config: NPROC_PER_NODE=${NPROC_PER_NODE}, BATCH_SIZE=${BATCH_SIZE} (global=${GLOBAL_BATCH}), LR=${LR}, AUTO_LR=${AUTO_LR}"
 echo "Train data mode: USE_MULTI_DATASETS=${USE_MULTI_DATASETS}, MODEL_NAME=${MODEL_NAME}"

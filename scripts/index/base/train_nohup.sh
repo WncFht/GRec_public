@@ -31,7 +31,7 @@ cd "$GREC_ROOT" || exit 1
 : "${LARGE_SCALE_KMEANS_ARG:=true}"
 
 : "${USE_WANDB:=False}"
-: "${WANDB_PROJECT:=unifymmgrec}"
+: "${WANDB_PROJECT:=grec_index}"
 : "${WANDB_RUN_NAME:=${DATASET}-${MODEL_NAME}-nohup}"
 
 mkdir -p ./log/index

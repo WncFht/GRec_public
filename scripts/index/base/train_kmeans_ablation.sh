@@ -56,7 +56,7 @@ esac
 : "${INDEX_KMEANS_ITERS:=100}"
 
 : "${USE_WANDB:=False}"
-: "${WANDB_PROJECT:=unifymmgrec}"
+: "${WANDB_PROJECT:=grec_index}"
 : "${WANDB_RUN_NAME:=${DATASET}-${MODEL_NAME}${WANDB_SUFFIX}}"
 
 mkdir -p ./log

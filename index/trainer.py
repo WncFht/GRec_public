@@ -54,7 +54,7 @@ class Trainer:
             )
 
         if self.use_wandb:
-            wandb_project = getattr(self.args, "wandb_project", "unifymmgrec")
+            wandb_project = getattr(self.args, "wandb_project", "grec_index")
             wandb_name = getattr(self.args, "wandb_name", None)
             wandb.init(
                 project=wandb_project,
