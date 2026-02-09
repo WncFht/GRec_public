@@ -6,6 +6,13 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 TARGET_DIRS=(docs index scripts src tokenizer)
+EXCLUDE_PATTERNS=(
+  --exclude='*/.DS_Store'
+  --exclude='*/__MACOSX'
+  --exclude='*/._*'
+  --exclude='*/.Spotlight-V100'
+  --exclude='*/.Trashes'
+)
 MAX_PART_BYTES=$((10 * 1024 * 1024))
 
 usage() {
@@ -15,6 +22,7 @@ Usage:
 
 Description:
   - Packs: docs/ index/ scripts/ src/ tokenizer/
+  - Excludes macOS metadata files (e.g. .DS_Store, ._*, __MACOSX).
   - Uses tar.gz format only.
   - Always writes output archive under repository root.
   - If archive size > 10MB, splits into 10MB parts:
@@ -75,9 +83,9 @@ if tar_supports_flag "--disable-copyfile"; then
 fi
 
 if (( ${#tar_create_opts[@]} > 0 )); then
-  COPYFILE_DISABLE=1 tar "${tar_create_opts[@]}" -czf "$archive_path" "${TARGET_DIRS[@]}"
+  COPYFILE_DISABLE=1 tar "${tar_create_opts[@]}" "${EXCLUDE_PATTERNS[@]}" -czf "$archive_path" "${TARGET_DIRS[@]}"
 else
-  COPYFILE_DISABLE=1 tar -czf "$archive_path" "${TARGET_DIRS[@]}"
+  COPYFILE_DISABLE=1 tar "${EXCLUDE_PATTERNS[@]}" -czf "$archive_path" "${TARGET_DIRS[@]}"
 fi
 
 archive_bytes=$(wc -c < "$archive_path" | tr -d '[:space:]')

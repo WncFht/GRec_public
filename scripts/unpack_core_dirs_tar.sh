@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DEST_ROOT="/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/GRec"
 
 TARGET_DIRS=(docs index scripts src tokenizer)
 
@@ -18,7 +18,8 @@ Examples:
 Behavior:
   1) Rebuild archive if split parts are provided.
   2) Remove existing docs/index/scripts/src/tokenizer directories.
-  3) Extract tar.gz into repository root and overwrite content.
+  3) Extract tar.gz into /mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/GRec and overwrite content.
+  4) Remove source archive file(s) after successful extraction.
 USAGE
 }
 
@@ -47,6 +48,7 @@ fi
 
 temp_archive=""
 archive_path=""
+source_archives=()
 
 cleanup() {
   if [[ -n "$temp_archive" && -f "$temp_archive" ]]; then
@@ -57,6 +59,7 @@ trap cleanup EXIT
 
 if [[ -f "$input_path" && "$input_path" == *.tar.gz ]]; then
   archive_path="$input_path"
+  source_archives=("$input_path")
 else
   if [[ -f "$input_path" && "$input_path" =~ \.part\.[0-9]{3}$ ]]; then
     part_prefix="${input_path%[0-9][0-9][0-9]}"
@@ -76,10 +79,16 @@ else
   temp_archive="/tmp/grec_unpack_$(date +%s)_$$.tar.gz"
   cat "${part_files[@]}" > "$temp_archive"
   archive_path="$temp_archive"
+  source_archives=("${part_files[@]}")
   echo "Rebuilt archive from ${#part_files[@]} part files."
 fi
 
-cd "$PROJECT_ROOT"
+if [[ ! -d "$DEST_ROOT" ]]; then
+  echo "Error: destination root does not exist: $DEST_ROOT" >&2
+  exit 1
+fi
+
+cd "$DEST_ROOT"
 
 for dir_name in "${TARGET_DIRS[@]}"; do
   if [[ -e "$dir_name" ]]; then
@@ -98,5 +107,14 @@ else
   tar -xzf "$archive_path"
 fi
 
-echo "Extraction complete in $PROJECT_ROOT"
+for archive_file in "${source_archives[@]}"; do
+  if [[ -f "$archive_file" ]]; then
+    rm -f "$archive_file"
+  fi
+done
+
+echo "Extraction complete in $DEST_ROOT"
 echo "Overwritten directories: ${TARGET_DIRS[*]}"
+if (( ${#source_archives[@]} > 0 )); then
+  echo "Removed source archive file(s): ${source_archives[*]}"
+fi
