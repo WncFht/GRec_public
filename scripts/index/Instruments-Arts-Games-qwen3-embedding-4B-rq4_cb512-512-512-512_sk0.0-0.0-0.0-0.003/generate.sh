@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 cd "$PROJECT_ROOT" || exit 1
 
 # IAG: Instruments + Arts + Games
@@ -25,4 +25,3 @@ export ROOT_DIR DATA_ROOT MODEL_NAME USE_MULTI_DATASETS DATASETS CKPT_PATH
 # Optional overrides (examples):
 #   BATCH_SIZE=64 DEVICE=cuda:0 OUTPUT_SUFFIX=.index_custom.json
 bash index/scripts/generate.sh
-
