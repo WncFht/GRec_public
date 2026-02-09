@@ -29,3 +29,11 @@ export INDEX_N_LAYERS INDEX_CODEBOOK_SIZE INDEX_LAST_SK_EPSILON
 # Optional overrides (examples):
 #   NPROC_PER_NODE=4 BATCH_SIZE=128 EPOCHS=500
 bash "$GREC_ROOT/scripts/index/base/train.sh"
+
+: "${AUTO_GENERATE_AFTER_TRAIN:=true}"
+if [[ "${AUTO_GENERATE_AFTER_TRAIN,,}" == "true" ]]; then
+  echo "[index/train] AUTO_GENERATE_AFTER_TRAIN=true, running generate..."
+  bash "$GREC_ROOT/scripts/index/$INDEX_RUN_SCRIPT_DIR/generate.sh"
+else
+  echo "[index/train] AUTO_GENERATE_AFTER_TRAIN=false, skip generate."
+fi

@@ -23,3 +23,11 @@ export ROOT_DIR MODEL_NAME USE_MULTI_DATASETS DATASETS INDEX_RUN_SCRIPT_DIR
 # Optional overrides (examples):
 #   NPROC_PER_NODE=4 BATCH_SIZE=128 EPOCHS=1000 INDEX_CODEBOOK_SIZE=512
 bash "$GREC_ROOT/scripts/index/base/train.sh"
+
+: "${AUTO_GENERATE_AFTER_TRAIN:=true}"
+if [[ "${AUTO_GENERATE_AFTER_TRAIN,,}" == "true" ]]; then
+  echo "[index/train] AUTO_GENERATE_AFTER_TRAIN=true, running generate..."
+  bash "$GREC_ROOT/scripts/index/$INDEX_RUN_SCRIPT_DIR/generate.sh"
+else
+  echo "[index/train] AUTO_GENERATE_AFTER_TRAIN=false, skip generate."
+fi
