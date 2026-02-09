@@ -32,11 +32,6 @@ fi
 read -r -a DATASET_LIST <<< "$DATASETS"
 DATA_PATHS=(${DATA_PATHS:-})
 
-OUTPUT_ARGS=()
-if [[ -n "$OUTPUT_SUFFIX" ]]; then
-  OUTPUT_ARGS+=(--output_suffix "$OUTPUT_SUFFIX")
-fi
-
 echo "Generate config: USE_MULTI_DATASETS=${USE_MULTI_DATASETS}, MODEL_NAME=${MODEL_NAME}"
 echo "CKPT_PATH=${CKPT_PATH}"
 if [[ -n "$OUTPUT_SUFFIX" ]]; then
@@ -50,14 +45,21 @@ gen_one() {
   local data_path="$2"
   local output_dir="${DATA_ROOT}/${dataset}/"
 
-  python3 -m index.generate_indices \
-    --dataset "$dataset" \
-    --ckpt_path "$CKPT_PATH" \
-    --data_path "$data_path" \
-    --output_dir "$output_dir" \
-    --device "$DEVICE" \
-    --batch_size "$BATCH_SIZE" \
-    "${OUTPUT_ARGS[@]}"
+  cmd=(
+    python3 -m index.generate_indices
+    --dataset "$dataset"
+    --ckpt_path "$CKPT_PATH"
+    --data_path "$data_path"
+    --output_dir "$output_dir"
+    --device "$DEVICE"
+    --batch_size "$BATCH_SIZE"
+  )
+
+  if [[ -n "$OUTPUT_SUFFIX" ]]; then
+    cmd+=(--output_suffix "$OUTPUT_SUFFIX")
+  fi
+
+  "${cmd[@]}"
 }
 
 if [ "${USE_MULTI_DATASETS,,}" = "true" ]; then
@@ -77,14 +79,21 @@ if [ "${USE_MULTI_DATASETS,,}" = "true" ]; then
     exit 1
   fi
 
-  python3 -m index.generate_indices \
-    --datasets "${DATASET_LIST[@]}" \
-    --ckpt_path "$CKPT_PATH" \
-    --data_paths "${DATA_PATHS[@]}" \
-    --output_dir "$DATA_ROOT" \
-    --device "$DEVICE" \
-    --batch_size "$BATCH_SIZE" \
-    "${OUTPUT_ARGS[@]}"
+  cmd=(
+    python3 -m index.generate_indices
+    --datasets "${DATASET_LIST[@]}"
+    --ckpt_path "$CKPT_PATH"
+    --data_paths "${DATA_PATHS[@]}"
+    --output_dir "$DATA_ROOT"
+    --device "$DEVICE"
+    --batch_size "$BATCH_SIZE"
+  )
+
+  if [[ -n "$OUTPUT_SUFFIX" ]]; then
+    cmd+=(--output_suffix "$OUTPUT_SUFFIX")
+  fi
+
+  "${cmd[@]}"
 else
   gen_one "$DATASET" "$DATA_PATH"
 fi

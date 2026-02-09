@@ -3,6 +3,7 @@ import collections
 import json
 import os
 import re
+from datetime import datetime
 
 import numpy as np
 import torch
@@ -261,6 +262,51 @@ def _infer_datasets_from_data_paths(data_paths: list[str]) -> list[str]:
     return datasets
 
 
+def _write_generate_metrics(
+    ckpt_path: str,
+    datasets: list[str],
+    multi_output: bool,
+    output_suffix: str,
+    max_reencode_rounds: int,
+    reencode_rounds: int,
+    total_items: int,
+    unique_indices: int,
+    collision_rate: float,
+    max_conflicts: int,
+    cross_dataset_collision_groups_round0: int | None,
+):
+    ckpt_dir = os.path.dirname(os.path.abspath(ckpt_path))
+    metrics = {
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "ckpt_path": os.path.abspath(ckpt_path),
+        "datasets": datasets,
+        "multi_output": multi_output,
+        "output_suffix": output_suffix,
+        "max_reencode_rounds": int(max_reencode_rounds),
+        "reencode_rounds": int(reencode_rounds),
+        "total_items": int(total_items),
+        "unique_indices": int(unique_indices),
+        "collision_rate": float(collision_rate),
+        "max_conflicts": int(max_conflicts),
+        "cross_dataset_collision_groups_round0": (
+            int(cross_dataset_collision_groups_round0)
+            if cross_dataset_collision_groups_round0 is not None
+            else None
+        ),
+    }
+
+    rid = _slug(os.path.basename(ckpt_dir))
+    metrics_file = os.path.join(
+        ckpt_dir,
+        f"generate_metrics_{rid}.json",
+    )
+
+    with open(metrics_file, "w", encoding="utf-8") as fp:
+        json.dump(metrics, fp, ensure_ascii=False, indent=2, sort_keys=True)
+
+    print(f"[metrics] {metrics_file}")
+
+
 def main(args):
     device = torch.device(args.device)
 
@@ -386,6 +432,8 @@ def main(args):
         spans = _dataset_spans(datasets, data)
         dataset_ids = _dataset_ids_for_global_indices(spans, len(all_keys))
 
+    cross_dataset_collision_groups_round0 = None
+
     while True:
         if tt >= args.max_reencode_rounds or check_collision(all_keys):
             break
@@ -397,6 +445,7 @@ def main(args):
                 ds_set = {dataset_ids[i] for i in g if dataset_ids[i] >= 0}
                 if len(ds_set) > 1:
                     cross += 1
+            cross_dataset_collision_groups_round0 = cross
             print(
                 f"[collision] groups={len(collision_item_groups)} "
                 f"(cross-dataset={cross}, max_rounds={args.max_reencode_rounds})"
@@ -424,8 +473,9 @@ def main(args):
 
     tot_item = len(all_keys)
     tot_indice = len(set(all_keys))
+    collision_rate = (tot_item - tot_indice) / tot_item
     print(
-        "Collision Rate", (tot_item - tot_indice) / tot_item
+        "Collision Rate", collision_rate
     )  # 打印最终碰撞率
 
     if multi_output:
@@ -456,6 +506,20 @@ def main(args):
         with open(output_file_path, "w", encoding="utf-8") as fp:
             json.dump(all_indices_dict, fp)
         print(f"[output] {output_file_path} (items={len(all_keys)})")
+
+    _write_generate_metrics(
+        ckpt_path=args.ckpt_path,
+        datasets=datasets,
+        multi_output=multi_output,
+        output_suffix=output_suffix,
+        max_reencode_rounds=args.max_reencode_rounds,
+        reencode_rounds=tt,
+        total_items=tot_item,
+        unique_indices=tot_indice,
+        collision_rate=collision_rate,
+        max_conflicts=max(get_indices_count(all_keys).values()),
+        cross_dataset_collision_groups_round0=cross_dataset_collision_groups_round0,
+    )
 
 
 if __name__ == "__main__":
