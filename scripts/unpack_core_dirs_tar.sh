@@ -20,6 +20,7 @@ Behavior:
   2) Remove existing docs/index/scripts/src/tokenizer directories.
   3) Extract tar.gz into /mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/GRec and overwrite content.
   4) Remove source archive file(s) after successful extraction.
+  5) Clean all grec_core_dirs*.tar.gz and split parts in source directory.
 USAGE
 }
 
@@ -49,6 +50,7 @@ fi
 temp_archive=""
 archive_path=""
 source_archives=()
+source_dir=""
 
 cleanup() {
   if [[ -n "$temp_archive" && -f "$temp_archive" ]]; then
@@ -60,6 +62,7 @@ trap cleanup EXIT
 if [[ -f "$input_path" && "$input_path" == *.tar.gz ]]; then
   archive_path="$input_path"
   source_archives=("$input_path")
+  source_dir="$(dirname "$input_path")"
 else
   if [[ -f "$input_path" && "$input_path" =~ \.part\.[0-9]{3}$ ]]; then
     part_prefix="${input_path%[0-9][0-9][0-9]}"
@@ -80,6 +83,7 @@ else
   cat "${part_files[@]}" > "$temp_archive"
   archive_path="$temp_archive"
   source_archives=("${part_files[@]}")
+  source_dir="$(dirname "${part_files[0]}")"
   echo "Rebuilt archive from ${#part_files[@]} part files."
 fi
 
@@ -112,6 +116,20 @@ for archive_file in "${source_archives[@]}"; do
     rm -f "$archive_file"
   fi
 done
+
+if [[ -n "$source_dir" ]]; then
+  shopt -s nullglob
+  grec_archives=(
+    "$source_dir"/grec_core_dirs_*.tar.gz
+    "$source_dir"/grec_core_dirs_*.tar.gz.part.[0-9][0-9][0-9]
+  )
+  shopt -u nullglob
+
+  if [[ ${#grec_archives[@]} -gt 0 ]]; then
+    rm -f "${grec_archives[@]}"
+    echo "Removed all grec archive file(s) in source dir: ${#grec_archives[@]}"
+  fi
+fi
 
 echo "Extraction complete in $DEST_ROOT"
 echo "Overwritten directories: ${TARGET_DIRS[*]}"
