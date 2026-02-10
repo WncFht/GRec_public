@@ -15,6 +15,7 @@ INDEX_TAG="rq4_cb512-512-512-512_sk0.0-0.0-0.0-0.003"
 INDEX_MATCH_TAG="${INDEX_TAG%%_sk*}"
 : "${DATASET:=Instruments}"
 : "${DATA_PATH:=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/data}"
+: "${ROOT_DIR:=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian}"
 : "${INDEX_EMB_MODEL:=qwen3-embedding-4B}"
 : "${INDEX_DATASETS:=Instruments}"
 
@@ -35,13 +36,16 @@ fi
 
 INDEX_KEY="${INDEX_FILE#.}"
 INDEX_KEY="${INDEX_KEY%.json}"
-OUTPUT_DIR_DEFAULT="./ckpt/$DATASET/qwen2.5-3b-sft__idx-$INDEX_KEY"
+OUTPUT_DIR_DEFAULT="${ROOT_DIR}/ckpt/$DATASET/qwen2.5-3b-sft__idx-$INDEX_KEY"
 
 export DATASET DATA_PATH INDEX_FILE
 export OUTPUT_DIR="${OUTPUT_DIR:-$OUTPUT_DIR_DEFAULT}"
+export EVAL_BY_DATASET="${EVAL_BY_DATASET:-true}"
+export EVAL_MAIN_DATASET="${EVAL_MAIN_DATASET:-$DATASET}"
 
 echo "[bundle/train] DATASET=$DATASET INDEX_FILE=$INDEX_FILE"
 echo "[bundle/train] INDEX_EMB_MODEL=$INDEX_EMB_MODEL INDEX_DATASETS=$INDEX_DATASETS"
 echo "[bundle/train] OUTPUT_DIR=$OUTPUT_DIR"
+echo "[bundle/train] EVAL_BY_DATASET=$EVAL_BY_DATASET EVAL_MAIN_DATASET=$EVAL_MAIN_DATASET"
 
 bash "$GREC_ROOT/scripts/finetune/train_text.sh" "$@"

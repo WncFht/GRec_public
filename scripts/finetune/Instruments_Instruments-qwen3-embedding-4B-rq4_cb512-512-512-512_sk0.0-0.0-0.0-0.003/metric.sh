@@ -30,6 +30,7 @@ INDEX_MATCH_TAG="${INDEX_TAG%%_sk*}"
 : "${RATIO:=1}"
 : "${MODEL_TYPE:=qwen2_5_instruct}"
 : "${DATA_PATH:=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/data}"
+: "${ROOT_DIR:=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian}"
 : "${INDEX_EMB_MODEL:=qwen3-embedding-4B}"
 : "${INDEX_DATASETS:=Instruments}"
 
@@ -58,7 +59,7 @@ fi
 if [[ -z "${CKPT_PATH:-}" ]]; then
   INDEX_KEY="${INDEX_FILE#.}"
   INDEX_KEY="${INDEX_KEY%.json}"
-  sft_dir="${SFT_DIR:-./ckpt/$DATASET/qwen2.5-3b-sft__idx-$INDEX_KEY}"
+  sft_dir="${SFT_DIR:-${ROOT_DIR}/ckpt/$DATASET/qwen2.5-3b-sft__idx-$INDEX_KEY}"
   CKPT_PATH="$(ls -1dt "$sft_dir"/checkpoint-* 2>/dev/null | head -n 1 || true)"
   if [[ -z "$CKPT_PATH" ]]; then
     echo "Error: cannot resolve CKPT_PATH from $sft_dir" >&2

@@ -59,6 +59,16 @@ bash scripts/finetune/train_text.sh
 - 训练行为：`USE_LORA`, `FREEZE`, `USE_GRADIENT_CHECKPOINTING`, `ONLY_TRAIN_RESPONSE`, `DETERMINISTIC`
 - 多数据集评估：`EVAL_BY_DATASET=true`, `EVAL_MAIN_DATASET=<dataset>`
 
+### 关于 `label_names`（为什么和 `eval_loss` 有关）
+
+- `src/finetune/train_ddp.py` 里现在显式设置了 `TrainingArguments(label_names=["labels"])`。
+- 作用：明确告诉 `Trainer` 从 batch 中把 `labels` 作为监督信号传给模型。
+- 如果没有这项，在某些 DeepSpeed/DDP 组合下，评估阶段可能只返回 `eval_runtime`/`eval_steps_per_second`，却没有 `eval_loss`。
+- 一旦没有 `eval_loss`，`metric_for_best_model=eval_loss` 和 `EarlyStoppingCallback` 就无法正常工作。
+- 对应到你的场景：
+  - 单数据集：会用 `eval_loss`。
+  - `EVAL_BY_DATASET=true` 且 `EVAL_MAIN_DATASET=Instruments`：会用 `eval_Instruments_loss` 做 best metric / early stopping。
+
 ---
 
 ## 建议
@@ -66,4 +76,3 @@ bash scripts/finetune/train_text.sh
 - 新实验优先基于 `train_vl.sh` / `train_text.sh` 启动。
 - 需要固化某一组参数时，建议在外层再包一层小脚本，仅设置环境变量后调用统一模板。
 - 如需 ZeRO3 合并，继续使用 `convert.sh` 或 `convert/convert.sh`。
-

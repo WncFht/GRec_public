@@ -21,16 +21,19 @@ export WANDB_ENTITY="${WANDB_ENTITY:-}"
 export PYTHONUNBUFFERED=1
 export CUDA_LAUNCH_BLOCKING="${CUDA_LAUNCH_BLOCKING:-0}"
 
+GREC_ROOT="${GREC_ROOT:-/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/GRec}"
+ROOT_DIR="${ROOT_DIR:-/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian}"
+
 DATASET="${DATASET:-Instruments}"
-DATA_PATH="${DATA_PATH:-./data}"
-BASE_MODEL="${BASE_MODEL:-ckpt/base_model/Qwen2.5-3B-Instruct}"
+DATA_PATH="${DATA_PATH:-$ROOT_DIR/data}"
+BASE_MODEL="${BASE_MODEL:-$ROOT_DIR/ckpt/base_model/Qwen2.5-3B-Instruct}"
 MODEL_TYPE="${MODEL_TYPE:-qwen2_5_instruct}"
 INDEX_FILE="${INDEX_FILE:-.index_qwen3-embedding-4B.json}"
 INDEX_KEY="${INDEX_FILE#.}"
 INDEX_KEY="${INDEX_KEY%.json}"
 INDEX_KEY="${INDEX_KEY//\//_}"
 DATASET_TAG="${DATASET//,/-}"
-OUTPUT_DIR="${OUTPUT_DIR:-./ckpt/${DATASET_TAG}/qwen2.5-3b-sft__idx-${INDEX_KEY}}"
+OUTPUT_DIR="${OUTPUT_DIR:-$ROOT_DIR/ckpt/${DATASET_TAG}/qwen2.5-3b-sft__idx-${INDEX_KEY}}"
 
 CHECK_INDEX_FILES="${CHECK_INDEX_FILES:-true}"
 export WANDB_NAME="${WANDB_NAME:-sft_text_${DATASET_TAG}__idx-${INDEX_KEY}}"
@@ -44,12 +47,12 @@ PER_DEVICE_BATCH_SIZE="${PER_DEVICE_BATCH_SIZE:-8}"
 GRAD_ACC="${GRAD_ACC:-4}"
 NUM_WORKERS="${NUM_WORKERS:-16}"
 LEARNING_RATE="${LEARNING_RATE:-5e-5}"
-EPOCHS="${EPOCHS:-2}"
+EPOCHS="${EPOCHS:-10}"
 WEIGHT_DECAY="${WEIGHT_DECAY:-0.01}"
 LR_SCHEDULER_TYPE="${LR_SCHEDULER_TYPE:-cosine}"
 SAVE_AND_EVAL_STRATEGY="${SAVE_AND_EVAL_STRATEGY:-epoch}"
 SAVE_AND_EVAL_STEPS="${SAVE_AND_EVAL_STEPS:-1000}"
-DEEPSPEED_CONFIG="${DEEPSPEED_CONFIG:-./config/ds_z2_bf16.json}"
+DEEPSPEED_CONFIG="${DEEPSPEED_CONFIG:-$GREC_ROOT/config/ds_z2_bf16.json}"
 
 TASKS="${TASKS:-item2index,seqrec}"
 TRAIN_PROMPT_SAMPLE_NUM="${TRAIN_PROMPT_SAMPLE_NUM:-1,1}"
@@ -78,6 +81,12 @@ if [[ "${CHECK_INDEX_FILES}" == "true" ]]; then
             exit 1
         fi
     done
+fi
+
+if [[ ! -d "${BASE_MODEL}" ]]; then
+    echo "[finetune/text] BASE_MODEL not found: ${BASE_MODEL}" >&2
+    echo "[finetune/text] Hint: export BASE_MODEL=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/ckpt/base_model/Qwen2.5-3B-Instruct" >&2
+    exit 1
 fi
 
 mkdir -p "${OUTPUT_DIR}"

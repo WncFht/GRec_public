@@ -102,14 +102,31 @@ class UnifiedTrainer:
         save_only_model = True
         load_best_model_at_end = not use_deepspeed
 
-        metric_for_best_model = "eval_loss"
-        if bool(getattr(self.args, "eval_by_dataset", False)):
-            main_ds = getattr(self.args, "eval_main_dataset", None)
-            if main_ds:
-                metric_for_best_model = f"eval_{main_ds}_loss"
-        if self.local_rank == 0 and metric_for_best_model != "eval_loss":
+        eval_enabled = (
+            str(getattr(self.args, "save_and_eval_strategy", "epoch")).lower()
+            != "no"
+        )
+        needs_best_metric = eval_enabled
+
+        metric_for_best_model = None
+        if needs_best_metric:
+            metric_for_best_model = "eval_loss"
+            if bool(getattr(self.args, "eval_by_dataset", False)):
+                main_ds = getattr(self.args, "eval_main_dataset", None)
+                if main_ds:
+                    metric_for_best_model = f"eval_{main_ds}_loss"
+            if self.local_rank == 0 and metric_for_best_model != "eval_loss":
+                self.logger.info(
+                    f"metric_for_best_model set to: {metric_for_best_model}"
+                )
+        elif self.local_rank == 0:
             self.logger.info(
-                f"metric_for_best_model set to: {metric_for_best_model}"
+                "Skip metric_for_best_model because load_best_model_at_end=false and save_strategy!=best"
+            )
+
+        if self.local_rank == 0 and use_deepspeed and needs_best_metric:
+            self.logger.info(
+                "DeepSpeed mode: early-stopping metric is enabled, but load_best_model_at_end remains disabled"
             )
 
         return TrainingArguments(
@@ -141,13 +158,14 @@ class UnifiedTrainer:
             dataloader_pin_memory=True,
             accelerator_config={"non_blocking": True},
             remove_unused_columns=False,
+            label_names=["labels"],
             report_to=report_to,
             run_name=self.args.run_name,
             eval_delay=1
             if self.args.save_and_eval_strategy == "epoch"
             else 200,
             metric_for_best_model=metric_for_best_model,
-            greater_is_better=False,
+            greater_is_better=False if metric_for_best_model else None,
         )
 
     def _load_model_and_data(self) -> tuple:
@@ -377,6 +395,14 @@ class UnifiedTrainer:
         training_args = self._get_training_args()
 
         # 创建trainer
+        callbacks = []
+        if training_args.metric_for_best_model:
+            callbacks.append(EarlyStoppingCallback(early_stopping_patience=3))
+        elif self.local_rank == 0:
+            self.logger.info(
+                "EarlyStopping disabled because metric_for_best_model is not set"
+            )
+
         trainer = transformers.Trainer(
             model=model,
             train_dataset=train_data,
@@ -384,7 +410,7 @@ class UnifiedTrainer:
             args=training_args,
             processing_class=processor,
             data_collator=collator,
-            callbacks=[EarlyStoppingCallback(early_stopping_patience=3)],
+            callbacks=callbacks,
         )
 
         # 开始训练
