@@ -59,8 +59,8 @@ bash scripts/finetune/train_text.sh
 - 训练行为：`USE_LORA`, `FREEZE`, `USE_GRADIENT_CHECKPOINTING`, `ONLY_TRAIN_RESPONSE`, `DETERMINISTIC`
 - 多数据集评估：`EVAL_BY_DATASET=true`, `EVAL_MAIN_DATASET=<dataset>`
 
-> 稳定性说明：`src/finetune/train_ddp.py` 当前默认关闭 `torch.compile()`，
-> 以避免 DDP/DeepSpeed 场景下在 checkpoint 保存阶段出现递归错误。
+> 编译开关说明：`src/finetune/train_ddp.py` 默认开启 `torch.compile()`（Torch>=2.0 且非 Windows）。
+> 如需临时回退可设置 `USE_TORCH_COMPILE=false`（`train_text.sh` 会透传该环境变量）。
 
 ### 关于 `label_names`（为什么和 `eval_loss` 有关）
 
