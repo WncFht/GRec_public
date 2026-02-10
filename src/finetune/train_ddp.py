@@ -1,7 +1,5 @@
 import argparse
 import os
-import sys
-from packaging import version
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -383,13 +381,11 @@ class UnifiedTrainer:
             model.is_parallelizable = True
             model.model_parallel = True
 
-        # 编译模型（如果支持）
-        if (
-            version.parse(torch.__version__) >= version.parse("2.0.0")
-            and sys.platform != "win32"
-        ):
-            self.logger.info("Compiling model with torch.compile()...")
-            model = torch.compile(model)
+        # 暂时关闭 torch.compile（规避训练中保存 checkpoint 的兼容性问题）
+        if self.local_rank == 0:
+            self.logger.info(
+                "Skip torch.compile() by default for DDP/DeepSpeed stability"
+            )
 
         # 获取训练参数
         training_args = self._get_training_args()
