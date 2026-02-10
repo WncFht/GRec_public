@@ -16,8 +16,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 export WANDB_MODE="${WANDB_MODE:-offline}"
-export WANDB_PROJECT="${WANDB_PROJECT:-GRec}"
-export WANDB_ENTITY="${WANDB_ENTITY:-}"
+export WANDB_PROJECT="${WANDB_PROJECT:-grec_sft}"
+export WANDB_ENTITY="${WANDB_ENTITY:-generate_rec}"
 export PYTHONUNBUFFERED=1
 export CUDA_LAUNCH_BLOCKING="${CUDA_LAUNCH_BLOCKING:-0}"
 

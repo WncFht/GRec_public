@@ -1,6 +1,7 @@
 export WANDB_MODE=offline
 export CUDA_LAUNCH_BLOCKING=1
-export WANDB_PROJECT=GRec
+export WANDB_ENTITY=generate_rec
+export WANDB_PROJECT=grec_sft
 export PYTHONUNBUFFERED=1
 
 export CUDA_VISIBLE_DEVICES=0,1,2,3
