@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
 DEFAULT_GREC_ROOT="/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/GRec"
 DEFAULT_ROOT_DIR="/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian"
@@ -10,10 +10,14 @@ DEFAULT_ROOT_DIR="/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fangh
 usage() {
   cat <<'USAGE'
 Usage:
+  # Default: DDP smoke (4 GPUs, foreground)
   bash scripts/finetune/smoke_train.sh [train_script_path]
 
+  # Optional: single-GPU debug smoke
+  SMOKE_DEBUG=true bash scripts/finetune/smoke_train.sh [train_script_path]
+
 Examples:
-  # Use default Instruments cb64 bundle script
+  # Use default Instruments cb64 bundle script (DDP 4 GPUs)
   bash scripts/finetune/smoke_train.sh
 
   # Use another bundle script
@@ -25,11 +29,12 @@ Overrides (env vars):
   EPOCHS, PER_DEVICE_BATCH_SIZE, GRAD_ACC, NUM_WORKERS,
   GPUS, NPROC, MASTER_PORT,
   SAVE_AND_EVAL_STRATEGY, EVAL_BY_DATASET, EVAL_MAIN_DATASET,
-  REPORT_TO, WANDB_MODE, OUTPUT_DIR, TARGET_TRAIN_SCRIPT
+  REPORT_TO, WANDB_MODE, OUTPUT_DIR, TARGET_TRAIN_SCRIPT,
+  SMOKE_DEBUG, RUN_IN_FOREGROUND
 
 Notes:
-  - This script runs in debug mode (foreground, single process by default).
-  - Goal is smoke test: quickly validate train/eval/save pipeline.
+  - Default smoke mode validates multi-GPU path: DDP + 4 GPUs + foreground torchrun.
+  - Set SMOKE_DEBUG=true to quickly run single-GPU foreground debug.
 USAGE
 }
 
@@ -69,15 +74,25 @@ fi
 
 : "${DATASET:=Instruments}"
 : "${DATA_PATH:=${ROOT_DIR}/data}"
-: "${TASKS:=item2index}"
-: "${TRAIN_PROMPT_SAMPLE_NUM:=1}"
-: "${TRAIN_DATA_SAMPLE_NUM:=16}"
+: "${TASKS:=item2index,seqrec}"
+: "${TRAIN_PROMPT_SAMPLE_NUM:=1,1}"
+: "${TRAIN_DATA_SAMPLE_NUM:=16,16}"
 : "${EPOCHS:=1}"
 : "${PER_DEVICE_BATCH_SIZE:=2}"
 : "${GRAD_ACC:=1}"
 : "${NUM_WORKERS:=2}"
-: "${GPUS:=0}"
-: "${NPROC:=1}"
+: "${SMOKE_DEBUG:=false}"
+
+if [[ "${SMOKE_DEBUG}" == "true" ]]; then
+  : "${GPUS:=0}"
+  : "${NPROC:=1}"
+  : "${RUN_IN_FOREGROUND:=true}"
+else
+  : "${GPUS:=0,1,2,3}"
+  : "${NPROC:=4}"
+  : "${RUN_IN_FOREGROUND:=true}"
+fi
+
 : "${MASTER_PORT:=33391}"
 : "${SAVE_AND_EVAL_STRATEGY:=epoch}"
 : "${EVAL_BY_DATASET:=true}"
@@ -94,16 +109,23 @@ export EPOCHS PER_DEVICE_BATCH_SIZE GRAD_ACC NUM_WORKERS
 export GPUS NPROC MASTER_PORT
 export SAVE_AND_EVAL_STRATEGY EVAL_BY_DATASET EVAL_MAIN_DATASET
 export REPORT_TO WANDB_MODE OUTPUT_DIR
+export RUN_IN_FOREGROUND
 
 echo "[smoke] GREC_ROOT=$GREC_ROOT"
 echo "[smoke] TARGET_TRAIN_SCRIPT=$TARGET_TRAIN_SCRIPT"
+echo "[smoke] SMOKE_DEBUG=$SMOKE_DEBUG"
 echo "[smoke] DATASET=$DATASET TASKS=$TASKS"
 echo "[smoke] TRAIN_DATA_SAMPLE_NUM=$TRAIN_DATA_SAMPLE_NUM"
 echo "[smoke] EPOCHS=$EPOCHS BATCH=$PER_DEVICE_BATCH_SIZE GRAD_ACC=$GRAD_ACC"
+echo "[smoke] GPUS=$GPUS NPROC=$NPROC MASTER_PORT=$MASTER_PORT"
+echo "[smoke] RUN_IN_FOREGROUND=$RUN_IN_FOREGROUND"
 echo "[smoke] EVAL_BY_DATASET=$EVAL_BY_DATASET EVAL_MAIN_DATASET=$EVAL_MAIN_DATASET"
 echo "[smoke] OUTPUT_DIR=$OUTPUT_DIR"
 
 cd "$GREC_ROOT" || exit 1
 
-bash "$TARGET_TRAIN_SCRIPT" --debug "$@"
-
+if [[ "${SMOKE_DEBUG}" == "true" ]]; then
+  bash "$TARGET_TRAIN_SCRIPT" --debug "$@"
+else
+  bash "$TARGET_TRAIN_SCRIPT" "$@"
+fi

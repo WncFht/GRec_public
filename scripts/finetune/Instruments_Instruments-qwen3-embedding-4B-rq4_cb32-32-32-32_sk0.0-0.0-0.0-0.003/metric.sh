@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -eo pipefail
 
 DEBUG=false
 FORCE_ROLLOUT=false

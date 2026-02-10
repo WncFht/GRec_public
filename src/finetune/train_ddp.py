@@ -1,11 +1,13 @@
 import argparse
 import os
 import sys
+
 from packaging import version
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import torch
+import torch.distributed as dist
 import transformers
 from transformers import EarlyStoppingCallback, TrainingArguments
 
@@ -73,6 +75,8 @@ class UnifiedTrainer:
         )
         ensure_dir(self.args.output_dir)
 
+        self._configure_rank_cache_dirs()
+
         if self.ddp:
             torch.cuda.set_device(self.local_rank)
             self.device_map = {"": self.local_rank}
@@ -85,6 +89,47 @@ class UnifiedTrainer:
             self.logger.info(f"DDP: {self.ddp} (World size: {self.world_size})")
             self.logger.info(f"Device map: {self.device_map}")
             log_args(self.logger, self.args, "Training Configuration")
+
+    def _configure_rank_cache_dirs(self):
+        """为DDP隔离缓存目录，避免多进程并发写冲突。"""
+        if not self.ddp:
+            return
+
+        isolate_cache = str(
+            os.environ.get("ISOLATE_TORCH_CACHE_PER_RANK", "true")
+        ).lower() in {"1", "true", "yes", "on"}
+
+        if not isolate_cache:
+            return
+
+        master_port = os.environ.get("MASTER_PORT", "unknown")
+        job_tag = f"mp{master_port}_w{self.world_size}"
+
+        cache_specs = (
+            (
+                "TRITON_CACHE_DIR",
+                os.path.join(os.path.expanduser("~"), ".cache", "triton"),
+            ),
+            (
+                "TORCHINDUCTOR_CACHE_DIR",
+                os.path.join(
+                    os.path.expanduser("~"), ".cache", "torchinductor"
+                ),
+            ),
+        )
+
+        for env_name, default_base in cache_specs:
+            base_dir = os.environ.get(env_name, default_base)
+            rank_dir = os.path.join(base_dir, job_tag, f"rank{self.local_rank}")
+            os.makedirs(rank_dir, exist_ok=True)
+            os.environ[env_name] = rank_dir
+
+        if self.local_rank == 0:
+            self.logger.info(
+                "Isolated cache dirs enabled: "
+                f"TRITON_CACHE_DIR={os.environ.get('TRITON_CACHE_DIR')}, "
+                f"TORCHINDUCTOR_CACHE_DIR={os.environ.get('TORCHINDUCTOR_CACHE_DIR')}"
+            )
 
     def _get_training_args(self) -> TrainingArguments:
         """构建训练参数"""
@@ -384,10 +429,28 @@ class UnifiedTrainer:
             model.model_parallel = True
 
         # 编译模型（如果支持）；可通过 USE_TORCH_COMPILE=false 临时关闭
-        use_torch_compile = (
-            str(os.environ.get("USE_TORCH_COMPILE", "true")).lower()
-            in {"1", "true", "yes", "on"}
-        )
+        use_torch_compile = str(
+            os.environ.get("USE_TORCH_COMPILE", "true")
+        ).lower() in {"1", "true", "yes", "on"}
+
+        use_deepspeed = bool(getattr(self.args, "deepspeed", None))
+        allow_compile_with_deepspeed = str(
+            os.environ.get("ALLOW_TORCH_COMPILE_WITH_DEEPSPEED", "false")
+        ).lower() in {"1", "true", "yes", "on"}
+
+        if (
+            use_torch_compile
+            and use_deepspeed
+            and not allow_compile_with_deepspeed
+        ):
+            if self.local_rank == 0:
+                self.logger.warning(
+                    "Disable torch.compile because DeepSpeed+Trainer save path may hit "
+                    "unwrap_model/_orig_mod incompatibility in some accelerate/transformers versions. "
+                    "Set ALLOW_TORCH_COMPILE_WITH_DEEPSPEED=true to force enable."
+                )
+            use_torch_compile = False
+
         if use_torch_compile:
             if (
                 version.parse(torch.__version__) >= version.parse("2.0.0")
@@ -472,7 +535,11 @@ def main():
 
     # 创建训练器并执行训练
     trainer = UnifiedTrainer(args)
-    trainer.train()
+    try:
+        trainer.train()
+    finally:
+        if dist.is_available() and dist.is_initialized():
+            dist.destroy_process_group()
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
 DEBUG=false
 while [[ $# -gt 0 ]]; do

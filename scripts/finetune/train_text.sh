@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
+
+source /mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/conda/bin/activate grec
+export LD_LIBRARY_PATH=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/conda/envs/grec/lib:$LD_LIBRARY_PATH
+export PATH=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/conda/envs/grec/bin:$PATH
+export CC=$CONDA_PREFIX/bin/conda-cc-with-crypt.sh
+export CXX=$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-c++
+export TRITON_CACHE_DIR=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/.cache/triton
 
 DEBUG=false
 while [[ $# -gt 0 ]]; do
@@ -20,6 +27,7 @@ export WANDB_PROJECT="${WANDB_PROJECT:-GRec}"
 export WANDB_ENTITY="${WANDB_ENTITY:-}"
 export PYTHONUNBUFFERED=1
 export CUDA_LAUNCH_BLOCKING="${CUDA_LAUNCH_BLOCKING:-0}"
+export PYTHONNOUSERSITE="${PYTHONNOUSERSITE:-1}"
 
 GREC_ROOT="${GREC_ROOT:-/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/GRec}"
 ROOT_DIR="${ROOT_DIR:-/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian}"
@@ -67,6 +75,24 @@ USE_GRADIENT_CHECKPOINTING="${USE_GRADIENT_CHECKPOINTING:-true}"
 REPORT_TO="${REPORT_TO:-wandb}"
 DETERMINISTIC="${DETERMINISTIC:-false}"
 USE_TORCH_COMPILE="${USE_TORCH_COMPILE:-true}"
+RUN_IN_FOREGROUND="${RUN_IN_FOREGROUND:-false}"
+
+if [[ -n "${CONDA_PREFIX:-}" && -x "${CONDA_PREFIX}/bin/python" ]]; then
+    PYTHON_BIN="${PYTHON_BIN:-${CONDA_PREFIX}/bin/python}"
+else
+    PYTHON_BIN="${PYTHON_BIN:-python}"
+fi
+
+if [[ "${PYTHON_BIN}" == /* ]]; then
+    PYTHON_BIN_PATH="${PYTHON_BIN}"
+else
+    PYTHON_BIN_PATH="$(command -v "${PYTHON_BIN}" || true)"
+fi
+
+if [[ -z "${PYTHON_BIN_PATH}" || ! -x "${PYTHON_BIN_PATH}" ]]; then
+    echo "[finetune/text] Python launcher not found/executable: ${PYTHON_BIN}" >&2
+    exit 1
+fi
 
 EVAL_BY_DATASET="${EVAL_BY_DATASET:-true}"
 EVAL_MAIN_DATASET="${EVAL_MAIN_DATASET:-Instruments}"
@@ -152,18 +178,27 @@ echo "[finetune/text] LOG_FILE=${LOG_FILE}"
 echo "[finetune/text] MODEL_TYPE=${MODEL_TYPE} TASKS=${TASKS}"
 echo "[finetune/text] DATASET=${DATASET} INDEX_FILE=${INDEX_FILE} INDEX_KEY=${INDEX_KEY}"
 echo "[finetune/text] USE_TORCH_COMPILE=${USE_TORCH_COMPILE}"
+echo "[finetune/text] RUN_IN_FOREGROUND=${RUN_IN_FOREGROUND}"
+echo "[finetune/text] PYTHON_BIN=${PYTHON_BIN_PATH}"
+echo "[finetune/text] PYTHONNOUSERSITE=${PYTHONNOUSERSITE}"
 
 export USE_TORCH_COMPILE
 
 if [[ "${DEBUG}" == "true" ]]; then
     export CUDA_VISIBLE_DEVICES="${DEBUG_GPU:-0}"
-    python -m src.finetune.train_ddp "${COMMON_ARGS[@]}" --debug
+    "${PYTHON_BIN_PATH}" -m src.finetune.train_ddp "${COMMON_ARGS[@]}" --debug
 else
     export CUDA_VISIBLE_DEVICES="${GPUS}"
-    nohup torchrun --nproc_per_node="${NPROC}" --master_port="${MASTER_PORT}" \
-        -m src.finetune.train_ddp "${COMMON_ARGS[@]}" >"${LOG_FILE}" 2>&1 &
-    PID=$!
-    echo "Training started with PID=${PID}"
-    echo "${PID}" >"${OUTPUT_DIR}/training.pid"
-    echo "tail -f ${LOG_FILE}"
+    if [[ "${RUN_IN_FOREGROUND}" == "true" ]]; then
+        echo "[finetune/text] Starting DDP in foreground (${PYTHON_BIN_PATH} -m torch.distributed.run)"
+        "${PYTHON_BIN_PATH}" -m torch.distributed.run --nproc_per_node="${NPROC}" --master_port="${MASTER_PORT}" \
+            -m src.finetune.train_ddp "${COMMON_ARGS[@]}"
+    else
+        nohup "${PYTHON_BIN_PATH}" -m torch.distributed.run --nproc_per_node="${NPROC}" --master_port="${MASTER_PORT}" \
+            -m src.finetune.train_ddp "${COMMON_ARGS[@]}" >"${LOG_FILE}" 2>&1 &
+        PID=$!
+        echo "Training started with PID=${PID}"
+        echo "${PID}" >"${OUTPUT_DIR}/training.pid"
+        echo "tail -f ${LOG_FILE}"
+    fi
 fi
