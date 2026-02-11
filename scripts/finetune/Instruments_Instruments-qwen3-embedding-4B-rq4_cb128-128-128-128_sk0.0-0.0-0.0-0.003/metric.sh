@@ -59,11 +59,22 @@ fi
 if [[ -z "${CKPT_PATH:-}" ]]; then
   INDEX_KEY="${INDEX_FILE#.}"
   INDEX_KEY="${INDEX_KEY%.json}"
-  sft_dir="${SFT_DIR:-${ROOT_DIR}/ckpt/$DATASET/qwen2.5-3b-sft__idx-$INDEX_KEY}"
+  TASKS_DEFAULT="item2index,seqrec,fusionseqrec"
+  TASKS_FOR_TAG="${TASKS:-$TASKS_DEFAULT}"
+  TASKS_TAG="${TASKS_FOR_TAG// /}"
+  TASKS_TAG="${TASKS_TAG//,/-}"
+
+  if [[ -n "${SFT_DIR:-}" ]]; then
+    sft_dir="$SFT_DIR"
+  else
+    sft_pattern="${ROOT_DIR}/ckpt/$DATASET/qwen2.5-3b-sft__tasks-${TASKS_TAG}__idx-${INDEX_KEY}__rid-*"
+    sft_dir="$(ls -1dt $sft_pattern 2>/dev/null | head -n 1 || true)"
+  fi
+
   CKPT_PATH="$(ls -1dt "$sft_dir"/checkpoint-* 2>/dev/null | head -n 1 || true)"
   if [[ -z "$CKPT_PATH" ]]; then
     echo "Error: cannot resolve CKPT_PATH from $sft_dir" >&2
-    echo "Hint: set CKPT_PATH manually." >&2
+    echo "Hint: set CKPT_PATH/SFT_DIR manually or set TASKS to match new SFT dir naming." >&2
     exit 1
   fi
 fi

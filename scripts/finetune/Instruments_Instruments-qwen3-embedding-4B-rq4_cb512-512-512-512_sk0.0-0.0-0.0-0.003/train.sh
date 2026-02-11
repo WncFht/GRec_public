@@ -36,7 +36,12 @@ fi
 
 INDEX_KEY="${INDEX_FILE#.}"
 INDEX_KEY="${INDEX_KEY%.json}"
-OUTPUT_DIR_DEFAULT="${ROOT_DIR}/ckpt/$DATASET/qwen2.5-3b-sft__idx-$INDEX_KEY"
+TASKS_DEFAULT="item2index,seqrec,fusionseqrec"
+TASKS_FOR_TAG="${TASKS:-$TASKS_DEFAULT}"
+TASKS_TAG="${TASKS_FOR_TAG// /}"
+TASKS_TAG="${TASKS_TAG//,/-}"
+RUN_ID="${RUN_ID:-$(date +%Y%m%d_%H%M%S)}"
+OUTPUT_DIR_DEFAULT="${ROOT_DIR}/ckpt/$DATASET/qwen2.5-3b-sft__tasks-${TASKS_TAG}__idx-${INDEX_KEY}__rid-${RUN_ID}"
 
 export DATASET DATA_PATH INDEX_FILE
 export OUTPUT_DIR="${OUTPUT_DIR:-$OUTPUT_DIR_DEFAULT}"
