@@ -38,7 +38,7 @@ DATASET=Instruments \
 DATA_PATH=./data \
 BASE_MODEL=ckpt/base_model/Qwen2.5-3B-Instruct \
 MODEL_TYPE=qwen2_5_instruct \
-OUTPUT_DIR=./ckpt/Instruments/qwen2.5-3b-sft__idx-index_emb-qwen3-embedding-4B_rq4_cb512-512-512-512_dsInstruments_ridJan-28-2026-05-54-58 \
+OUTPUT_DIR=./ckpt/Instruments/qwen2.5-3b-instruct-sft__tasks-item2index-seqrec__idx-index_emb-qwen3-embedding-4B_rq4_cb512-512-512-512_dsInstruments_ridJan-28-2026-05-54-58__rid-20260211_1800 \
 TASKS=item2index,seqrec \
 TRAIN_PROMPT_SAMPLE_NUM=1,1 \
 TRAIN_DATA_SAMPLE_NUM=0,0 \
@@ -53,7 +53,7 @@ bash scripts/finetune/train_text.sh
 
 - 运行资源：`GPUS`, `NPROC`, `MASTER_PORT`
 - 数据/模型：`DATASET`, `DATA_PATH`, `BASE_MODEL`, `MODEL_TYPE`, `INDEX_FILE`, `OUTPUT_DIR`
-- 默认 `OUTPUT_DIR` 会自动带上 `INDEX_FILE` 的 key（避免不同 index 互相覆盖）
+- 默认 `OUTPUT_DIR` 会自动带上 `model/tasks/index/rid`（避免不同实验互相覆盖）
 - 脚本会先检查 `data/<dataset>/<dataset><INDEX_FILE>` 是否存在
 - 训练超参：`PER_DEVICE_BATCH_SIZE`, `GRAD_ACC`, `LEARNING_RATE`, `EPOCHS`, `NUM_WORKERS`
 - 训练行为：`USE_LORA`, `FREEZE`, `USE_GRADIENT_CHECKPOINTING`, `ONLY_TRAIN_RESPONSE`, `DETERMINISTIC`
@@ -79,3 +79,11 @@ bash scripts/finetune/train_text.sh
 - 新实验优先基于 `train_vl.sh` / `train_text.sh` 启动。
 - 需要固化某一组参数时，建议在外层再包一层小脚本，仅设置环境变量后调用统一模板。
 - 如需 ZeRO3 合并，继续使用 `convert.sh` 或 `convert/convert.sh`。
+
+---
+
+## 完整参数表
+
+`train_text.sh` / `bundle_train_common.sh` / `bundle_metric_common.sh` 的**全部环境变量**（含默认值与含义）见：
+
+- `docs/finetune_env_vars.md`

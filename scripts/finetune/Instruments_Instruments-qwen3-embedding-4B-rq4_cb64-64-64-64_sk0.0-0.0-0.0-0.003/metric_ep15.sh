@@ -1,0 +1,9 @@
+#!/bin/bash
+set -eo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+export INDEX_TAG="rq4_cb64-64-64-64_sk0.0-0.0-0.0-0.003"
+export TASKS="${TASKS:-item2index,seqrec,fusionseqrec}"
+
+bash "$SCRIPT_DIR/../bundle_metric_common.sh" "$@"

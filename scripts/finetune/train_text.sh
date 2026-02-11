@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
+normalize_model_tag() {
+    local raw="$1"
+    raw="$(basename "$raw")"
+    raw="${raw,,}"
+    raw="${raw// /-}"
+    raw="${raw//\//-}"
+    raw="${raw//_/-}"
+    raw="$(echo "$raw" | sed -E 's/[^a-z0-9.-]+/-/g; s/-+/-/g; s/^-+//; s/-+$//')"
+    printf '%s' "$raw"
+}
+
 source /mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/conda/bin/activate grec
 export LD_LIBRARY_PATH=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/conda/envs/grec/lib:$LD_LIBRARY_PATH
 export PATH=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/conda/envs/grec/bin:$PATH
@@ -44,11 +55,19 @@ INDEX_KEY="${INDEX_KEY//\//_}"
 DATASET_TAG="${DATASET//,/-}"
 TASKS_TAG="${TASKS// /}"
 TASKS_TAG="${TASKS_TAG//,/-}"
+MODEL_TAG_SOURCE="${SFT_MODEL_TAG:-$BASE_MODEL}"
+SFT_MODEL_TAG="$(normalize_model_tag "$MODEL_TAG_SOURCE")"
+if [[ -z "$SFT_MODEL_TAG" ]]; then
+    echo "[finetune/text] Failed to derive SFT_MODEL_TAG from BASE_MODEL=${BASE_MODEL}" >&2
+    echo "[finetune/text] Hint: export SFT_MODEL_TAG explicitly (e.g., qwen2.5-7b-instruct)." >&2
+    exit 1
+fi
+export SFT_MODEL_TAG
 RUN_ID="${RUN_ID:-$(date +%Y%m%d_%H%M%S)}"
-OUTPUT_DIR="${OUTPUT_DIR:-$ROOT_DIR/ckpt/${DATASET_TAG}/qwen2.5-3b-sft__tasks-${TASKS_TAG}__idx-${INDEX_KEY}__rid-${RUN_ID}}"
+OUTPUT_DIR="${OUTPUT_DIR:-$ROOT_DIR/ckpt/${DATASET_TAG}/${SFT_MODEL_TAG}-sft__tasks-${TASKS_TAG}__idx-${INDEX_KEY}__rid-${RUN_ID}}"
 
 CHECK_INDEX_FILES="${CHECK_INDEX_FILES:-true}"
-export WANDB_NAME="${WANDB_NAME:-sft_text_${DATASET_TAG}__tasks-${TASKS_TAG}__idx-${INDEX_KEY}}"
+export WANDB_NAME="${WANDB_NAME:-sft_text_${DATASET_TAG}__model-${SFT_MODEL_TAG}__tasks-${TASKS_TAG}__idx-${INDEX_KEY}}"
 
 GPUS="${GPUS:-0,1,2,3}"
 NPROC="${NPROC:-4}"
@@ -179,6 +198,7 @@ fi
 echo "[finetune/text] OUTPUT_DIR=${OUTPUT_DIR}"
 echo "[finetune/text] LOG_FILE=${LOG_FILE}"
 echo "[finetune/text] MODEL_TYPE=${MODEL_TYPE} TASKS=${TASKS}"
+echo "[finetune/text] SFT_MODEL_TAG=${SFT_MODEL_TAG} WANDB_NAME=${WANDB_NAME}"
 echo "[finetune/text] DATASET=${DATASET} INDEX_FILE=${INDEX_FILE} INDEX_KEY=${INDEX_KEY}"
 echo "[finetune/text] USE_TORCH_COMPILE=${USE_TORCH_COMPILE}"
 echo "[finetune/text] RUN_IN_FOREGROUND=${RUN_IN_FOREGROUND}"

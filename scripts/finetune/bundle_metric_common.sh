@@ -1,6 +1,17 @@
 #!/bin/bash
 set -eo pipefail
 
+normalize_model_tag() {
+  local raw="$1"
+  raw="$(basename "$raw")"
+  raw="${raw,,}"
+  raw="${raw// /-}"
+  raw="${raw//\//-}"
+  raw="${raw//_/-}"
+  raw="$(echo "$raw" | sed -E 's/[^a-z0-9.-]+/-/g; s/-+/-/g; s/^-+//; s/-+$//')"
+  printf '%s' "$raw"
+}
+
 DEBUG=false
 FORCE_ROLLOUT=false
 SKIP_ROLLOUT=false
@@ -37,6 +48,16 @@ INDEX_MATCH_TAG="${INDEX_TAG%%_sk*}"
 : "${ROOT_DIR:=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian}"
 : "${INDEX_EMB_MODEL:=qwen3-embedding-4B}"
 : "${INDEX_DATASETS:=Instruments}"
+: "${BASE_MODEL:=/mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/ckpt/base_model/Qwen2.5-3B-Instruct}"
+
+if [[ -z "${SFT_MODEL_TAG:-}" ]]; then
+  SFT_MODEL_TAG="$(normalize_model_tag "$BASE_MODEL")"
+fi
+if [[ -z "$SFT_MODEL_TAG" ]]; then
+  echo "Error: failed to derive SFT_MODEL_TAG from BASE_MODEL=$BASE_MODEL" >&2
+  echo "Hint: export SFT_MODEL_TAG explicitly (e.g., qwen2.5-7b-instruct)." >&2
+  exit 1
+fi
 
 INDEX_DATASETS_TAG="${INDEX_DATASETS// /}"
 INDEX_DATASETS_TAG="${INDEX_DATASETS_TAG//,/-}"
@@ -71,14 +92,14 @@ if [[ -z "${CKPT_PATH:-}" ]]; then
   if [[ -n "${SFT_DIR:-}" ]]; then
     sft_dir="$SFT_DIR"
   else
-    sft_pattern="${ROOT_DIR}/ckpt/$DATASET/qwen2.5-3b-sft__tasks-${TASKS_TAG}__idx-${INDEX_KEY}__rid-*"
+    sft_pattern="${ROOT_DIR}/ckpt/$DATASET/${SFT_MODEL_TAG}-sft__tasks-${TASKS_TAG}__idx-${INDEX_KEY}__rid-*"
     sft_dir="$(ls -1dt $sft_pattern 2>/dev/null | head -n 1 || true)"
   fi
 
   CKPT_PATH="$(ls -1dt "$sft_dir"/checkpoint-* 2>/dev/null | head -n 1 || true)"
   if [[ -z "$CKPT_PATH" ]]; then
     echo "Error: cannot resolve CKPT_PATH from $sft_dir" >&2
-    echo "Hint: set CKPT_PATH/SFT_DIR manually or set TASKS to match new SFT dir naming." >&2
+    echo "Hint: set CKPT_PATH/SFT_DIR manually, or set SFT_MODEL_TAG/TASKS to match SFT naming." >&2
     exit 1
   fi
 fi
@@ -93,6 +114,7 @@ LOG_FILE="${LOG_FILE:-$RUN_DIR/log.txt}"
 mkdir -p "$RUN_DIR"
 
 echo "[bundle/metric] INDEX_TAG=$INDEX_TAG"
+echo "[bundle/metric] SFT_MODEL_TAG=$SFT_MODEL_TAG BASE_MODEL=$BASE_MODEL"
 echo "[bundle/metric] CKPT_PATH=$CKPT_PATH"
 echo "[bundle/metric] INDEX_FILE=$INDEX_FILE"
 echo "[bundle/metric] INDEX_EMB_MODEL=$INDEX_EMB_MODEL INDEX_DATASETS=$INDEX_DATASETS"

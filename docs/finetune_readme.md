@@ -195,3 +195,11 @@ torchrun --nproc_per_node=4 --master_port=33325 -m src.finetune.train_ddp_vl \
 5. **同样配置每次结果不完全一致**
    - 加 `--deterministic` 提高可复现性；
    - 但会带来吞吐下降，建议只在对比实验或排障时开启。
+
+---
+
+## 7. 环境变量参数总表
+
+SFT 相关脚本（`train_text.sh`、`bundle_train_common.sh`、`bundle_metric_common.sh`）的完整环境变量说明（含默认值）见：
+
+- `docs/finetune_env_vars.md`
