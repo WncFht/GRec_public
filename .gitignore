@@ -26,3 +26,8 @@ grec_core_dirs_*.tar.gz.part.*
 
 verl/*
 /hope/
+
+# local training artifacts / datasets
+/tf_events/
+/notebook/dataset/MNIST/
+/dataset/MNIST/
