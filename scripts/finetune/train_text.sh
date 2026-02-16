@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
 normalize_model_tag() {
     local raw="$1"
     raw="$(basename "$raw")"
@@ -10,6 +13,13 @@ normalize_model_tag() {
     raw="${raw//_/-}"
     raw="$(echo "$raw" | sed -E 's/[^a-z0-9.-]+/-/g; s/-+/-/g; s/^-+//; s/-+$//')"
     printf '%s' "$raw"
+}
+
+is_truthy() {
+    case "${1,,}" in
+        1|true|yes|on) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 source /mnt/dolphinfs/hdd_pool/docker/user/hadoop-hmart-poistar/fanghaotian/conda/bin/activate grec
@@ -97,7 +107,27 @@ USE_GRADIENT_CHECKPOINTING="${USE_GRADIENT_CHECKPOINTING:-true}"
 REPORT_TO="${REPORT_TO:-wandb}"
 DETERMINISTIC="${DETERMINISTIC:-false}"
 USE_TORCH_COMPILE="${USE_TORCH_COMPILE:-false}"
-RUN_IN_FOREGROUND="${RUN_IN_FOREGROUND:-false}"
+
+MANAGED_SCHEDULER_ENV=false
+if [[ -n "${AFO_APPID:-}" || -n "${HOPE_RUN_ID:-}" || -n "${HOPE_RUNID:-}" || -n "${AFO_TASK_ID:-}" ]]; then
+    MANAGED_SCHEDULER_ENV=true
+fi
+
+RUN_IN_FOREGROUND_DEFAULT="false"
+if [[ "${MANAGED_SCHEDULER_ENV}" == "true" ]]; then
+    RUN_IN_FOREGROUND_DEFAULT="true"
+fi
+RUN_IN_FOREGROUND="${RUN_IN_FOREGROUND:-$RUN_IN_FOREGROUND_DEFAULT}"
+if is_truthy "${RUN_IN_FOREGROUND}"; then
+    RUN_IN_FOREGROUND="true"
+else
+    RUN_IN_FOREGROUND="false"
+fi
+
+if [[ "${MANAGED_SCHEDULER_ENV}" == "true" && "${RUN_IN_FOREGROUND}" != "true" ]]; then
+    echo "[finetune/text][WARN] Detected HOPE/AFO env but RUN_IN_FOREGROUND=false; forcing foreground to keep job alive."
+    RUN_IN_FOREGROUND="true"
+fi
 
 if [[ -n "${CONDA_PREFIX:-}" && -x "${CONDA_PREFIX}/bin/python" ]]; then
     PYTHON_BIN="${PYTHON_BIN:-${CONDA_PREFIX}/bin/python}"
@@ -141,6 +171,13 @@ fi
 mkdir -p "${OUTPUT_DIR}"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 LOG_FILE="${OUTPUT_DIR}/training_${TIMESTAMP}.log"
+WANDB_DIR="${WANDB_DIR:-${SCRIPT_REPO_ROOT}}"
+if [[ "${WANDB_DIR%/}" == "${SCRIPT_REPO_ROOT%/}/wandb" ]]; then
+    echo "[finetune/text][WARN] WANDB_DIR points to .../wandb; normalize to repo root to avoid wandb/wandb nesting."
+    WANDB_DIR="${SCRIPT_REPO_ROOT}"
+fi
+export WANDB_DIR
+mkdir -p "${WANDB_DIR}/wandb"
 
 COMMON_ARGS=(
     --seed "${SEED}"
@@ -201,7 +238,9 @@ echo "[finetune/text] MODEL_TYPE=${MODEL_TYPE} TASKS=${TASKS}"
 echo "[finetune/text] SFT_MODEL_TAG=${SFT_MODEL_TAG} WANDB_NAME=${WANDB_NAME}"
 echo "[finetune/text] DATASET=${DATASET} INDEX_FILE=${INDEX_FILE} INDEX_KEY=${INDEX_KEY}"
 echo "[finetune/text] USE_TORCH_COMPILE=${USE_TORCH_COMPILE}"
+echo "[finetune/text] MANAGED_SCHEDULER_ENV=${MANAGED_SCHEDULER_ENV}"
 echo "[finetune/text] RUN_IN_FOREGROUND=${RUN_IN_FOREGROUND}"
+echo "[finetune/text] WANDB_DIR=${WANDB_DIR}"
 echo "[finetune/text] PYTHON_BIN=${PYTHON_BIN_PATH}"
 echo "[finetune/text] PYTHONNOUSERSITE=${PYTHONNOUSERSITE}"
 
@@ -214,8 +253,9 @@ else
     export CUDA_VISIBLE_DEVICES="${GPUS}"
     if [[ "${RUN_IN_FOREGROUND}" == "true" ]]; then
         echo "[finetune/text] Starting DDP in foreground (${PYTHON_BIN_PATH} -m torch.distributed.run)"
+        echo "[finetune/text] Foreground log will be tee'd to: ${LOG_FILE}"
         "${PYTHON_BIN_PATH}" -m torch.distributed.run --nproc_per_node="${NPROC}" --master_port="${MASTER_PORT}" \
-            -m src.finetune.train_ddp "${COMMON_ARGS[@]}"
+            -m src.finetune.train_ddp "${COMMON_ARGS[@]}" 2>&1 | tee -a "${LOG_FILE}"
     else
         nohup "${PYTHON_BIN_PATH}" -m torch.distributed.run --nproc_per_node="${NPROC}" --master_port="${MASTER_PORT}" \
             -m src.finetune.train_ddp "${COMMON_ARGS[@]}" >"${LOG_FILE}" 2>&1 &

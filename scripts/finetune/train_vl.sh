@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+is_truthy() {
+    case "${1,,}" in
+        1|true|yes|on) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 DEBUG=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -62,6 +72,25 @@ ONLY_TRAIN_RESPONSE="${ONLY_TRAIN_RESPONSE:-true}"
 USE_GRADIENT_CHECKPOINTING="${USE_GRADIENT_CHECKPOINTING:-true}"
 REPORT_TO="${REPORT_TO:-wandb}"
 DETERMINISTIC="${DETERMINISTIC:-false}"
+MANAGED_SCHEDULER_ENV=false
+if [[ -n "${AFO_APPID:-}" || -n "${HOPE_RUN_ID:-}" || -n "${HOPE_RUNID:-}" || -n "${AFO_TASK_ID:-}" ]]; then
+    MANAGED_SCHEDULER_ENV=true
+fi
+RUN_IN_FOREGROUND_DEFAULT="false"
+if [[ "${MANAGED_SCHEDULER_ENV}" == "true" ]]; then
+    RUN_IN_FOREGROUND_DEFAULT="true"
+fi
+RUN_IN_FOREGROUND="${RUN_IN_FOREGROUND:-$RUN_IN_FOREGROUND_DEFAULT}"
+if is_truthy "${RUN_IN_FOREGROUND}"; then
+    RUN_IN_FOREGROUND="true"
+else
+    RUN_IN_FOREGROUND="false"
+fi
+
+if [[ "${MANAGED_SCHEDULER_ENV}" == "true" && "${RUN_IN_FOREGROUND}" != "true" ]]; then
+    echo "[finetune/vl][WARN] Detected HOPE/AFO env but RUN_IN_FOREGROUND=false; forcing foreground to keep job alive."
+    RUN_IN_FOREGROUND="true"
+fi
 
 if [[ "${CHECK_INDEX_FILES}" == "true" ]]; then
     IFS=',' read -r -a DATASET_LIST <<< "${DATASET}"
@@ -79,6 +108,13 @@ fi
 mkdir -p "${OUTPUT_DIR}"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 LOG_FILE="${OUTPUT_DIR}/training_${TIMESTAMP}.log"
+WANDB_DIR="${WANDB_DIR:-${SCRIPT_REPO_ROOT}}"
+if [[ "${WANDB_DIR%/}" == "${SCRIPT_REPO_ROOT%/}/wandb" ]]; then
+    echo "[finetune/vl][WARN] WANDB_DIR points to .../wandb; normalize to repo root to avoid wandb/wandb nesting."
+    WANDB_DIR="${SCRIPT_REPO_ROOT}"
+fi
+export WANDB_DIR
+mkdir -p "${WANDB_DIR}/wandb"
 
 COMMON_ARGS=(
     --seed "${SEED}"
@@ -129,16 +165,26 @@ echo "[finetune/vl] OUTPUT_DIR=${OUTPUT_DIR}"
 echo "[finetune/vl] LOG_FILE=${LOG_FILE}"
 echo "[finetune/vl] MODEL_TYPE=${MODEL_TYPE} TASKS=${TASKS}"
 echo "[finetune/vl] DATASET=${DATASET} INDEX_FILE=${INDEX_FILE} INDEX_KEY=${INDEX_KEY}"
+echo "[finetune/vl] MANAGED_SCHEDULER_ENV=${MANAGED_SCHEDULER_ENV}"
+echo "[finetune/vl] RUN_IN_FOREGROUND=${RUN_IN_FOREGROUND}"
+echo "[finetune/vl] WANDB_DIR=${WANDB_DIR}"
 
 if [[ "${DEBUG}" == "true" ]]; then
     export CUDA_VISIBLE_DEVICES="${DEBUG_GPU:-0}"
     python -m src.finetune.train_ddp_vl "${COMMON_ARGS[@]}" --debug
 else
     export CUDA_VISIBLE_DEVICES="${GPUS}"
-    nohup torchrun --nproc_per_node="${NPROC}" --master_port="${MASTER_PORT}" \
-        -m src.finetune.train_ddp_vl "${COMMON_ARGS[@]}" >"${LOG_FILE}" 2>&1 &
-    PID=$!
-    echo "Training started with PID=${PID}"
-    echo "${PID}" >"${OUTPUT_DIR}/training.pid"
-    echo "tail -f ${LOG_FILE}"
+    if [[ "${RUN_IN_FOREGROUND}" == "true" ]]; then
+        echo "[finetune/vl] Starting DDP in foreground (torchrun)"
+        echo "[finetune/vl] Foreground log will be tee'd to: ${LOG_FILE}"
+        torchrun --nproc_per_node="${NPROC}" --master_port="${MASTER_PORT}" \
+            -m src.finetune.train_ddp_vl "${COMMON_ARGS[@]}" 2>&1 | tee -a "${LOG_FILE}"
+    else
+        nohup torchrun --nproc_per_node="${NPROC}" --master_port="${MASTER_PORT}" \
+            -m src.finetune.train_ddp_vl "${COMMON_ARGS[@]}" >"${LOG_FILE}" 2>&1 &
+        PID=$!
+        echo "Training started with PID=${PID}"
+        echo "${PID}" >"${OUTPUT_DIR}/training.pid"
+        echo "tail -f ${LOG_FILE}"
+    fi
 fi
