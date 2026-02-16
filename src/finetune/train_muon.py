@@ -10,6 +10,7 @@ import argparse
 import os
 import sys
 from typing import Any
+
 from packaging import version
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -203,9 +204,7 @@ class Muon(torch.optim.Optimizer):
             #       AdamW backup       #
             ############################
 
-            params = [
-                p for p in group["params"] if not self.state[p]["use_muon"]
-            ]
+            params = [p for p in group["params"] if not self.state[p]["use_muon"]]
             lr = group["lr"]
             beta1, beta2 = group["adamw_betas"]
             eps = group["adamw_eps"]
@@ -279,9 +278,7 @@ class UnifiedTrainer:
         configure_tqdm_for_file_output(use_file_output=not debug_mode)
 
         # 记录训练模式
-        train_mode = (
-            "LoRA finetuning" if self.args.use_lora else "Full finetuning"
-        )
+        train_mode = "LoRA finetuning" if self.args.use_lora else "Full finetuning"
         self.logger.info(f"Starting multitask {train_mode}")
         self.logger.info(f"RUN_NAME: {self.args.run_name}")
 
@@ -342,9 +339,7 @@ class UnifiedTrainer:
             remove_unused_columns=False,
             report_to=report_to,
             run_name=self.args.run_name,
-            eval_delay=1
-            if self.args.save_and_eval_strategy == "epoch"
-            else 2000,
+            eval_delay=1 if self.args.save_and_eval_strategy == "epoch" else 2000,
             optim_target_modules=None,
             optim_args=None,
         )
@@ -394,9 +389,7 @@ class UnifiedTrainer:
                 self.logger.info(
                     f"LoRA config: r={self.args.lora_r}, alpha={self.args.lora_alpha}, dropout={self.args.lora_dropout}"
                 )
-                self.logger.info(
-                    f"Target modules: {self.args.lora_target_modules}"
-                )
+                self.logger.info(f"Target modules: {self.args.lora_target_modules}")
                 if (
                     hasattr(self.args, "lora_modules_to_save")
                     and self.args.lora_modules_to_save
@@ -405,9 +398,7 @@ class UnifiedTrainer:
                         f"Modules to save: {self.args.lora_modules_to_save}"
                     )
 
-            self.logger.info(
-                f"Added {new_vocab_size - original_vocab_size} new tokens"
-            )
+            self.logger.info(f"Added {new_vocab_size - original_vocab_size} new tokens")
             self.logger.info(f"Original vocab size: {original_vocab_size}")
             self.logger.info(f"New vocab size: {new_vocab_size}")
             self.logger.info(f"Train samples: {len(train_data)}")
@@ -423,9 +414,7 @@ class UnifiedTrainer:
                     * self.world_size
                 )
             else:
-                effective_batch_size = (
-                    self.args.per_device_batch_size * self.world_size
-                )
+                effective_batch_size = self.args.per_device_batch_size * self.world_size
 
             self.logger.info(f"Effective batch size: {effective_batch_size}")
             self.logger.info(
@@ -444,9 +433,7 @@ class UnifiedTrainer:
         config.vocab_size = new_vocab_size
         config.save_pretrained(self.args.output_dir)
 
-        self.logger.info(
-            f"Saved processor and config to {self.args.output_dir}"
-        )
+        self.logger.info(f"Saved processor and config to {self.args.output_dir}")
 
     def _save_new_token_embeddings(
         self,
@@ -486,9 +473,7 @@ class UnifiedTrainer:
         with open(embedding_save_path, "wb") as f:
             pickle.dump(embedding_info, f)
 
-        self.logger.info(
-            f"New token embeddings saved to: {embedding_save_path}"
-        )
+        self.logger.info(f"New token embeddings saved to: {embedding_save_path}")
 
     def train(self):
         """执行训练流程"""
@@ -528,9 +513,7 @@ class UnifiedTrainer:
         adamw_params = [
             p
             for n, p in model.named_parameters()
-            if not (
-                p.ndim >= 2 and "embed_tokens" not in n and "lm_head" not in n
-            )
+            if not (p.ndim >= 2 and "embed_tokens" not in n and "lm_head" not in n)
         ]
         optimizer = Muon(
             lr=self.args.learning_rate,
@@ -584,9 +567,7 @@ class UnifiedTrainer:
         if embedding_hooks:
             for hook in embedding_hooks:
                 hook.remove()
-            self.logger.info(
-                f"Removed {len(embedding_hooks)} embedding gradient hooks"
-            )
+            self.logger.info(f"Removed {len(embedding_hooks)} embedding gradient hooks")
 
         # 保存新token embeddings
         self._save_new_token_embeddings(

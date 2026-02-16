@@ -23,7 +23,7 @@
             "env": {
                 "CUDA_VISIBLE_DEVICES": "2",
                 "PYTHONPATH": "${workspaceFolder}",
-            }, 
+            },
         },
         {
             "name": "test_without_id",

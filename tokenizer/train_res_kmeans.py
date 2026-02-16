@@ -54,9 +54,7 @@ def _allocate_sample_counts(sizes: list[int], k: int) -> list[int]:
     elif curr < k:
         # Add to sources with remaining capacity, based on largest remaining capacity
         remaining = [sizes[i] - base[i] for i in range(len(sizes))]
-        order = sorted(
-            range(len(sizes)), key=lambda i: remaining[i], reverse=True
-        )
+        order = sorted(range(len(sizes)), key=lambda i: remaining[i], reverse=True)
         for i in order:
             while curr < k and remaining[i] > 0:
                 base[i] += 1
@@ -94,9 +92,7 @@ def _read_train_data_parquet(path: str, emb_dim: int) -> np.ndarray:
         finite_mask = np.isfinite(emb_chunk).all(axis=1)
         num_bad = int(emb_chunk.shape[0] - finite_mask.sum())
         if num_bad > 0:
-            print(
-                f"[warn] Dropping {num_bad} rows with NaN/Inf from parquet fragment"
-            )
+            print(f"[warn] Dropping {num_bad} rows with NaN/Inf from parquet fragment")
             emb_chunk = emb_chunk[finite_mask]
 
         embeddings.append(emb_chunk)
@@ -177,9 +173,7 @@ def read_train_data(
     other_paths = [p for p in expanded if not p.endswith(".npy")]
 
     if other_paths and npy_paths:
-        raise ValueError(
-            "Please do not mix .npy and parquet inputs in one run."
-        )
+        raise ValueError("Please do not mix .npy and parquet inputs in one run.")
 
     if npy_paths:
         return _read_train_data_npy(npy_paths, emb_dim, max_train_points, seed)
@@ -206,21 +200,11 @@ def main():
         default=None,
         help="Optional list of .npy paths (or globs) to train on the union of multiple datasets.",
     )
-    parser.add_argument(
-        "--model_path", type=str, required=True, help="model save path"
-    )
-    parser.add_argument(
-        "--n_layers", type=int, default=3, help="number of layers"
-    )
-    parser.add_argument(
-        "--codebook_size", type=int, default=8192, help="codebook size"
-    )
-    parser.add_argument(
-        "--dim", type=int, default=4096, help="embedding dimension"
-    )
-    parser.add_argument(
-        "--niter", type=int, default=20, help="kmeans iterations"
-    )
+    parser.add_argument("--model_path", type=str, required=True, help="model save path")
+    parser.add_argument("--n_layers", type=int, default=3, help="number of layers")
+    parser.add_argument("--codebook_size", type=int, default=8192, help="codebook size")
+    parser.add_argument("--dim", type=int, default=4096, help="embedding dimension")
+    parser.add_argument("--niter", type=int, default=20, help="kmeans iterations")
     parser.add_argument(
         "--max_train_points",
         type=int,
@@ -256,23 +240,17 @@ def main():
                 )
                 args.faiss_gpu = False
         except Exception as e:
-            print(
-                f"[warn] Failed to query faiss GPUs ({e}); using CPU instead."
-            )
+            print(f"[warn] Failed to query faiss GPUs ({e}); using CPU instead.")
             args.faiss_gpu = False
 
     # Load data
     if args.data_path is not None and args.data_paths is not None:
-        raise ValueError(
-            "Please use either --data_path or --data_paths, not both."
-        )
+        raise ValueError("Please use either --data_path or --data_paths, not both.")
     paths = args.data_paths if args.data_paths is not None else [args.data_path]
     if not paths or paths == [None]:
         raise ValueError("Please provide --data_path or --data_paths.")
 
-    embeddings = read_train_data(
-        paths, args.dim, args.max_train_points, args.seed
-    )
+    embeddings = read_train_data(paths, args.dim, args.max_train_points, args.seed)
     print(f"[info] Raw embeddings shape: {embeddings.shape}")
 
     # Safety check: ensure no NaN/Inf remain (should be very rare after per-file cleaning)

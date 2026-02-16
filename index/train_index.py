@@ -38,27 +38,19 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Index")
 
     parser.add_argument("--lr", type=float, default=1e-3, help="learning rate")
-    parser.add_argument(
-        "--epochs", type=int, default=500, help="number of epochs"
-    )
-    parser.add_argument(
-        "--batch_size", type=int, default=2048, help="batch size"
-    )
+    parser.add_argument("--epochs", type=int, default=500, help="number of epochs")
+    parser.add_argument("--batch_size", type=int, default=2048, help="batch size")
     parser.add_argument(
         "--num_workers",
         type=int,
         default=32,
     )
     parser.add_argument("--eval_step", type=int, default=50, help="eval step")
-    parser.add_argument(
-        "--learner", type=str, default="AdamW", help="optimizer"
-    )
+    parser.add_argument("--learner", type=str, default="AdamW", help="optimizer")
     parser.add_argument(
         "--lr_scheduler_type", type=str, default="constant", help="scheduler"
     )
-    parser.add_argument(
-        "--warmup_epochs", type=int, default=50, help="warmup epochs"
-    )
+    parser.add_argument("--warmup_epochs", type=int, default=50, help="warmup epochs")
     data_group = parser.add_mutually_exclusive_group()
     data_group.add_argument(
         "--data_path",
@@ -80,15 +72,9 @@ def parse_args():
         default=0.0,
         help="l2 regularization weight",
     )
-    parser.add_argument(
-        "--dropout_prob", type=float, default=0.0, help="dropout ratio"
-    )
-    parser.add_argument(
-        "--bn", type=str2bool, default=False, help="use bn or not"
-    )
-    parser.add_argument(
-        "--loss_type", type=str, default="mse", help="loss_type"
-    )
+    parser.add_argument("--dropout_prob", type=float, default=0.0, help="dropout ratio")
+    parser.add_argument("--bn", type=str2bool, default=False, help="use bn or not")
+    parser.add_argument("--loss_type", type=str, default="mse", help="loss_type")
     parser.add_argument(
         "--kmeans_init",
         type=str,
@@ -111,13 +97,9 @@ def parse_args():
         default=[0.0, 0.0, 0.0],
         help="sinkhorn epsilons",
     )
-    parser.add_argument(
-        "--sk_iters", type=int, default=50, help="max sinkhorn iters"
-    )
+    parser.add_argument("--sk_iters", type=int, default=50, help="max sinkhorn iters")
 
-    parser.add_argument(
-        "--device", type=str, default="cuda:0", help="gpu or cpu"
-    )
+    parser.add_argument("--device", type=str, default="cuda:0", help="gpu or cpu")
 
     parser.add_argument(
         "--num_emb_list",
@@ -159,9 +141,7 @@ def parse_args():
         default="grec_index",
         help="wandb project",
     )
-    parser.add_argument(
-        "--wandb_name", type=str, default=None, help="wandb run name"
-    )
+    parser.add_argument("--wandb_name", type=str, default=None, help="wandb run name")
     parser.add_argument(
         "--run_name",
         type=str,
@@ -239,7 +219,7 @@ def clean_dataset_embeddings(dataset):
                 mask_np = mask.cpu().numpy()
             else:
                 mask_np = mask
-            dataset.ids = [id_ for id_, keep in zip(ids, mask_np) if keep]
+            dataset.ids = [id_ for id_, keep in zip(ids, mask_np, strict=False) if keep]
 
     return dataset, num_bad
 
@@ -270,9 +250,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
 
     """build dataset"""
-    train_paths = (
-        args.data_paths if args.data_paths is not None else [args.data_path]
-    )
+    train_paths = args.data_paths if args.data_paths is not None else [args.data_path]
     data = (
         MultiEmbDataset(train_paths)
         if len(train_paths) > 1
@@ -282,9 +260,7 @@ if __name__ == "__main__":
     # 训练前清理数据中的 NaN / Inf 样本（如果数据集支持）
     data, num_bad_global = clean_dataset_embeddings(data)
     if is_main_process and num_bad_global > 0:
-        print(
-            f"[info] Dropped {num_bad_global} invalid samples from training dataset."
-        )
+        print(f"[info] Dropped {num_bad_global} invalid samples from training dataset.")
 
     model = RQVAE(
         in_dim=data.dim,

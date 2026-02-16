@@ -16,9 +16,7 @@ def convert_fp16(in_checkpoint, out_checkpoint):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--in-checkpoint", type=str, help="Path to the model")
-    parser.add_argument(
-        "--out-checkpoint", type=str, help="Path to the output model"
-    )
+    parser.add_argument("--out-checkpoint", type=str, help="Path to the output model")
     args = parser.parse_args()
 
     convert_fp16(args.in_checkpoint, args.out_checkpoint)

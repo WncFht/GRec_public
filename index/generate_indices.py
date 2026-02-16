@@ -68,9 +68,7 @@ def get_collision_item(all_keys):
     return collision_item_groups
 
 
-def _parse_datasets_arg(
-    single: str | None, multiple: list[str] | None
-) -> list[str]:
+def _parse_datasets_arg(single: str | None, multiple: list[str] | None) -> list[str]:
     if multiple:
         return [d.strip() for d in multiple if str(d).strip()]
     if not single:
@@ -201,9 +199,7 @@ def _build_auto_output_suffix(
     train_datasets = _unique_keep_order(
         [
             ds
-            for ds in (
-                _infer_dataset_name_from_path(path) for path in train_data_paths
-            )
+            for ds in (_infer_dataset_name_from_path(path) for path in train_data_paths)
             if ds
         ]
     )
@@ -211,8 +207,7 @@ def _build_auto_output_suffix(
         [
             emb
             for emb in (
-                _infer_embedding_model_from_path(path)
-                for path in train_data_paths
+                _infer_embedding_model_from_path(path) for path in train_data_paths
             )
             if emb
         ]
@@ -228,14 +223,10 @@ def _build_auto_output_suffix(
         else "unknown-emb"
     )
     dataset_tag = (
-        "-".join(_slug(x) for x in train_datasets)
-        if train_datasets
-        else "unknown-ds"
+        "-".join(_slug(x) for x in train_datasets) if train_datasets else "unknown-ds"
     )
 
-    run_id = _slug(
-        os.path.basename(os.path.dirname(os.path.abspath(ckpt_path)))
-    )
+    run_id = _slug(os.path.basename(os.path.dirname(os.path.abspath(ckpt_path))))
     if run_id == "na":
         run_id = _slug(os.path.splitext(os.path.basename(ckpt_path))[0])
 
@@ -322,9 +313,7 @@ def main(args):
         getattr(args, "data_paths", None) is not None
         and getattr(args, "data_path", None) is not None
     ):
-        raise ValueError(
-            "Please use either --data_path or --data_paths, not both."
-        )
+        raise ValueError("Please use either --data_path or --data_paths, not both.")
 
     if getattr(args, "data_paths", None) is not None:
         data_paths = list(args.data_paths)
@@ -474,9 +463,7 @@ def main(args):
     tot_item = len(all_keys)
     tot_indice = len(set(all_keys))
     collision_rate = (tot_item - tot_indice) / tot_item
-    print(
-        "Collision Rate", collision_rate
-    )  # 打印最终碰撞率
+    print("Collision Rate", collision_rate)  # 打印最终碰撞率
 
     if multi_output:
         assert spans is not None

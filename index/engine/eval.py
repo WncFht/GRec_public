@@ -95,9 +95,7 @@ class EvalEngine:
                 f"  Layer {i}: {utilization:.4f} ({len(unique_codes)}/{num_emb_list[i]})"
             )
             if self.use_wandb:
-                self.wandb.log(
-                    {f"eval/codebook_utilization_layer_{i}": utilization}
-                )
+                self.wandb.log({f"eval/codebook_utilization_layer_{i}": utilization})
 
         avg_utilization = float(np.mean(utilizations))
 

@@ -13,9 +13,7 @@ class ResKmeans(nn.Module):
         self.extra_kmeans_config = extra_kmeans_config or {}
         self.centroids = nn.ParameterList(
             [
-                nn.Parameter(
-                    torch.zeros((codebook_size, dim), requires_grad=False)
-                )
+                nn.Parameter(torch.zeros((codebook_size, dim), requires_grad=False))
                 for i in range(n_layers)
             ]
         )
@@ -23,8 +21,7 @@ class ResKmeans(nn.Module):
     def calc_loss(self, x, out, epsilon=1e-4):
         loss = ((out - x) ** 2).mean()
         rel_loss = (
-            torch.abs(x - out)
-            / (torch.maximum(torch.abs(x), torch.abs(out)) + epsilon)
+            torch.abs(x - out) / (torch.maximum(torch.abs(x), torch.abs(out)) + epsilon)
         ).mean()
         return {"loss": loss.item(), "rel_loss": rel_loss.item()}
 
@@ -124,9 +121,7 @@ class ResKmeans(nn.Module):
         out = []
         for l in range(n_layers):
             x_norm_sq = x.pow(2.0).sum(dim=1, keepdim=True)
-            codebook_t_norm_sq = (
-                self.centroids[l].T.pow(2.0).sum(dim=0, keepdim=True)
-            )
+            codebook_t_norm_sq = self.centroids[l].T.pow(2.0).sum(dim=0, keepdim=True)
             distances = torch.addmm(
                 x_norm_sq + codebook_t_norm_sq,
                 x,

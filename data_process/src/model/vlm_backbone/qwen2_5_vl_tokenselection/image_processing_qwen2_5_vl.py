@@ -219,9 +219,7 @@ class Qwen2_5_VLImageProcessor(BaseImageProcessor):
         self.do_rescale = do_rescale
         self.rescale_factor = rescale_factor
         self.do_normalize = do_normalize
-        self.image_mean = (
-            image_mean if image_mean is not None else OPENAI_CLIP_MEAN
-        )
+        self.image_mean = image_mean if image_mean is not None else OPENAI_CLIP_MEAN
         self.image_std = image_std if image_std is not None else OPENAI_CLIP_STD
         self.min_pixels = min_pixels
         self.max_pixels = max_pixels
@@ -306,9 +304,7 @@ class Qwen2_5_VLImageProcessor(BaseImageProcessor):
         uigraph_assign_flat = np.array([uf.find(x) for x in range(num_patches)])
         le = LabelEncoder()
         uigraph_assign_flat = le.fit_transform(uigraph_assign_flat)
-        uigraph_assign = uigraph_assign_flat.reshape(
-            (grid_t, grid_h_half, grid_w_half)
-        )
+        uigraph_assign = uigraph_assign_flat.reshape((grid_t, grid_h_half, grid_w_half))
         return uigraph_assign
 
     def _vis_uigraph(self, uigraph_assign, image_size, patch_size, image):
@@ -502,10 +498,7 @@ class Qwen2_5_VLImageProcessor(BaseImageProcessor):
 
         flatten_patches = patches.reshape(
             grid_t * grid_h * grid_w,
-            channel
-            * self.temporal_patch_size
-            * self.patch_size
-            * self.patch_size,
+            channel * self.temporal_patch_size * self.patch_size * self.patch_size,
         )
 
         return (
@@ -599,19 +592,13 @@ class Qwen2_5_VLImageProcessor(BaseImageProcessor):
         resample = resample if resample is not None else self.resample
         do_rescale = do_rescale if do_rescale is not None else self.do_rescale
         rescale_factor = (
-            rescale_factor
-            if rescale_factor is not None
-            else self.rescale_factor
+            rescale_factor if rescale_factor is not None else self.rescale_factor
         )
-        do_normalize = (
-            do_normalize if do_normalize is not None else self.do_normalize
-        )
+        do_normalize = do_normalize if do_normalize is not None else self.do_normalize
         image_mean = image_mean if image_mean is not None else self.image_mean
         image_std = image_std if image_std is not None else self.image_std
         do_convert_rgb = (
-            do_convert_rgb
-            if do_convert_rgb is not None
-            else self.do_convert_rgb
+            do_convert_rgb if do_convert_rgb is not None else self.do_convert_rgb
         )
 
         if images is not None:
@@ -666,9 +653,7 @@ class Qwen2_5_VLImageProcessor(BaseImageProcessor):
                     if uigraph_rand:
                         C = len(np.unique(uigraph_assign))
                         _, H, W = uigraph_assign.shape
-                        uigraph_assign = np.random.randint(
-                            0, C + 1, size=(1, H, W)
-                        )
+                        uigraph_assign = np.random.randint(0, C + 1, size=(1, H, W))
                 # flat 2d graph to 1d
                 uigraph_assign_1d = uigraph_assign.flatten()
                 uigraph_assign_1d = self.rerank_values(uigraph_assign_1d)

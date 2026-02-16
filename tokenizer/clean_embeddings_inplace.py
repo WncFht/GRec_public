@@ -7,9 +7,7 @@ import os
 import numpy as np
 
 
-def clean_one_pair(
-    emb_path: str, ids_path: str | None = None, dry_run: bool = False
-):
+def clean_one_pair(emb_path: str, ids_path: str | None = None, dry_run: bool = False):
     emb_path = os.path.abspath(emb_path)
     print(f"\n=== Checking {emb_path} ===")
 
@@ -67,7 +65,7 @@ def clean_one_pair(
         if isinstance(ids, np.ndarray):
             ids = ids.tolist()
 
-        clean_ids = [id_ for id_, keep in zip(ids, finite_mask) if keep]
+        clean_ids = [id_ for id_, keep in zip(ids, finite_mask, strict=False) if keep]
 
         backup_ids = ids_path + ".bak"
         print(f"  Backing up original ids to {backup_ids}")

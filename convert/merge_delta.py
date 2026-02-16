@@ -167,6 +167,4 @@ if __name__ == "__main__":
             args.base_model_path, args.target_model_path, args.delta_path
         )
     else:
-        apply_delta(
-            args.base_model_path, args.target_model_path, args.delta_path
-        )
+        apply_delta(args.base_model_path, args.target_model_path, args.delta_path)

@@ -133,9 +133,7 @@ class KeyframeLR(LRScheduler):
             )
 
         if isinstance(transition, Callable):
-            return transition(
-                self.last_lr, start_frame, end_frame, position, self
-            )
+            return transition(self.last_lr, start_frame, end_frame, position, self)
 
         raise ValueError(f"Unknown transition: {transition!r}")
 
@@ -167,14 +165,10 @@ class KeyframeLR(LRScheduler):
 
         if lr is None:
             if start_frame is None or end_frame is None:
-                print(
-                    f"No matching frames at position {position}, using last LR."
-                )
+                print(f"No matching frames at position {position}, using last LR.")
                 return self.last_lr
 
-            lr = self.interpolate_frames(
-                start_frame, transition, end_frame, position
-            )
+            lr = self.interpolate_frames(start_frame, transition, end_frame, position)
 
         # We store last_lr here so that custom transitions work with .sample_lrs()
         self.last_lr = lr

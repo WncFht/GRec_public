@@ -44,9 +44,7 @@ def run_once(num_workers: int):
     start = time.time()
     for epoch in range(EPOCHS):
         # 用 tqdm 包裹 enumerate，实时显示进度
-        for _ in tqdm(
-            loader, desc=f"Epoch {epoch + 1}/{EPOCHS} (nw={num_workers})"
-        ):
+        for _ in tqdm(loader, desc=f"Epoch {epoch + 1}/{EPOCHS} (nw={num_workers})"):
             pass  # 只做加载
     elapsed = time.time() - start
     print(f"num_workers={num_workers:2d}  ->  {elapsed:.2f} s")

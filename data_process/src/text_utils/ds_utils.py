@@ -56,9 +56,7 @@ def get_model_state_file(checkpoint_dir, zero_stage):
     if zero_stage == 2:
         file = os.path.join(checkpoint_dir, "mp_rank_00_model_states.pt")
     elif zero_stage == 3:
-        file = os.path.join(
-            checkpoint_dir, "zero_pp_rank_0_mp_rank_00_model_states.pt"
-        )
+        file = os.path.join(checkpoint_dir, "zero_pp_rank_0_mp_rank_00_model_states.pt")
 
     if not os.path.exists(file):
         raise FileNotFoundError(f"can't find pytorch states file at '{file}'")
@@ -92,9 +90,7 @@ def parse_model_state(file):
 
     # recover just the buffers while restoring them to fp32 if they were saved in fp16
     buffers = {
-        k: v.float()
-        for k, v in state_dict["module"].items()
-        if k in buffer_names
+        k: v.float() for k, v in state_dict["module"].items() if k in buffer_names
     }
     param_shapes = state_dict[PARAM_SHAPES]
 
@@ -216,10 +212,7 @@ def _get_fp32_state_dict_from_zero2_checkpoint(
     if debug:
         wanted_params = sum([len(shapes) for shapes in param_shapes])
         wanted_numel = sum(
-            [
-                sum(shape.numel() for shape in shapes.values())
-                for shapes in param_shapes
-            ]
+            [sum(shape.numel() for shape in shapes.values()) for shapes in param_shapes]
         )
         # not asserting if there is a mismatch due to possible padding
         print(f"Have {avail_numel} numels to process.")
@@ -332,8 +325,8 @@ def _get_fp32_state_dict_from_zero3_checkpoint(
         total_numel += unpartitioned_numel
         total_params += 1
 
-        partitioned_numel, partitioned_padding_numel = (
-            zero3_partitioned_param_info(unpartitioned_numel, world_size)
+        partitioned_numel, partitioned_padding_numel = zero3_partitioned_param_info(
+            unpartitioned_numel, world_size
         )
 
         if debug:
@@ -408,9 +401,7 @@ def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag=None):
     ds_checkpoint_dir = os.path.join(checkpoint_dir, tag)
 
     if not os.path.isdir(ds_checkpoint_dir):
-        raise FileNotFoundError(
-            f"Directory '{ds_checkpoint_dir}' doesn't exist"
-        )
+        raise FileNotFoundError(f"Directory '{ds_checkpoint_dir}' doesn't exist")
 
     return _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir)
 
@@ -436,9 +427,7 @@ def rename_checkpoint_keys(checkpoint_dir):
     torch.save(_state_dict, ckpt_path)
 
 
-def convert_zero_checkpoint_to_fp32_state_dict(
-    checkpoint_dir, output_file, tag=None
-):
+def convert_zero_checkpoint_to_fp32_state_dict(checkpoint_dir, output_file, tag=None):
     """
     Convert ZeRO 2 or 3 checkpoint into a single fp32 consolidated ``state_dict`` file that can be
     loaded with ``torch.load(file)`` + ``load_state_dict()`` and used for training without DeepSpeed.
@@ -498,13 +487,9 @@ if __name__ == "__main__":
         type=str,
         help="path to the pytorch fp32 state_dict output file (e.g. path/checkpoint-12/pytorch_model.bin)",
     )
-    parser.add_argument(
-        "-d", "--debug", action="store_true", help="enable debug"
-    )
+    parser.add_argument("-d", "--debug", action="store_true", help="enable debug")
     args = parser.parse_args()
 
     debug = args.debug
 
-    convert_zero_checkpoint_to_fp32_state_dict(
-        args.checkpoint_dir, args.output_file
-    )
+    convert_zero_checkpoint_to_fp32_state_dict(args.checkpoint_dir, args.output_file)

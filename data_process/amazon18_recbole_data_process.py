@@ -197,9 +197,7 @@ def save_inter(args, inters):
         os.path.join(args.output_path, args.dataset, f"{args.dataset}.inter"),
         "w",
     ) as file:
-        file.write(
-            "user_id:token\titem_id:token\trating:float\ttimestamp:float\n"
-        )
+        file.write("user_id:token\titem_id:token\trating:float\ttimestamp:float\n")
         for inter in inters:
             user, item, rating, timestamp = inter
             file.write(f"{user}\t{item}\t{rating}\t{timestamp}\n")
@@ -233,12 +231,8 @@ def parse_args():
     parser.add_argument(
         "--dataset", type=str, default="Arts", help="Instruments / Arts / Games"
     )
-    parser.add_argument(
-        "--user_k", type=int, default=5, help="user k-core filtering"
-    )
-    parser.add_argument(
-        "--item_k", type=int, default=5, help="item k-core filtering"
-    )
+    parser.add_argument("--user_k", type=int, default=5, help="user k-core filtering")
+    parser.add_argument("--item_k", type=int, default=5, help="item k-core filtering")
     parser.add_argument("--input_path", type=str, default="")
     parser.add_argument("--output_path", type=str, default="")
     return parser.parse_args()

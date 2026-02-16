@@ -77,4 +77,3 @@ sbatch --job-name "<RUN_ID>" runs/generated/<stage>/<yyyymmdd>/<RUN_ID>.sh
 - `WANDB_GROUP=<RUN_KEY>`
 - `OUTPUT_DIR=ckpt/<dataset_slug>/<stage>/<RUN_ID>`
 - `LOG_FILE=log/<stage>/<dataset_slug>/<yyyymmdd>/<RUN_ID>.log`
-

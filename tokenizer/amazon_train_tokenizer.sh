@@ -35,4 +35,3 @@ if [[ ! -f "$MODEL_PT" ]]; then
 fi
 
 echo "OK: Tokenizer saved to $MODEL_PT"
-

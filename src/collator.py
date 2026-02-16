@@ -48,8 +48,7 @@ class Collator:
         # 从批次中提取输入文本和完整文本（包括标签和EOS token）
         input_texts = [d.input_text for d in batch]
         full_texts = [
-            d.input_text + d.label_text + self.tokenizer.eos_token
-            for d in batch
+            d.input_text + d.label_text + self.tokenizer.eos_token for d in batch
         ]
 
         # 使用tokenizer对完整文本进行编码，并生成目标文本（用于计算损失）
@@ -309,9 +308,7 @@ class MultiModalCollator:
                 # 检查是否有有效的图片路径，如果存在则添加到用户消息内容中
                 for image_path in image_path_list:
                     if image_path and os.path.exists(image_path):
-                        user_content.append(
-                            {"type": "image", "image": image_path}
-                        )
+                        user_content.append({"type": "image", "image": image_path})
 
             # 添加文本内容
             user_content.append({"type": "text", "text": input_data})
@@ -330,9 +327,7 @@ class MultiModalCollator:
             full_messages_list.append(full_messages)
 
         # 统一提取所有对话的视觉信息
-        all_image_inputs, all_video_inputs = process_vision_info(
-            full_messages_list
-        )
+        all_image_inputs, all_video_inputs = process_vision_info(full_messages_list)
 
         # 批量应用聊天模板
         full_texts = [
@@ -382,14 +377,9 @@ class MultiModalCollator:
             for i in range(len(batch)):
                 # 找到用户输入的实际长度（排除padding）
                 user_input_ids = user_batch_result["input_ids"][i]
-                user_len = (
-                    (user_input_ids != self.tokenizer.pad_token_id).sum().item()
-                )
+                user_len = (user_input_ids != self.tokenizer.pad_token_id).sum().item()
                 pad_len = (
-                    (
-                        batch_result["input_ids"][i]
-                        == self.tokenizer.pad_token_id
-                    )
+                    (batch_result["input_ids"][i] == self.tokenizer.pad_token_id)
                     .sum()
                     .item()
                 )
@@ -430,9 +420,7 @@ class UnifiedTestCollator:
 
         # 如果tokenizer没有pad_token_id，则使用unk_token_id或0作为默认值
         if self.tokenizer.pad_token_id is None:
-            self.tokenizer.pad_token_id = getattr(
-                self.tokenizer, "unk_token_id", 0
-            )
+            self.tokenizer.pad_token_id = getattr(self.tokenizer, "unk_token_id", 0)
 
         # 确保 decoder-only 模型使用正确的 padding_side
         if hasattr(self.tokenizer, "padding_side"):
@@ -457,9 +445,7 @@ class UnifiedTestCollator:
         """检查batch中是否包含有效图像"""
         # 遍历batch中的每个item，检查is_multimodal标志和image_path
         return any(
-            item.is_multimodal
-            and item.image_path
-            and os.path.exists(item.image_path)
+            item.is_multimodal and item.image_path and os.path.exists(item.image_path)
             for item in batch
         )
 
@@ -498,9 +484,7 @@ class UnifiedTestCollator:
                 # 检查是否有有效的图片路径，如果存在则添加到用户消息内容中
                 for image_path in image_path_list:
                     if image_path and os.path.exists(image_path):
-                        user_content.append(
-                            {"type": "image", "image": image_path}
-                        )
+                        user_content.append({"type": "image", "image": image_path})
 
             # 添加文本内容到用户消息内容中
             user_content.append({"type": "text", "text": item.input_text})
@@ -515,9 +499,7 @@ class UnifiedTestCollator:
                 item_ids.append(item.item_id)
 
         # 提取用户消息的视觉信息（图像和视频）
-        user_image_inputs, user_video_inputs = process_vision_info(
-            messages_list
-        )
+        user_image_inputs, user_video_inputs = process_vision_info(messages_list)
 
         # 应用聊天模板到用户输入文本，添加生成提示
         input_texts = [

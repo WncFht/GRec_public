@@ -35,8 +35,7 @@ def find_latest_checkpoint(output_dir):
     checkpoints = [
         os.path.join(output_dir, d)
         for d in os.listdir(output_dir)
-        if d.startswith("checkpoint-")
-        and os.path.isdir(os.path.join(output_dir, d))
+        if d.startswith("checkpoint-") and os.path.isdir(os.path.join(output_dir, d))
     ]
 
     if not checkpoints:

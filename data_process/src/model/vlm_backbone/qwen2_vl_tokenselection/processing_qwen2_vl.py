@@ -86,9 +86,7 @@ class Qwen2VLProcessor(ProcessorMixin):
             if not hasattr(tokenizer, "video_token")
             else tokenizer.video_token
         )
-        super().__init__(
-            image_processor, tokenizer, chat_template=chat_template
-        )
+        super().__init__(image_processor, tokenizer, chat_template=chat_template)
 
         ### ShowUI preprocessor options
         # Screenshot -> Graph
@@ -228,27 +226,21 @@ class Qwen2VLProcessor(ProcessorMixin):
             cur_img_idx = 0
             pre_start = 0
             # patch_pos indicates the position of visual patch in the full input seq
-            text_inputs["patch_pos"] = (
-                np.zeros_like(text_inputs["input_ids"]) - 1
-            )
+            text_inputs["patch_pos"] = np.zeros_like(text_inputs["input_ids"]) - 1
             assert text_inputs["input_ids"].shape[0] == 1, (
                 "Only support batch size 1 for processing"
             )
             i = 0
             while i < len(text_inputs["input_ids"][0]):
                 # assume here is 1 x L
-                if (
-                    text_inputs["input_ids"][0, i] == 151655
-                ):  # <|image_pad|> token
+                if text_inputs["input_ids"][0, i] == 151655:  # <|image_pad|> token
                     cur_img_len = (
                         image_inputs["image_grid_thw"][cur_img_idx].prod()
                         // merge_length
                     )
-                    text_inputs["patch_pos"][0, i : i + cur_img_len] = (
-                        image_inputs["patch_assign"][
-                            pre_start : pre_start + cur_img_len
-                        ]
-                    )
+                    text_inputs["patch_pos"][0, i : i + cur_img_len] = image_inputs[
+                        "patch_assign"
+                    ][pre_start : pre_start + cur_img_len]
                     cur_img_idx += 1
                     pre_start += cur_img_len
                     i += cur_img_len
@@ -264,9 +256,7 @@ class Qwen2VLProcessor(ProcessorMixin):
                 axis=0,
             )
 
-        return BatchFeature(
-            data={**text_inputs, **image_inputs, **videos_inputs}
-        )
+        return BatchFeature(data={**text_inputs, **image_inputs, **videos_inputs})
 
     def batch_decode(self, *args, **kwargs):
         """
@@ -305,9 +295,7 @@ class Qwen2VLProcessor(ProcessorMixin):
     def model_input_names(self):
         tokenizer_input_names = self.tokenizer.model_input_names
         image_processor_input_names = self.image_processor.model_input_names
-        return list(
-            dict.fromkeys(tokenizer_input_names + image_processor_input_names)
-        )
+        return list(dict.fromkeys(tokenizer_input_names + image_processor_input_names))
 
 
 __all__ = ["Qwen2VLProcessor"]

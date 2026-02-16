@@ -36,9 +36,7 @@ class InExampleContrastiveLoss:
             x = x[:, :ndim]
             y = y[:, :ndim]
         logits = (
-            torch.einsum(
-                "bod,bsd->bs", x.view(bsz, 1, ndim), y.view(bsz, -1, ndim)
-            )
+            torch.einsum("bod,bsd->bs", x.view(bsz, 1, ndim), y.view(bsz, -1, ndim))
             * self.temperature
         )
         preds = torch.argmax(logits, dim=-1)
@@ -94,9 +92,7 @@ class DistributedContrastiveLoss(SimpleContrastiveLoss):
             "Distributed training has not been properly initialized."
         )
 
-        super().__init__(
-            n_hard_negatives=n_hard_negatives, temperature=temperature
-        )
+        super().__init__(n_hard_negatives=n_hard_negatives, temperature=temperature)
         self.world_size = dist.get_world_size()
         self.rank = dist.get_rank()
 

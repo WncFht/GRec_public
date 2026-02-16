@@ -181,9 +181,7 @@ def smart_nframes(
         nframes = round_by_factor(ele["nframes"], FRAME_FACTOR)
     else:
         fps = ele.get("fps", FPS)
-        min_frames = ceil_by_factor(
-            ele.get("min_frames", FPS_MIN_FRAMES), FRAME_FACTOR
-        )
+        min_frames = ceil_by_factor(ele.get("min_frames", FPS_MIN_FRAMES), FRAME_FACTOR)
         max_frames = floor_by_factor(
             ele.get("max_frames", min(FPS_MAX_FRAMES, total_frames)),
             FRAME_FACTOR,

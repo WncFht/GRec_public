@@ -91,14 +91,10 @@ class GradCache:
             isinstance(x, Tensor) for x in model_input.values()
         ):
             keys = list(model_input.keys())
-            chunked_tensors = [
-                model_input[k].split(chunk_size, dim=0) for k in keys
-            ]
+            chunked_tensors = [model_input[k].split(chunk_size, dim=0) for k in keys]
             return [
                 dict(zip(kk, tt, strict=False))
-                for kk, tt in zip(
-                    repeat(keys), zip(*chunked_tensors, strict=False)
-                )
+                for kk, tt in zip(repeat(keys), zip(*chunked_tensors, strict=False))
             ]
 
         if isinstance(model_input, list) and all(
@@ -137,9 +133,7 @@ class GradCache:
             return sum((self.get_input_tensors(x) for x in model_input), [])
 
         if isinstance(model_input, (dict, UserDict)):
-            return sum(
-                (self.get_input_tensors(x) for x in model_input.values()), []
-            )
+            return sum((self.get_input_tensors(x) for x in model_input.values()), [])
 
         if self._get_input_tensors_strict:
             raise NotImplementedError(
@@ -162,9 +156,10 @@ class GradCache:
                 return model(*model_input)
             if isinstance(model_input, (dict, UserDict)):
                 return model(**model_input)
-            if isinstance(model_input, tuple) and list(
-                map(type, model_input)
-            ) == [list, dict]:
+            if isinstance(model_input, tuple) and list(map(type, model_input)) == [
+                list,
+                dict,
+            ]:
                 model_args, model_kwargs = model_input
                 return model(*model_args, **model_kwargs)
             raise NotImplementedError
@@ -214,9 +209,7 @@ class GradCache:
         model_reps = torch.cat(model_reps, dim=0)
         return model_reps, rnd_states
 
-    def build_cache(
-        self, *reps: Tensor, **loss_kwargs
-    ) -> [list[Tensor], Tensor]:
+    def build_cache(self, *reps: Tensor, **loss_kwargs) -> [list[Tensor], Tensor]:
         """
         Compute the gradient cache
         :param reps: Computed representations from all encoder models
@@ -254,9 +247,9 @@ class GradCache:
         for the last sub-batch's forward-backward pass.
         """
         if no_sync_except_last:
-            sync_contexts = [
-                model.no_sync for _ in range(len(model_inputs) - 1)
-            ] + [nullcontext]
+            sync_contexts = [model.no_sync for _ in range(len(model_inputs) - 1)] + [
+                nullcontext
+            ]
         else:
             sync_contexts = [nullcontext for _ in range(len(model_inputs))]
 
@@ -292,9 +285,7 @@ class GradCache:
         if no_sync_except_last:
             assert all(
                 map(
-                    lambda m: isinstance(
-                        m, nn.parallel.DistributedDataParallel
-                    ),
+                    lambda m: isinstance(m, nn.parallel.DistributedDataParallel),
                     self.models,
                 )
             ), (
@@ -304,9 +295,7 @@ class GradCache:
 
         model_inputs = [
             self.split_inputs(x, chunk_size)
-            for x, chunk_size in zip(
-                model_inputs, self.chunk_sizes, strict=False
-            )
+            for x, chunk_size in zip(model_inputs, self.chunk_sizes, strict=False)
         ]
         if self.process_fn:
             # each minibatch -> self.process_fn(minibatch)

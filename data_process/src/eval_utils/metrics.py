@@ -140,9 +140,7 @@ class RankingMetrics:
             if not isinstance(true_labels_list, list):
                 true_labels_list = [true_labels_list]
             if not true_labels_list:
-                rr_scores.append(
-                    0.0
-                )  # Or handle as per definition, no relevant items.
+                rr_scores.append(0.0)  # Or handle as per definition, no relevant items.
                 continue
 
             predicted_k = prediction[:k_val]
@@ -169,8 +167,7 @@ class RankingMetrics:
         def dcg(rel_list, form):
             if form == "linear":
                 return sum(
-                    ((rel) / np.log2(idx + 2))
-                    for idx, rel in enumerate(rel_list)
+                    ((rel) / np.log2(idx + 2)) for idx, rel in enumerate(rel_list)
                 )
             if form == "exponential":
                 return sum(
@@ -184,9 +181,7 @@ class RankingMetrics:
                 label_set = set(true_labels)
             else:
                 label_set = {true_labels}
-            relevance = [
-                1 if item in label_set else 0 for item in prediction[:k]
-            ]
+            relevance = [1 if item in label_set else 0 for item in prediction[:k]]
             ideal_relevance = [1] * min(len(label_set), k)
         else:
             # Graded relevance
@@ -219,9 +214,7 @@ class RankingMetrics:
 
         """
         metric_results_accumulators = {
-            (f"ndcg_{v}" if metric == "ndcg" else metric): {
-                k: [] for k in self.k_list
-            }
+            (f"ndcg_{v}" if metric == "ndcg" else metric): {k: [] for k in self.k_list}
             for metric in self.metric_list
             for v in (["linear", "exponential"] if metric == "ndcg" else [None])
         }
@@ -231,9 +224,7 @@ class RankingMetrics:
         for case_idx, case in enumerate(test_cases):
             prediction = case["prediction"]
             true_labels = case["label"]
-            if not isinstance(
-                true_labels, (list, set)
-            ):  # Allow set for true_labels
+            if not isinstance(true_labels, (list, set)):  # Allow set for true_labels
                 true_labels = [true_labels]
             true_labels = list(
                 set(true_labels)
@@ -316,9 +307,7 @@ class RankingMetrics:
                 for case in processed_test_cases_for_map_mrr:
                     reciprocal_rank = 0.0
                     if case["label"]:  # Only if there are true labels
-                        for rank, p_item in enumerate(
-                            case["prediction"][:k_val]
-                        ):
+                        for rank, p_item in enumerate(case["prediction"][:k_val]):
                             if p_item in case["label"]:
                                 reciprocal_rank = 1.0 / (rank + 1)
                                 break

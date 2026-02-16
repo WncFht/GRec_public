@@ -73,9 +73,7 @@ def collect_metrics(metrics_root: Path) -> list[dict]:
             "collision_rate": float(data.get("collision_rate", 0.0)),
             "max_conflicts": int(data.get("max_conflicts", 0)),
             "reencode_rounds": int(data.get("reencode_rounds", 0)),
-            "cross_dataset": data.get(
-                "cross_dataset_collision_groups_round0", None
-            ),
+            "cross_dataset": data.get("cross_dataset_collision_groups_round0", None),
             "created_at": str(data.get("created_at", "")),
         }
         records.append(record)
@@ -119,9 +117,7 @@ def print_table(records: list[dict]) -> None:
     print(sep.join(h.ljust(col_widths[i]) for i, h in enumerate(headers)))
     print("-+-".join("-" * w for w in col_widths))
     for row in rows:
-        print(
-            sep.join(row[i].ljust(col_widths[i]) for i in range(len(headers)))
-        )
+        print(sep.join(row[i].ljust(col_widths[i]) for i in range(len(headers))))
 
 
 def main() -> None:
@@ -133,9 +129,7 @@ def main() -> None:
 
     records = collect_metrics(metrics_root)
     if not records:
-        raise SystemExit(
-            f"no generate_metrics_*.json found under: {metrics_root}"
-        )
+        raise SystemExit(f"no generate_metrics_*.json found under: {metrics_root}")
 
     records.sort(key=lambda x: x[args.sort_by], reverse=args.desc)
     if args.top > 0:

@@ -2578,7 +2578,9 @@ def load_sfr_prompt(
     if add_choices_in_prompt:
         labels = get_labels(task_name=task_name, task_type=task_type)
         if len(labels) <= 20:
-            task_def = f"{task_def} Candidate labels ({len(labels)} labels) are: {labels}."
+            task_def = (
+                f"{task_def} Candidate labels ({len(labels)} labels) are: {labels}."
+            )
     q_prompt = get_detailed_instruct(task_def)
     d_prompt = ""
     if add_taskname_in_docprompt and task_type == "Retrieval":
@@ -2590,7 +2592,9 @@ def load_sfr_prompt(
 def get_task_def(task_type: str, task_name: str) -> str:
     # @ruimeng added
     if task_name.lower() in ["nli", "allnli"]:
-        return "Retrieve a sentence that is semantically entailed by the given sentence."
+        return (
+            "Retrieve a sentence that is semantically entailed by the given sentence."
+        )
 
     if task_type in ["STS", "sts"]:
         return "Retrieve semantically similar text."
@@ -2690,20 +2694,14 @@ def get_task_def(task_type: str, task_name: str) -> str:
         )
         # other cases where lower case match still doesn't work
         task_name_to_instruct["trec-covid"] = task_name_to_instruct["TRECCOVID"]
-        task_name_to_instruct["climate-fever"] = task_name_to_instruct[
-            "ClimateFEVER"
-        ]
-        task_name_to_instruct["dbpedia-entity"] = task_name_to_instruct[
-            "DBPedia"
-        ]
-        task_name_to_instruct["webis-touche2020"] = task_name_to_instruct[
-            "Touche2020"
-        ]
+        task_name_to_instruct["climate-fever"] = task_name_to_instruct["ClimateFEVER"]
+        task_name_to_instruct["dbpedia-entity"] = task_name_to_instruct["DBPedia"]
+        task_name_to_instruct["webis-touche2020"] = task_name_to_instruct["Touche2020"]
         task_name_to_instruct["fiqa"] = task_name_to_instruct["FiQA2018"]
         task_name_to_instruct["quora"] = task_name_to_instruct["QuoraRetrieval"]
-        task_name_to_instruct["instructed-conversation"] = (
-            task_name_to_instruct["InstructConversation"]
-        )
+        task_name_to_instruct["instructed-conversation"] = task_name_to_instruct[
+            "InstructConversation"
+        ]
 
         # for miracl evaluation
         task_name_to_instruct["miracl"] = (
@@ -2732,12 +2730,8 @@ def get_labels(task_type: str, task_name: str) -> str:
             "RedditClustering": CLUSTERING_NAME2LABELS["reddit"],
             "RedditClusteringP2P": CLUSTERING_NAME2LABELS["reddit"],
             "StackExchangeClustering": CLUSTERING_NAME2LABELS["stackexchange"],
-            "StackExchangeClusteringP2P": CLUSTERING_NAME2LABELS[
-                "stackexchange"
-            ],
-            "TwentyNewsgroupsClustering": CLUSTERING_NAME2LABELS[
-                "twentynewsgroups"
-            ],
+            "StackExchangeClusteringP2P": CLUSTERING_NAME2LABELS["stackexchange"],
+            "TwentyNewsgroupsClustering": CLUSTERING_NAME2LABELS["twentynewsgroups"],
         }
         return cluster_name2labels[task_name]
 

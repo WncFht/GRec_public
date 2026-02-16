@@ -3,7 +3,7 @@ import gc
 import json
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import torch
@@ -43,9 +43,7 @@ class ModelWrapper:
                 model_name, device, torch_dtype
             )
         if "2.5" in name_lower or "2.5-vl" in name_lower:
-            return Qwen25Wrapper.from_pretrained(
-                model_name, device, torch_dtype
-            )
+            return Qwen25Wrapper.from_pretrained(model_name, device, torch_dtype)
         # fallback to Qwen2 wrapper (they share API in our current env)
         return Qwen2Wrapper.from_pretrained(model_name, device, torch_dtype)
 
@@ -90,13 +88,9 @@ class Qwen25Wrapper(ModelWrapper):
         last_hidden_state = raw_outputs.hidden_states[-1]
         attention_mask = inputs["attention_mask"]
         attention_mask_expanded = (
-            attention_mask.unsqueeze(-1)
-            .expand(last_hidden_state.size())
-            .float()
+            attention_mask.unsqueeze(-1).expand(last_hidden_state.size()).float()
         )
-        sum_embeddings = torch.sum(
-            last_hidden_state * attention_mask_expanded, dim=1
-        )
+        sum_embeddings = torch.sum(last_hidden_state * attention_mask_expanded, dim=1)
         sum_mask = torch.clamp(attention_mask_expanded.sum(dim=1), min=1e-9)
         mean_embeddings = sum_embeddings / sum_mask
         return mean_embeddings.cpu().numpy()
@@ -171,13 +165,9 @@ class LlavaOnevisionWrapper(ModelWrapper):
             return emb.cpu().numpy()
 
         attention_mask_expanded = (
-            attention_mask.unsqueeze(-1)
-            .expand(last_hidden_state.size())
-            .float()
+            attention_mask.unsqueeze(-1).expand(last_hidden_state.size()).float()
         )
-        sum_embeddings = torch.sum(
-            last_hidden_state * attention_mask_expanded, dim=1
-        )
+        sum_embeddings = torch.sum(last_hidden_state * attention_mask_expanded, dim=1)
         sum_mask = torch.clamp(attention_mask_expanded.sum(dim=1), min=1e-9)
         mean_embeddings = sum_embeddings / sum_mask
         return mean_embeddings.cpu().numpy()
@@ -223,9 +213,7 @@ class ItemMultimodalBatchExtractor:
 
     def _load_model(self) -> None:
         # choose dtype to reduce memory when on CUDA
-        dtype = (
-            torch.float16 if self.device.startswith("cuda") else torch.float32
-        )
+        dtype = torch.float16 if self.device.startswith("cuda") else torch.float32
         logger.info(
             f"Loading model {self.model_name} with dtype={dtype} on {self.device}"
         )
@@ -285,46 +273,33 @@ class ItemMultimodalBatchExtractor:
         if mode == "orig":
             if item_data.get("categories"):
                 parts.append(f"Categories: {item_data['categories']}")
-            if (
-                item_data.get("description")
-                and item_data["description"].strip()
-            ):
+            if item_data.get("description") and item_data["description"].strip():
                 parts.append(f"Description: {item_data['description']}")
 
         elif mode == "enhanced":
             # include enhanced components preferentially
             if item_data.get("enhanced_title"):
-                parts.insert(
-                    0, f"Enhanced Title: {item_data['enhanced_title']}"
-                )
+                parts.insert(0, f"Enhanced Title: {item_data['enhanced_title']}")
             if item_data.get("tags") and isinstance(item_data["tags"], list):
                 parts.append(f"Tags: {', '.join(item_data['tags'])}")
             if item_data.get("highlights") and isinstance(
                 item_data["highlights"], list
             ):
-                parts.append(
-                    f"Highlights: {', '.join(item_data['highlights'])}"
-                )
+                parts.append(f"Highlights: {', '.join(item_data['highlights'])}")
             if item_data.get("characteristics") and isinstance(
                 item_data["characteristics"], list
             ):
                 parts.append(
                     f"Characteristics: {', '.join(item_data['characteristics'])}"
                 )
-            if (
-                item_data.get("description")
-                and item_data["description"].strip()
-            ):
+            if item_data.get("description") and item_data["description"].strip():
                 parts.append(f"Description: {item_data['description']}")
 
         elif mode == "orig_enhanced":
             # combine both original and enhanced info
             if item_data.get("categories"):
                 parts.append(f"Categories: {item_data['categories']}")
-            if (
-                item_data.get("description")
-                and item_data["description"].strip()
-            ):
+            if item_data.get("description") and item_data["description"].strip():
                 parts.append(f"Description: {item_data['description']}")
             if item_data.get("enhanced_title"):
                 parts.append(f"Enhanced Title: {item_data['enhanced_title']}")
@@ -335,10 +310,7 @@ class ItemMultimodalBatchExtractor:
             # fallback: include whatever is available
             if item_data.get("categories"):
                 parts.append(f"Categories: {item_data['categories']}")
-            if (
-                item_data.get("description")
-                and item_data["description"].strip()
-            ):
+            if item_data.get("description") and item_data["description"].strip():
                 parts.append(f"Description: {item_data['description']}")
 
         return " | ".join(parts)
@@ -470,20 +442,14 @@ class ItemMultimodalBatchExtractor:
         ).to(self.device)
 
         with torch.no_grad():
-            outputs = self.model(
-                **inputs, output_hidden_states=True, return_dict=True
-            )
+            outputs = self.model(**inputs, output_hidden_states=True, return_dict=True)
 
         last_hidden_state = outputs.hidden_states[-1]
         attention_mask = inputs["attention_mask"]
         attention_mask_expanded = (
-            attention_mask.unsqueeze(-1)
-            .expand(last_hidden_state.size())
-            .float()
+            attention_mask.unsqueeze(-1).expand(last_hidden_state.size()).float()
         )
-        sum_embeddings = torch.sum(
-            last_hidden_state * attention_mask_expanded, dim=1
-        )
+        sum_embeddings = torch.sum(last_hidden_state * attention_mask_expanded, dim=1)
         sum_mask = torch.clamp(attention_mask_expanded.sum(dim=1), min=1e-9)
         mean_embeddings = sum_embeddings / sum_mask
         return mean_embeddings.cpu().numpy()
@@ -494,9 +460,7 @@ class ItemMultimodalBatchExtractor:
         # single-process: return all items unchanged
         return all_items
 
-    def run(
-        self, dataset_path: str, output_path: str, limit: Optional[int] = None
-    ):
+    def run(self, dataset_path: str, output_path: str, limit: int | None = None):
         # If outputs already exist, skip to avoid recomputation.
         try:
             npy_path = output_path.replace(".json", ".npy")
@@ -534,9 +498,7 @@ class ItemMultimodalBatchExtractor:
 
         for i in iterable:
             batch = my_items[i : i + self.batch_size]
-            batch_messages, batch_meta = self.prepare_batch(
-                batch, id2item, image_dir
-            )
+            batch_messages, batch_meta = self.prepare_batch(batch, id2item, image_dir)
             try:
                 embeddings = self.extract_batch_embeddings(batch_messages)
                 # embeddings shape: (B, D)
@@ -586,23 +548,17 @@ class ItemMultimodalBatchExtractor:
 
         # save numpy in same order of numeric ids present in this shard
         keys_sorted = sorted(representations.keys())
-        matrix = np.array(
-            [representations[k]["representation"] for k in keys_sorted]
-        )
+        matrix = np.array([representations[k]["representation"] for k in keys_sorted])
         np.save(output_path.replace(".json", ".npy"), matrix)
 
-        logger.info(
-            f"Finished. Saved {len(representations)} items to {output_path}"
-        )
+        logger.info(f"Finished. Saved {len(representations)} items to {output_path}")
         return representations, failed_items
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default="Instruments")
-    parser.add_argument(
-        "--model", type=str, default="Qwen/Qwen2-VL-2B-Instruct"
-    )
+    parser.add_argument("--model", type=str, default="Qwen/Qwen2-VL-2B-Instruct")
     parser.add_argument("--out-dir", type=str, default="reps")
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument(
@@ -654,9 +610,7 @@ def main():
         image_only=args.image_only,
     )
 
-    extractor.run(
-        dataset_path=dataset_path, output_path=out_path, limit=args.limit
-    )
+    extractor.run(dataset_path=dataset_path, output_path=out_path, limit=args.limit)
 
 
 if __name__ == "__main__":

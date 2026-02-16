@@ -99,9 +99,7 @@ class Phi3ImageEmbedding(nn.Module):
         super().__init__()
 
         # n_embed or hidden_size
-        hidden_size = (
-            config.n_embd if hasattr(config, "n_embd") else config.hidden_size
-        )
+        hidden_size = config.n_embd if hasattr(config, "n_embd") else config.hidden_size
         if hasattr(config, "embd_pdrop") or hasattr(config, "embed_pdrop"):
             embd_drop = (
                 config.embd_pdrop
@@ -152,25 +150,17 @@ class Phi3ImageEmbedding(nn.Module):
 
         # global_gn and sub_gn for hd transform, serves as line separator
         self.use_hd_transform = kwargs.get("use_hd_transform", False)
-        self.with_learnable_separator = kwargs.get(
-            "with_learnable_separator", False
-        )
+        self.with_learnable_separator = kwargs.get("with_learnable_separator", False)
         self.hd_transform_order = kwargs.get("hd_transform_order", "glb_sub")
         # with_hd_transform and with_learnable_separator should have same value
         assert self.use_hd_transform == self.with_learnable_separator, (
             "use_hd_transform and with_learnable_separator should have same value"
         )
         if self.with_learnable_separator:
-            assert self.use_hd_transform, (
-                "learnable separator is only for hd transform"
-            )
+            assert self.use_hd_transform, "learnable separator is only for hd transform"
             # 1024 * 4, merge spatial to channel dimension
-            self.glb_GN = nn.Parameter(
-                torch.zeros([1, 1, self.image_dim_out * 4])
-            )
-            self.sub_GN = nn.Parameter(
-                torch.zeros([1, 1, 1, self.image_dim_out * 4])
-            )
+            self.glb_GN = nn.Parameter(torch.zeros([1, 1, self.image_dim_out * 4]))
+            self.sub_GN = nn.Parameter(torch.zeros([1, 1, 1, self.image_dim_out * 4]))
             logger.info(
                 f"learnable separator enabled for hd transform, hd_transform_order = {self.hd_transform_order}"
             )
@@ -183,18 +173,14 @@ class Phi3ImageEmbedding(nn.Module):
             depth = 2
             layers = [nn.Linear(image_dim_out * 4, dim_projection)]
             for _ in range(1, depth):
-                layers.extend(
-                    [nn.GELU(), nn.Linear(dim_projection, dim_projection)]
-                )
+                layers.extend([nn.GELU(), nn.Linear(dim_projection, dim_projection)])
             self.img_projection = nn.Sequential(*layers)
         elif projection_cls == "mlp":
             dim_projection = hidden_size
             depth = 2
             layers = [nn.Linear(image_dim_out, dim_projection)]
             for _ in range(1, depth):
-                layers.extend(
-                    [nn.GELU(), nn.Linear(dim_projection, dim_projection)]
-                )
+                layers.extend([nn.GELU(), nn.Linear(dim_projection, dim_projection)])
             self.img_projection = nn.Sequential(*layers)
         else:
             raise NotImplementedError(
@@ -206,9 +192,7 @@ class Phi3ImageEmbedding(nn.Module):
 
         if isinstance(config.img_processor, dict):
             self.layer_idx = config.img_processor.get("layer_idx", -2)
-            self.type_feature = config.img_processor.get(
-                "type_feature", "patch"
-            )
+            self.type_feature = config.img_processor.get("type_feature", "patch")
         else:
             self.layer_idx = -2
             self.type_feature = "patch"
@@ -219,15 +203,11 @@ class Phi3ImageEmbedding(nn.Module):
     def set_img_sizes(self, img_sizes: torch.LongTensor) -> None:
         self.img_sizes = img_sizes
 
-    def get_img_features(
-        self, img_embeds: torch.FloatTensor
-    ) -> torch.FloatTensor:
+    def get_img_features(self, img_embeds: torch.FloatTensor) -> torch.FloatTensor:
         LAYER_IDX = self.layer_idx
         TYPE_FEATURE = self.type_feature
 
-        img_processor_output = self.img_processor(
-            img_embeds, output_hidden_states=True
-        )
+        img_processor_output = self.img_processor(img_embeds, output_hidden_states=True)
         img_feature = img_processor_output.hidden_states[LAYER_IDX]
 
         if TYPE_FEATURE == "patch":
@@ -268,13 +248,11 @@ class Phi3ImageEmbedding(nn.Module):
             assert c == 3 and h == w == 336
             # pixel_values.shape=(num_images, num_crops, channel, height, width)
             # img_features.shape=(num_images, num_crops, 576=24*24, hidden_dim)
-            img_features = self.get_img_features(
-                pixel_values.flatten(0, 1)
-            ).reshape(num_images, num_crops, -1, self.image_dim_out)
-            # image_features_proj.shape=(1514,3072)=[BS*(num_token_crops+1+num_token_global),3072]
-            image_features_proj = self.hd_feature_transform(
-                img_features, image_sizes
+            img_features = self.get_img_features(pixel_values.flatten(0, 1)).reshape(
+                num_images, num_crops, -1, self.image_dim_out
             )
+            # image_features_proj.shape=(1514,3072)=[BS*(num_token_crops+1+num_token_global),3072]
+            image_features_proj = self.hd_feature_transform(img_features, image_sizes)
             # simply assign (accumulate=False) image_features_proj=(2,757,3072) into hidden_states=(2,784,3072), offset by 1 token. So hidden_states[:,1:758,:] becomes image_features_proj
             hidden_states = hidden_states.index_put(
                 positions, image_features_proj, accumulate=False
@@ -299,9 +277,7 @@ class Phi3ImageEmbedding(nn.Module):
             target_device = self.img_projection.bias.device
             target_dtype = self.img_projection.bias.dtype
 
-        global_image_features = image_features[
-            :, 0
-        ]  # (num_images, 24*24, 1024)
+        global_image_features = image_features[:, 0]  # (num_images, 24*24, 1024)
         # global feature can be viewed as a special HD case with num_crops 1x1
         global_image_features_hd = self.reshape_hd_patches_2x2merge(
             global_image_features, 1, 1
@@ -351,9 +327,7 @@ class Phi3ImageEmbedding(nn.Module):
         # concatenate embeddings of all images (both HD crops and global thumbnails) in the batch
         #  [BS*(num_token_crops+1+num_token_global),4096]=[BS*(600+1+156),4096]=[BS*757,4096]->[BS*757,3072]
         image_features_proj = self.img_projection(
-            torch.cat(all_image_embeddings, dim=0)
-            .to(target_device)
-            .to(target_dtype)
+            torch.cat(all_image_embeddings, dim=0).to(target_device).to(target_dtype)
         )
         return image_features_proj
 

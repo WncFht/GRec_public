@@ -385,9 +385,7 @@ LLAVA_NEXT_INPUTS_DOCSTRING = r"""
     """The LLAVA-NeXT model which consists of a vision backbone and a language model.""",
     LLAVA_NEXT_START_DOCSTRING,
 )
-class LlavaNextForConditionalGeneration(
-    LlavaNextPreTrainedModel, GenerationMixin
-):
+class LlavaNextForConditionalGeneration(LlavaNextPreTrainedModel, GenerationMixin):
     def __init__(self, config: LlavaNextConfig):
         super().__init__(config)
         self.vision_tower = AutoModel.from_config(config.vision_config)
@@ -395,8 +393,7 @@ class LlavaNextForConditionalGeneration(
         self.multi_modal_projector = LlavaNextMultiModalProjector(config)
         embed_std = 1 / math.sqrt(config.text_config.hidden_size)
         self.image_newline = nn.Parameter(
-            torch.randn(config.text_config.hidden_size, dtype=self.dtype)
-            * embed_std
+            torch.randn(config.text_config.hidden_size, dtype=self.dtype) * embed_std
         )
 
         self.vocab_size = config.text_config.vocab_size
@@ -404,9 +401,7 @@ class LlavaNextForConditionalGeneration(
             config.text_config, attn_implementation=config._attn_implementation
         )
         self.pad_token_id = (
-            self.config.pad_token_id
-            if self.config.pad_token_id is not None
-            else -1
+            self.config.pad_token_id if self.config.pad_token_id is not None else -1
         )
         self._padding_side = "left"  # set it to left by default, user can use setter to change padding_sides
         self.post_init()
@@ -569,9 +564,7 @@ class LlavaNextForConditionalGeneration(
             else self.config.image_token_index
         )
         ignore_index = (
-            ignore_index
-            if ignore_index is not None
-            else self.config.ignore_index
+            ignore_index if ignore_index is not None else self.config.ignore_index
         )
 
         if self.training and self.padding_side == "left":
@@ -614,9 +607,7 @@ class LlavaNextForConditionalGeneration(
             # 1. Create a mask to know where special image tokens are
             special_image_token_mask = input_ids == image_token_index
             # special_image_token_mask: [bsz, seqlen]
-            num_special_image_tokens = torch.sum(
-                special_image_token_mask, dim=-1
-            )
+            num_special_image_tokens = torch.sum(special_image_token_mask, dim=-1)
             # num_special_image_tokens: [bsz]
             # Reserve for padding of num_images
             total_num_special_image_tokens = torch.sum(special_image_token_mask)
@@ -654,22 +645,14 @@ class LlavaNextForConditionalGeneration(
             # ! instead of special_image_token_mask * (num_image_patches - 1)
             #   special_image_token_mask * (num_feature_len - 1)
             special_image_token_mask = special_image_token_mask.long()
-            special_image_token_mask[special_image_token_mask == 1] = (
-                feature_lens - 1
-            )
-            new_token_positions = (
-                torch.cumsum((special_image_token_mask + 1), -1) - 1
-            )
+            special_image_token_mask[special_image_token_mask == 1] = feature_lens - 1
+            new_token_positions = torch.cumsum((special_image_token_mask + 1), -1) - 1
             if left_padding:
                 # shift right token positions so that they are ending at the same number
                 # the below here was incorrect? new_token_positions += new_token_positions[:, -1].max() - new_token_positions[:, -1:]
-                new_token_positions += (
-                    max_embed_dim - 1 - new_token_positions[:, -1:]
-                )
+                new_token_positions += max_embed_dim - 1 - new_token_positions[:, -1:]
 
-            text_to_overwrite = new_token_positions[
-                batch_indices, non_image_indices
-            ]
+            text_to_overwrite = new_token_positions[batch_indices, non_image_indices]
 
         # 3. Create the full embedding, already padded to the maximum position
         final_embedding = torch.zeros(
@@ -716,9 +699,9 @@ class LlavaNextForConditionalGeneration(
         final_labels = None
         if labels is not None:
             labels = labels.to(target_device)
-            final_labels = torch.full_like(
-                final_attention_mask, ignore_index
-            ).to(torch.long)
+            final_labels = torch.full_like(final_attention_mask, ignore_index).to(
+                torch.long
+            )
             final_labels[batch_indices, text_to_overwrite] = labels[
                 batch_indices, non_image_indices
             ]
@@ -732,9 +715,7 @@ class LlavaNextForConditionalGeneration(
                 device=inputs_embeds.device,
             )
             image_to_overwrite[batch_indices, text_to_overwrite] = False
-            embed_indices = (
-                torch.arange(max_embed_dim).unsqueeze(0).to(target_device)
-            )
+            embed_indices = torch.arange(max_embed_dim).unsqueeze(0).to(target_device)
             embed_indices = embed_indices.expand(batch_size, max_embed_dim)
             embed_seq_lens = embed_sequence_lengths[:, None].to(target_device)
 
@@ -823,13 +804,9 @@ class LlavaNextForConditionalGeneration(
                 image_feature = image_feature.view(
                     num_patch_height, num_patch_width, height, width, -1
                 )
-                image_feature = image_feature.permute(
-                    4, 0, 2, 1, 3
-                ).contiguous()
+                image_feature = image_feature.permute(4, 0, 2, 1, 3).contiguous()
                 image_feature = image_feature.flatten(1, 2).flatten(2, 3)
-                image_feature = unpad_image(
-                    image_feature, image_sizes[image_idx]
-                )
+                image_feature = unpad_image(image_feature, image_sizes[image_idx])
                 if image_newline is not None:
                     image_feature = torch.cat(
                         (
@@ -841,9 +818,7 @@ class LlavaNextForConditionalGeneration(
                         dim=-1,
                     )
                 image_feature = image_feature.flatten(1, 2).transpose(0, 1)
-                image_feature = torch.cat(
-                    (base_image_feature, image_feature), dim=0
-                )
+                image_feature = torch.cat((base_image_feature, image_feature), dim=0)
             else:
                 image_feature = image_feature[0]
                 if image_newline is not None:
@@ -932,9 +907,7 @@ class LlavaNextForConditionalGeneration(
             else self.config.output_hidden_states
         )
         return_dict = (
-            return_dict
-            if return_dict is not None
-            else self.config.use_return_dict
+            return_dict if return_dict is not None else self.config.use_return_dict
         )
         vision_feature_layer = (
             vision_feature_layer
@@ -1001,20 +974,14 @@ class LlavaNextForConditionalGeneration(
                     f"pixel_values of shape {pixel_values.shape}, expect to be of 4 or 5 dimensions"
                 )
 
-            image_features = self.vision_tower(
-                pixel_values, output_hidden_states=True
-            )
-            selected_image_feature = image_features.hidden_states[
-                vision_feature_layer
-            ]
+            image_features = self.vision_tower(pixel_values, output_hidden_states=True)
+            selected_image_feature = image_features.hidden_states[vision_feature_layer]
             if vision_feature_select_strategy == "default":
                 selected_image_feature = selected_image_feature[:, 1:]
             elif vision_feature_select_strategy == "full":
                 selected_image_feature = selected_image_feature
             image_features = self.multi_modal_projector(selected_image_feature)
-            image_features = torch.split(
-                image_features, image_num_patches, dim=0
-            )
+            image_features = torch.split(image_features, image_num_patches, dim=0)
 
             # NOTE we only support multimodal_patch_merge_type == "spatial_unpad"
             image_features, feature_lens = self.pack_image_features(
@@ -1049,9 +1016,7 @@ class LlavaNextForConditionalGeneration(
                 else:
                     # Retrieve the first layer to inspect the logits and mask out the hidden states
                     # that are set to 0
-                    first_layer_past_key_value = past_key_values[0][0][
-                        :, :, :, 0
-                    ]
+                    first_layer_past_key_value = past_key_values[0][0][:, :, :, 0]
 
                     # Sum all dimensions of head_dim (-2) to avoid random errors such as: https://github.com/huggingface/transformers/pull/28032#issuecomment-1863691941
                     batch_index, non_attended_tokens = torch.where(
@@ -1071,8 +1036,8 @@ class LlavaNextForConditionalGeneration(
                     # Filter out only the tokens that can be un-attended, this can happen
                     # if one uses Llava + Fused modules where the cache on the
                     # first iteration is already big enough, or if one passes custom cache
-                    valid_indices = (
-                        non_attended_tokens < extended_attention_mask.size(-1)
+                    valid_indices = non_attended_tokens < extended_attention_mask.size(
+                        -1
                     )
                     new_batch_index = batch_index[valid_indices]
                     new_non_attended_tokens = non_attended_tokens[valid_indices]
@@ -1088,9 +1053,7 @@ class LlavaNextForConditionalGeneration(
                         ),
                         dim=1,
                     )
-                    position_ids = (
-                        torch.sum(attention_mask, dim=1).unsqueeze(-1) - 1
-                    )
+                    position_ids = torch.sum(attention_mask, dim=1).unsqueeze(-1) - 1
                     cache_position = torch.arange(
                         attention_mask.shape[1], device=attention_mask.device
                     )[-target_length:]

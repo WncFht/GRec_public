@@ -158,9 +158,7 @@ class Phi3VImageProcessor(BaseImageProcessor):
     ) -> None:
         super().__init__(**kwargs)
         self.num_crops = num_crops
-        self.image_mean = (
-            image_mean if image_mean is not None else OPENAI_CLIP_MEAN
-        )
+        self.image_mean = image_mean if image_mean is not None else OPENAI_CLIP_MEAN
         self.image_std = image_std if image_std is not None else OPENAI_CLIP_STD
         self.do_convert_rgb = do_convert_rgb
 
@@ -243,9 +241,7 @@ class Phi3VImageProcessor(BaseImageProcessor):
         image_mean = image_mean if image_mean is not None else self.image_mean
         image_std = image_std if image_std is not None else self.image_std
         do_convert_rgb = (
-            do_convert_rgb
-            if do_convert_rgb is not None
-            else self.do_convert_rgb
+            do_convert_rgb if do_convert_rgb is not None else self.do_convert_rgb
         )
 
         images = make_list_of_images(images)
@@ -302,9 +298,7 @@ class Phi3VImageProcessor(BaseImageProcessor):
         # concat global image and local image
         hd_images_reshape = [
             torch.cat([_global_image] + [_im], dim=0)
-            for _global_image, _im in zip(
-                global_image, hd_images_reshape, strict=False
-            )
+            for _global_image, _im in zip(global_image, hd_images_reshape, strict=False)
         ]
 
         # pad to max_num_crops

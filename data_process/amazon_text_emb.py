@@ -43,9 +43,7 @@ def preprocess_text(args):
     return item_text_list
 
 
-def generate_item_embedding(
-    args, item_text_list, tokenizer, model, word_drop_ratio=-1
-):
+def generate_item_embedding(args, item_text_list, tokenizer, model, word_drop_ratio=-1):
     print("Generate Text Embedding: ")
     print(" Dataset: ", args.dataset)
 
@@ -104,9 +102,7 @@ def generate_item_embedding(
                 mean_output = mean_output.detach().cpu()
                 field_embeddings.append(mean_output)
 
-            field_mean_embedding = torch.stack(field_embeddings, dim=0).mean(
-                dim=0
-            )
+            field_mean_embedding = torch.stack(field_embeddings, dim=0).mean(dim=0)
             embeddings.append(field_mean_embedding)
             start += batch_size
 
@@ -125,9 +121,7 @@ def parse_args():
         "--dataset", type=str, default="Arts", help="Instruments / Arts / Games"
     )
     parser.add_argument("--root", type=str, default="")
-    parser.add_argument(
-        "--gpu_id", type=int, default=2, help="ID of running GPU"
-    )
+    parser.add_argument("--gpu_id", type=int, default=2, help="ID of running GPU")
     parser.add_argument("--plm_name", type=str, default="llama")
     parser.add_argument("--plm_checkpoint", type=str, default="")
     parser.add_argument("--max_sent_len", type=int, default=2048)

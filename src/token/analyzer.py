@@ -37,9 +37,7 @@ def unicode_to_bytes() -> dict[str, bytes]:
     return {v: bytes([k]) for k, v in bytes_to_unicode().items()}
 
 
-def cvt_readable_vocab(
-    tokenizer, save_path: str | None = None
-) -> dict[int, str]:
+def cvt_readable_vocab(tokenizer, save_path: str | None = None) -> dict[int, str]:
     """Get readable vocab from tokenizer and save it to a json file"""
     reversed_vocab = {v: k for k, v in tokenizer.vocab.items()}
     added_tokens = tokenizer.added_tokens_encoder
@@ -164,18 +162,13 @@ def plot_vocab_by_lang(
     is_sorted: bool = True,
 ) -> None:
     lang_counts = {lang: len(vocab) for lang, vocab in vocab_by_lang.items()}
-    print(
-        f"total vocab: {sum(lang_counts.values())}\n"
-        f"Other: {lang_counts['Other']}"
-    )
+    print(f"total vocab: {sum(lang_counts.values())}\nOther: {lang_counts['Other']}")
     # plot pie chart and bar chart
     fig, ax = plt.subplots(1, 2, figsize=(20, 10))
     if is_sorted:
         lang_counts = {
             k: v
-            for k, v in sorted(
-                lang_counts.items(), key=lambda x: x[1], reverse=True
-            )
+            for k, v in sorted(lang_counts.items(), key=lambda x: x[1], reverse=True)
         }
 
     ax[0].pie(
@@ -253,9 +246,7 @@ def tsne(ebd: torch.Tensor, pca_dim: int = None, save_path: str = None) -> None:
         pca = PCA(n_components=pca_dim)
         ebd = pca.fit_transform(ebd)
 
-    tsne = TSNE(
-        n_components=2, verbose=1, perplexity=40, n_iter=400, metric="cosine"
-    )
+    tsne = TSNE(n_components=2, verbose=1, perplexity=40, n_iter=400, metric="cosine")
     tsne_results = tsne.fit_transform(ebd)
 
     if save_path is not None:

@@ -67,4 +67,3 @@ docker exec -it unifymmgrec-container fish
 - `flash-attn`：对 `torch/cuda/gcc` 版本较敏感；装不上时可先跳过（`requirements.txt` 中默认未强依赖）。
 - `deepspeed`：首次安装可能会编译扩展，耗时较长；建议在稳定的编译工具链环境下安装（Docker/Conda 更稳）。
 - `scripts/`：大多数 `.sh` 脚本是“可运行模板”，里面可能包含作者本地路径/环境变量；首次使用请把 `DATA_PATH/CKPT_PATH/BASE_MODEL` 等路径改成你自己的。
-

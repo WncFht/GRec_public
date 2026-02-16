@@ -16,9 +16,7 @@ from utils import (
 
 
 def get_intention_train(args, inters, item2feature, reviews, api_info):
-    intention_train_output_file = os.path.join(
-        args.root, "intention_train.json"
-    )
+    intention_train_output_file = os.path.join(args.root, "intention_train.json")
 
     # Suggest modifying the prompt based on different datasets
     prompt = intention_prompt
@@ -73,13 +71,9 @@ def get_intention_train(args, inters, item2feature, reviews, api_info):
 
                 if answer.strip().count("\n") != 1:
                     if "haracteristics:" in answer:
-                        answer = answer.strip().split(
-                            "The item's characteristics:"
-                        )
+                        answer = answer.strip().split("The item's characteristics:")
                     else:
-                        answer = answer.strip().split(
-                            "The item's characteristic:"
-                        )
+                        answer = answer.strip().split("The item's characteristic:")
                 else:
                     answer = answer.strip().split("\n")
 
@@ -178,13 +172,9 @@ def get_intention_test(args, inters, item2feature, reviews, api_info):
 
                 if answer.strip().count("\n") != 1:
                     if "haracteristics:" in answer:
-                        answer = answer.strip().split(
-                            "The item's characteristics:"
-                        )
+                        answer = answer.strip().split("The item's characteristics:")
                     else:
-                        answer = answer.strip().split(
-                            "The item's characteristic:"
-                        )
+                        answer = answer.strip().split("The item's characteristic:")
                 else:
                     answer = answer.strip().split("\n")
 
@@ -250,9 +240,7 @@ def get_user_preference(args, inters, item2feature, reviews, api_info):
         history = item_list[:-3]
         item_titles = []
         for j, item in enumerate(history):
-            item_titles.append(
-                str(j + 1) + "." + item2feature[str(item)]["title"]
-            )
+            item_titles.append(str(j + 1) + "." + item2feature[str(item)]["title"])
         if len(item_titles) > args.max_his_len:
             item_titles = item_titles[-args.max_his_len :]
         item_titles = ", ".join(item_titles)
@@ -305,13 +293,9 @@ def get_user_preference(args, inters, item2feature, reviews, api_info):
 
                 if answer_2.strip().count("\n") != 1:
                     if "references:" in answer_2:
-                        answer_2 = answer_2.strip().split(
-                            "Short-term preferences:"
-                        )
+                        answer_2 = answer_2.strip().split("Short-term preferences:")
                     else:
-                        answer_2 = answer_2.strip().split(
-                            "Short-term preference:"
-                        )
+                        answer_2 = answer_2.strip().split("Short-term preference:")
                 else:
                     answer_2 = answer_2.strip().split("\n")
 
@@ -445,6 +429,4 @@ if __name__ == "__main__":
         },
     }
 
-    write_json_file(
-        user_dict, os.path.join(args.root, f"{args.dataset}.user.json")
-    )
+    write_json_file(user_dict, os.path.join(args.root, f"{args.dataset}.user.json"))

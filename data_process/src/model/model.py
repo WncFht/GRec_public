@@ -83,9 +83,7 @@ class MMEBModel(nn.Module):
                 pooled_output = self.encoder.text_proj(pooled_text_embeds)
                 pooled_output /= pooled_output.norm(dim=-1, keepdim=True)
                 return pooled_output
-            _, vfeat = self.encoder.encode_vision(
-                input["pixel_values"], test=True
-            )
+            _, vfeat = self.encoder.encode_vision(input["pixel_values"], test=True)
             vfeat = self.encoder.vision_proj(vfeat)
             vfeat /= vfeat.norm(dim=-1, keepdim=True)
             return vfeat
@@ -126,9 +124,7 @@ class MMEBModel(nn.Module):
                 **input, return_dict=True, output_hidden_states=True
             )
             hidden_states = hidden_states.hidden_states[-1]
-            pooled_output = self._pooling(
-                hidden_states, input["attention_mask"]
-            )
+            pooled_output = self._pooling(hidden_states, input["attention_mask"])
             return pooled_output
         hidden_states = self.encoder(
             **input, return_dict=True, output_hidden_states=True
@@ -139,9 +135,7 @@ class MMEBModel(nn.Module):
 
     def _pooling(self, last_hidden_state, attention_mask):
         if self.pooling == "last" or self.pooling == "eos":
-            left_padding = (
-                attention_mask[:, -1].sum() == attention_mask.shape[0]
-            )
+            left_padding = attention_mask[:, -1].sum() == attention_mask.shape[0]
             batch_size = last_hidden_state.shape[0]
             if left_padding:
                 # Get the vectors at the last position
@@ -211,12 +205,8 @@ class MMEBModel(nn.Module):
 
             lm_qwen_layer = 28
             vis_qwen_layer = 32
-            lm_skip_layer = parse_layer_type(
-                model_args.lm_skip_layer, lm_qwen_layer
-            )
-            vis_skip_layer = parse_layer_type(
-                model_args.vis_skip_layer, vis_qwen_layer
-            )
+            lm_skip_layer = parse_layer_type(model_args.lm_skip_layer, lm_qwen_layer)
+            vis_skip_layer = parse_layer_type(model_args.vis_skip_layer, vis_qwen_layer)
 
             base_model = backbone2model[model_backbone].from_pretrained(
                 model_args.model_name,
@@ -272,13 +262,8 @@ class MMEBModel(nn.Module):
             if model_args.checkpoint_path
             else model_args.model_name
         )
-        config = AutoConfig.from_pretrained(
-            model_name_or_path, trust_remote_code=True
-        )
-        if (
-            not hasattr(model_args, "model_backbone")
-            or not model_args.model_backbone
-        ):
+        config = AutoConfig.from_pretrained(model_name_or_path, trust_remote_code=True)
+        if not hasattr(model_args, "model_backbone") or not model_args.model_backbone:
             model_backbone = get_backbone_name(
                 hf_config=config, model_type=model_args.model_type
             )
@@ -299,9 +284,7 @@ class MMEBModel(nn.Module):
             )
             config._attn_implementation = "flash_attention_2"
             config.vision_config._attn_implementation = "flash_attention_2"
-            base_model = backbone2model[
-                model_args.model_backbone
-            ].from_pretrained(
+            base_model = backbone2model[model_args.model_backbone].from_pretrained(
                 model_args.model_name,
                 torch_dtype=torch.bfloat16,
                 low_cpu_mem_usage=True,
@@ -328,9 +311,7 @@ class MMEBModel(nn.Module):
             config = AutoConfig.from_pretrained(
                 "src/model/vlm_backbone/internvideo2/", trust_remote_code=True
             )
-            base_model = backbone2model[
-                model_args.model_backbone
-            ].from_pretrained(
+            base_model = backbone2model[model_args.model_backbone].from_pretrained(
                 "src/model/vlm_backbone/internvideo2/",
                 config=config,
                 trust_remote_code=True,
@@ -407,12 +388,8 @@ class MMEBModel(nn.Module):
         *args,
         **kwargs,
     ):
-        qry_reps = (
-            self.encode_input(qry) if qry else None
-        )  # (bsz_per_device, dim)
-        tgt_reps = (
-            self.encode_input(tgt) if tgt else None
-        )  # (bsz_per_device, dim)
+        qry_reps = self.encode_input(qry) if qry else None  # (bsz_per_device, dim)
+        tgt_reps = self.encode_input(tgt) if tgt else None  # (bsz_per_device, dim)
 
         if qry_reps is None or tgt_reps is None:
             return {"qry_reps": qry_reps, "tgt_reps": tgt_reps}
@@ -426,9 +403,7 @@ class MMEBModel(nn.Module):
 
         scores = self.compute_similarity(all_qry_reps, all_tgt_reps)
         scores = scores.view(all_qry_reps.size(0), -1)
-        target = torch.arange(
-            scores.size(0), device=scores.device, dtype=torch.long
-        )
+        target = torch.arange(scores.size(0), device=scores.device, dtype=torch.long)
         target = target * (all_qry_reps.size(0) // all_tgt_reps.size(0))
         loss = self.cross_entropy(scores / self.temperature, target)
         if self.is_ddp:

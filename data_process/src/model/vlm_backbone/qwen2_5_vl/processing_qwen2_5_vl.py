@@ -97,9 +97,7 @@ class Qwen2_5_VLProcessor(ProcessorMixin):
             if not hasattr(tokenizer, "video_token")
             else tokenizer.video_token
         )
-        super().__init__(
-            image_processor, tokenizer, chat_template=chat_template
-        )
+        super().__init__(image_processor, tokenizer, chat_template=chat_template)
 
     @staticmethod
     def get_possibly_dynamic_module(module_name):
@@ -187,8 +185,7 @@ class Qwen2_5_VLProcessor(ProcessorMixin):
                 ] * len(video_grid_thw)
             elif hasattr(fps, "__len__") and len(fps) == len(video_grid_thw):
                 second_per_grid_ts = [
-                    self.image_processor.temporal_patch_size / tmp
-                    for tmp in fps
+                    self.image_processor.temporal_patch_size / tmp for tmp in fps
                 ]
             else:
                 raise ValueError(
@@ -233,9 +230,7 @@ class Qwen2_5_VLProcessor(ProcessorMixin):
 
         text_inputs = self.tokenizer(text, **output_kwargs["text_kwargs"])
 
-        return BatchFeature(
-            data={**text_inputs, **image_inputs, **videos_inputs}
-        )
+        return BatchFeature(data={**text_inputs, **image_inputs, **videos_inputs})
 
     def batch_decode(self, *args, **kwargs):
         """
@@ -274,9 +269,7 @@ class Qwen2_5_VLProcessor(ProcessorMixin):
     def model_input_names(self):
         tokenizer_input_names = self.tokenizer.model_input_names
         image_processor_input_names = self.image_processor.model_input_names
-        return list(
-            dict.fromkeys(tokenizer_input_names + image_processor_input_names)
-        )
+        return list(dict.fromkeys(tokenizer_input_names + image_processor_input_names))
 
 
 __all__ = ["Qwen2_5_VLProcessor"]

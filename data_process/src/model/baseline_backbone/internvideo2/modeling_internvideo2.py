@@ -94,9 +94,7 @@ class FlashAttention(nn.Module):
             else:
                 nheads = qkv.shape[-2]
                 x = rearrange(qkv, "b s three h d -> b s (three h d)")
-                x_unpad, indices, cu_seqlens, max_s = unpad_input(
-                    x, key_padding_mask
-                )
+                x_unpad, indices, cu_seqlens, max_s = unpad_input(x, key_padding_mask)
                 x_unpad = rearrange(
                     x_unpad,
                     "nnz (three h d) -> nnz three h d",
@@ -155,9 +153,7 @@ def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False):
     grid = grid.reshape([2, 1, grid_size, grid_size])
     pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid)
     if cls_token:
-        pos_embed = np.concatenate(
-            [np.zeros([1, embed_dim]), pos_embed], axis=0
-        )
+        pos_embed = np.concatenate([np.zeros([1, embed_dim]), pos_embed], axis=0)
     return pos_embed
 
 
@@ -170,9 +166,7 @@ def get_1d_sincos_pos_embed(embed_dim, t_size, cls_token=False):
     grid_t = np.arange(t_size, dtype=np.float32)
     pos_embed = get_1d_sincos_pos_embed_from_grid(embed_dim, grid_t)
     if cls_token:
-        pos_embed = np.concatenate(
-            [np.zeros([1, embed_dim]), pos_embed], axis=0
-        )
+        pos_embed = np.concatenate([np.zeros([1, embed_dim]), pos_embed], axis=0)
     return pos_embed
 
 
@@ -180,12 +174,8 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
     assert embed_dim % 2 == 0
 
     # use half of dimensions to encode grid_h
-    emb_h = get_1d_sincos_pos_embed_from_grid(
-        embed_dim // 2, grid[0]
-    )  # (H*W, D/2)
-    emb_w = get_1d_sincos_pos_embed_from_grid(
-        embed_dim // 2, grid[1]
-    )  # (H*W, D/2)
+    emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])  # (H*W, D/2)
+    emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  # (H*W, D/2)
 
     emb = np.concatenate([emb_h, emb_w], axis=1)  # (H*W, D)
     return emb
@@ -225,10 +215,7 @@ def interpolate_pos_embed(
         new_t_size = model.T
         # height (== width) for the checkpoint position embedding
         orig_size = int(
-            (
-                (pos_embed_checkpoint.shape[-2] - num_extra_tokens)
-                // (orig_t_size)
-            )
+            ((pos_embed_checkpoint.shape[-2] - num_extra_tokens) // (orig_t_size))
             ** 0.5
         )
         # height (== width) for the new position embedding
@@ -251,9 +238,7 @@ def interpolate_pos_embed(
                 pos_tokens, size=new_t_size, mode="linear"
             )
             pos_tokens = pos_tokens.view(1, -1, embedding_size, new_t_size)
-            pos_tokens = pos_tokens.permute(0, 3, 1, 2).reshape(
-                1, -1, embedding_size
-            )
+            pos_tokens = pos_tokens.permute(0, 3, 1, 2).reshape(1, -1, embedding_size)
             new_pos_embed = torch.cat((extra_tokens, pos_tokens), dim=1)
             checkpoint_model[pos_name] = new_pos_embed
             pos_embed_checkpoint = new_pos_embed
@@ -302,10 +287,7 @@ def interpolate_pos_embed_internvideo2(checkpoint_model, model, orig_t_size=8):
             new_t_size = model.num_frames // model.tubelet_size
             # height (== width) for the checkpoint position embedding
             orig_size = int(
-                (
-                    (pos_embed_checkpoint.shape[-2] - num_extra_tokens)
-                    // (orig_t_size)
-                )
+                ((pos_embed_checkpoint.shape[-2] - num_extra_tokens) // (orig_t_size))
                 ** 0.5
             )
             # height (== width) for the new position embedding
@@ -371,14 +353,10 @@ def interpolate_pos_embed_internvideo2(checkpoint_model, model, orig_t_size=8):
         raise NotImplementedError
 
 
-def interpolate_pos_embed_internvideo2_new(
-    checkpoint_model, model, orig_t_size=8
-):
+def interpolate_pos_embed_internvideo2_new(checkpoint_model, model, orig_t_size=8):
     pos_names = []
     for k in checkpoint_model.keys():
-        if (
-            "pos_embed" in k or "clip_pos_embed" in k
-        ) and "img_pos_embed" not in k:
+        if ("pos_embed" in k or "clip_pos_embed" in k) and "img_pos_embed" not in k:
             pos_names.append(k)
 
     print(f"pos names list for interpolating: {pos_names}")
@@ -403,10 +381,7 @@ def interpolate_pos_embed_internvideo2_new(
         new_t_size = model.num_frames // model.tubelet_size
         # height (== width) for the checkpoint position embedding
         orig_size = int(
-            (
-                (pos_embed_checkpoint.shape[-2] - num_extra_tokens)
-                // (orig_t_size)
-            )
+            ((pos_embed_checkpoint.shape[-2] - num_extra_tokens) // (orig_t_size))
             ** 0.5
         )
         # height (== width) for the new position embedding
@@ -429,9 +404,7 @@ def interpolate_pos_embed_internvideo2_new(
                 pos_tokens, size=new_t_size, mode="linear"
             )
             pos_tokens = pos_tokens.view(1, -1, embedding_size, new_t_size)
-            pos_tokens = pos_tokens.permute(0, 3, 1, 2).reshape(
-                1, -1, embedding_size
-            )
+            pos_tokens = pos_tokens.permute(0, 3, 1, 2).reshape(1, -1, embedding_size)
             new_pos_embed = torch.cat((extra_tokens, pos_tokens), dim=1)
             checkpoint_model[pos_name] = new_pos_embed
             pos_embed_checkpoint = new_pos_embed
@@ -484,15 +457,11 @@ def get_3d_sincos_pos_embed(embed_dim, grid_size, t_size, cls_token=False):
     grid = np.stack(grid, axis=0)
 
     grid = grid.reshape([2, 1, grid_size, grid_size])
-    pos_embed_spatial = get_2d_sincos_pos_embed_from_grid(
-        embed_dim_spatial, grid
-    )
+    pos_embed_spatial = get_2d_sincos_pos_embed_from_grid(embed_dim_spatial, grid)
 
     # temporal
     grid_t = np.arange(t_size, dtype=np.float32)
-    pos_embed_temporal = get_1d_sincos_pos_embed_from_grid(
-        embed_dim_temporal, grid_t
-    )
+    pos_embed_temporal = get_1d_sincos_pos_embed_from_grid(embed_dim_temporal, grid_t)
 
     # concate: [T, H, W] order
     pos_embed_temporal = pos_embed_temporal[:, np.newaxis, :]
@@ -508,9 +477,7 @@ def get_3d_sincos_pos_embed(embed_dim, grid_size, t_size, cls_token=False):
     pos_embed = pos_embed.reshape([-1, embed_dim])  # [T*H*W, D]
 
     if cls_token:
-        pos_embed = np.concatenate(
-            [np.zeros([1, embed_dim]), pos_embed], axis=0
-        )
+        pos_embed = np.concatenate([np.zeros([1, embed_dim]), pos_embed], axis=0)
     return pos_embed
 
 
@@ -524,9 +491,7 @@ class RMSNorm(nn.Module):
         input_dtype = hidden_states.dtype
         hidden_states = hidden_states.to(torch.float32)
         variance = hidden_states.pow(2).mean(-1, keepdim=True)
-        hidden_states = hidden_states * torch.rsqrt(
-            variance + self.variance_epsilon
-        )
+        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
         return self.weight * hidden_states.to(input_dtype)
 
 
@@ -553,9 +518,7 @@ class PatchEmbed(nn.Module):
             img_size[0] // patch_size[0],
             img_size[1] // patch_size[1],
         )  # (T, H, W)
-        self.num_patches = (
-            self.grid_size[0] * self.grid_size[1] * self.grid_size[2]
-        )
+        self.num_patches = self.grid_size[0] * self.grid_size[1] * self.grid_size[2]
         self.num_img_patches = self.grid_size[1] * self.grid_size[2]
 
         self.proj = nn.Conv3d(
@@ -626,24 +589,14 @@ class CrossAttention(nn.Module):
 
         q = F.linear(input=x, weight=self.q.weight, bias=q_bias)
         q = (
-            q.reshape(B, N, 1, self.num_heads, -1)
-            .permute(2, 0, 3, 1, 4)
-            .squeeze(0)
+            q.reshape(B, N, 1, self.num_heads, -1).permute(2, 0, 3, 1, 4).squeeze(0)
         )  # (B, N_head, N_q, dim)
 
         k = F.linear(input=k, weight=self.k.weight, bias=k_bias)
-        k = (
-            k.reshape(B, N_k, 1, self.num_heads, -1)
-            .permute(2, 0, 3, 1, 4)
-            .squeeze(0)
-        )
+        k = k.reshape(B, N_k, 1, self.num_heads, -1).permute(2, 0, 3, 1, 4).squeeze(0)
 
         v = F.linear(input=v, weight=self.v.weight, bias=v_bias)
-        v = (
-            v.reshape(B, N_v, 1, self.num_heads, -1)
-            .permute(2, 0, 3, 1, 4)
-            .squeeze(0)
-        )
+        v = v.reshape(B, N_v, 1, self.num_heads, -1).permute(2, 0, 3, 1, 4).squeeze(0)
 
         q = q * self.scale
         attn = q @ k.transpose(-2, -1)  # (B, N_head, N_q, N_k)
@@ -688,13 +641,9 @@ class AttentiveBlock(nn.Module):
             out_dim=out_dim,
         )
 
-        self.drop_path = (
-            DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
-        )
+        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
-    def forward(
-        self, x_q, x_kv, pos_q, pos_k, bool_masked_pos, rel_pos_bias=None
-    ):
+    def forward(self, x_q, x_kv, pos_q, pos_k, bool_masked_pos, rel_pos_bias=None):
         x_q = self.norm1_q(x_q + pos_q)
         x_k = self.norm1_k(x_kv + pos_k)
         x_v = self.norm1_v(x_kv)
@@ -778,9 +727,7 @@ class Attention(nn.Module):
             .reshape(B, N, 3, self.num_heads, C // self.num_heads)
             .permute(2, 0, 3, 1, 4)
         )
-        q, k, v = qkv.unbind(
-            0
-        )  # make torchscript happy (cannot use tensor as tuple)
+        q, k, v = qkv.unbind(0)  # make torchscript happy (cannot use tensor as tuple)
 
         if self.qk_normalization:
             B_, H_, N_, D_ = q.shape
@@ -832,11 +779,7 @@ class Attention(nn.Module):
         return outs
 
     def forward(self, x):
-        x = (
-            self._naive_attn(x)
-            if not self.use_flash_attn
-            else self._flash_attn(x)
-        )
+        x = self._naive_attn(x) if not self.use_flash_attn else self._flash_attn(x)
         return x
 
 
@@ -919,9 +862,7 @@ class Block(nn.Module):
             else nn.Identity()
         )
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
-        self.drop_path1 = (
-            DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
-        )
+        self.drop_path1 = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
@@ -947,9 +888,7 @@ class Block(nn.Module):
             if init_values
             else nn.Identity()
         )
-        self.drop_path2 = (
-            DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
-        )
+        self.drop_path2 = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
         self.with_cp = with_cp
         self.use_fused_rmsnorm = use_fused_rmsnorm
@@ -1059,14 +998,10 @@ class PretrainInternVideo2(nn.Module):
         self.clip_norm_type = clip_norm_type
         self.return_index = []
         for i in range(clip_return_layer):
-            self.return_index.append(
-                depth - int(i * clip_student_return_interval) - 1
-            )
+            self.return_index.append(depth - int(i * clip_student_return_interval) - 1)
 
         if use_fused_rmsnorm:
-            norm_layer_for_blocks = partial(
-                DropoutAddRMSNorm, eps=1e-6, prenorm=True
-            )
+            norm_layer_for_blocks = partial(DropoutAddRMSNorm, eps=1e-6, prenorm=True)
         else:
             norm_layer_for_blocks = partial(RMSNorm, eps=1e-6)
         self.norm_layer_for_blocks = norm_layer_for_blocks
@@ -1089,9 +1024,7 @@ class PretrainInternVideo2(nn.Module):
         if sep_pos_embed:
             raise NotImplementedError
         if sep_image_video_pos_embed:
-            self.pos_embed = nn.Parameter(
-                torch.zeros(1, num_patches + 1, embed_dim)
-            )
+            self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
             self.img_pos_embed = nn.Parameter(
                 torch.zeros(1, num_img_patches + 1, embed_dim)
             )
@@ -1103,9 +1036,7 @@ class PretrainInternVideo2(nn.Module):
                 torch.zeros(1, num_img_patches + 1, embed_dim)
             )
         else:
-            self.pos_embed = nn.Parameter(
-                torch.zeros(1, num_patches + 1, embed_dim)
-            )
+            self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
             self.clip_pos_embed = nn.Parameter(
                 torch.zeros(1, num_patches + 1, embed_dim)
             )
@@ -1187,12 +1118,8 @@ class PretrainInternVideo2(nn.Module):
             self.patch_embed.grid_size[0],  # t_size
             cls_token=True,
         )
-        self.pos_embed.data.copy_(
-            torch.from_numpy(pos_embed).float().unsqueeze(0)
-        )
-        self.clip_pos_embed.data.copy_(
-            torch.from_numpy(pos_embed).float().unsqueeze(0)
-        )
+        self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
+        self.clip_pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
         if self.sep_image_video_pos_embed:
             img_pos_embed = get_3d_sincos_pos_embed(
@@ -1370,13 +1297,13 @@ class PretrainInternVideo2(nn.Module):
 
         clip_pos_embed = clip_pos_embed.repeat(B, 1, 1)
         if mask is not None:
-            x_clip = x_clip + clip_pos_embed[~mask].view(
-                B, -1, C_CLIP
-            ).unsqueeze(0).repeat(K, 1, 1, 1)
-        else:
-            x_clip = x_clip + clip_pos_embed.view(B, -1, C_CLIP).unsqueeze(
+            x_clip = x_clip + clip_pos_embed[~mask].view(B, -1, C_CLIP).unsqueeze(
                 0
             ).repeat(K, 1, 1, 1)
+        else:
+            x_clip = x_clip + clip_pos_embed.view(B, -1, C_CLIP).unsqueeze(0).repeat(
+                K, 1, 1, 1
+            )
 
         # CLIP decoder
         x_clip_align = []
@@ -1683,9 +1610,7 @@ class BertEmbeddings(nn.Module):
 
         # self.LayerNorm is not snake-cased to stick with TensorFlow model variable name and be able to load
         # any TensorFlow checkpoint file
-        self.LayerNorm = nn.LayerNorm(
-            config.hidden_size, eps=config.layer_norm_eps
-        )
+        self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
         # position_ids (1, len position emb) is contiguous in memory and exported when serialized
@@ -1751,9 +1676,7 @@ class BertSelfAttention(nn.Module):
             )
 
         self.num_attention_heads = config.num_attention_heads
-        self.attention_head_size = int(
-            config.hidden_size / config.num_attention_heads
-        )
+        self.attention_head_size = int(config.hidden_size / config.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
 
         self.query = nn.Linear(config.hidden_size, self.all_head_size)
@@ -1816,12 +1739,8 @@ class BertSelfAttention(nn.Module):
         is_cross_attention = encoder_hidden_states is not None
 
         if is_cross_attention:
-            key_layer = self.transpose_for_scores(
-                self.key(encoder_hidden_states)
-            )
-            value_layer = self.transpose_for_scores(
-                self.value(encoder_hidden_states)
-            )
+            key_layer = self.transpose_for_scores(self.key(encoder_hidden_states))
+            value_layer = self.transpose_for_scores(self.value(encoder_hidden_states))
             attention_mask = encoder_attention_mask
         elif past_key_value is not None:
             key_layer = self.transpose_for_scores(self.key(hidden_states))
@@ -1837,9 +1756,7 @@ class BertSelfAttention(nn.Module):
         past_key_value = (key_layer, value_layer)
 
         # Take the dot product between "query" and "key" to get the raw attention scores.
-        attention_scores = torch.matmul(
-            query_layer, key_layer.transpose(-1, -2)
-        )
+        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
 
         if (
             self.position_embedding_type == "relative_key"
@@ -1878,9 +1795,7 @@ class BertSelfAttention(nn.Module):
                     + relative_position_scores_key
                 )
 
-        attention_scores = attention_scores / math.sqrt(
-            self.attention_head_size
-        )
+        attention_scores = attention_scores / math.sqrt(self.attention_head_size)
         if attention_mask is not None:
             # Apply the attention mask is (precomputed for all layers in BertModel forward() function)
             attention_scores = attention_scores + attention_mask
@@ -1903,9 +1818,7 @@ class BertSelfAttention(nn.Module):
         context_layer = torch.matmul(attention_probs_dropped, value_layer)
 
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
-        new_context_layer_shape = context_layer.size()[:-2] + (
-            self.all_head_size,
-        )
+        new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
         context_layer = context_layer.view(*new_context_layer_shape)
 
         # added `attention_scores` to return tuple
@@ -1923,9 +1836,7 @@ class BertSelfOutput(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
-        self.LayerNorm = nn.LayerNorm(
-            config.hidden_size, eps=config.layer_norm_eps
-        )
+        self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, hidden_states, input_tensor):
@@ -1961,9 +1872,7 @@ class BertAttention(nn.Module):
         self.output.dense = prune_linear_layer(self.output.dense, index, dim=1)
 
         # Update hyper params and store pruned heads
-        self.self.num_attention_heads = self.self.num_attention_heads - len(
-            heads
-        )
+        self.self.num_attention_heads = self.self.num_attention_heads - len(heads)
         self.self.all_head_size = (
             self.self.attention_head_size * self.self.num_attention_heads
         )
@@ -2013,9 +1922,7 @@ class BertOutput(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.dense = nn.Linear(config.intermediate_size, config.hidden_size)
-        self.LayerNorm = nn.LayerNorm(
-            config.hidden_size, eps=config.layer_norm_eps
-        )
+        self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
     def forward(self, hidden_states, input_tensor):
@@ -2168,14 +2075,9 @@ class BertEncoder(nn.Module):
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
             layer_head_mask = head_mask[i] if head_mask is not None else None
-            past_key_value = (
-                past_key_values[i] if past_key_values is not None else None
-            )
+            past_key_value = past_key_values[i] if past_key_values is not None else None
 
-            if (
-                getattr(self.config, "gradient_checkpointing", False)
-                and self.training
-            ):
+            if getattr(self.config, "gradient_checkpointing", False) and self.training:
                 if use_cache:
                     print(
                         "`use_cache=True` is incompatible with `config.gradient_checkpointing=True`. Setting "
@@ -2185,9 +2087,7 @@ class BertEncoder(nn.Module):
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
-                        return module(
-                            *inputs, past_key_value, output_attentions
-                        )
+                        return module(*inputs, past_key_value, output_attentions)
 
                     return custom_forward
 
@@ -2218,9 +2118,7 @@ class BertEncoder(nn.Module):
                 # note for unnormalized attention, there is a mask added
                 offset = int(normalize_attention)
                 # all_self_attentions = all_self_attentions + (layer_outputs[1], )
-                all_self_attentions = all_self_attentions + (
-                    layer_outputs[2 - offset],
-                )
+                all_self_attentions = all_self_attentions + (layer_outputs[2 - offset],)
                 if hasattr(layer_module, "crossattention"):
                     # all_cross_attentions = all_cross_attentions + (layer_outputs[3], )
                     all_cross_attentions = all_cross_attentions + (
@@ -2274,9 +2172,7 @@ class BertPredictionHeadTransform(nn.Module):
             self.transform_act_fn = ACT2FN[config.hidden_act]
         else:
             self.transform_act_fn = config.hidden_act
-        self.LayerNorm = nn.LayerNorm(
-            config.hidden_size, eps=config.layer_norm_eps
-        )
+        self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
     def forward(self, hidden_states):
         hidden_states = self.dense(hidden_states)
@@ -2292,9 +2188,7 @@ class BertLMPredictionHead(nn.Module):
 
         # The output weights are the same as the input embeddings, but there is
         # an output-only bias for each token.
-        self.decoder = nn.Linear(
-            config.hidden_size, config.vocab_size, bias=False
-        )
+        self.decoder = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
         self.bias = nn.Parameter(torch.zeros(config.vocab_size))
 
@@ -2355,9 +2249,7 @@ class BertPreTrainedModel(PreTrainedModel):
         if isinstance(module, (nn.Linear, nn.Embedding)):
             # Slightly different from the TF version which uses truncated_normal for initialization
             # cf https://github.com/pytorch/pytorch/pull/5617
-            module.weight.data.normal_(
-                mean=0.0, std=self.config.initializer_range
-            )
+            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
         elif isinstance(module, nn.LayerNorm):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
@@ -2443,9 +2335,7 @@ class BertModel(BertPreTrainedModel):
                 causal_mask = causal_mask.to(attention_mask.dtype)
 
                 if causal_mask.shape[1] < attention_mask.shape[1]:
-                    prefix_seq_len = (
-                        attention_mask.shape[1] - causal_mask.shape[1]
-                    )
+                    prefix_seq_len = attention_mask.shape[1] - causal_mask.shape[1]
                     causal_mask = torch.cat(
                         [
                             torch.ones(
@@ -2459,8 +2349,7 @@ class BertModel(BertPreTrainedModel):
                     )
 
                 extended_attention_mask = (
-                    causal_mask[:, None, :, :]
-                    * attention_mask[:, None, None, :]
+                    causal_mask[:, None, :, :] * attention_mask[:, None, None, :]
                 )
             else:
                 extended_attention_mask = attention_mask[:, None, None, :]
@@ -2529,15 +2418,11 @@ class BertModel(BertPreTrainedModel):
             else self.config.output_hidden_states
         )
         return_dict = (
-            return_dict
-            if return_dict is not None
-            else self.config.use_return_dict
+            return_dict if return_dict is not None else self.config.use_return_dict
         )
 
         if is_decoder:
-            use_cache = (
-                use_cache if use_cache is not None else self.config.use_cache
-            )
+            use_cache = use_cache if use_cache is not None else self.config.use_cache
         else:
             use_cache = False
 
@@ -2573,25 +2458,21 @@ class BertModel(BertPreTrainedModel):
                 device=device,
             )
         if token_type_ids is None:
-            token_type_ids = torch.zeros(
-                input_shape, dtype=torch.long, device=device
-            )
+            token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=device)
 
         # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
         # ourselves in which case we just need to make it broadcastable to all heads.
-        extended_attention_mask: torch.Tensor = (
-            self.get_extended_attention_mask(
-                attention_mask, input_shape, device, is_decoder
-            )
+        extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(
+            attention_mask, input_shape, device, is_decoder
         )
 
         # If a 2D or 3D attention mask is provided for the cross-attention
         # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
         if encoder_hidden_states is not None:
             if type(encoder_hidden_states) == list:
-                encoder_batch_size, encoder_sequence_length, _ = (
-                    encoder_hidden_states[0].size()
-                )
+                encoder_batch_size, encoder_sequence_length, _ = encoder_hidden_states[
+                    0
+                ].size()
             else:
                 encoder_batch_size, encoder_sequence_length, _ = (
                     encoder_hidden_states.size()
@@ -2600,13 +2481,10 @@ class BertModel(BertPreTrainedModel):
 
             if type(encoder_attention_mask) == list:
                 encoder_extended_attention_mask = [
-                    self.invert_attention_mask(mask)
-                    for mask in encoder_attention_mask
+                    self.invert_attention_mask(mask) for mask in encoder_attention_mask
                 ]
             elif encoder_attention_mask is None:
-                encoder_attention_mask = torch.ones(
-                    encoder_hidden_shape, device=device
-                )
+                encoder_attention_mask = torch.ones(encoder_hidden_shape, device=device)
                 encoder_extended_attention_mask = self.invert_attention_mask(
                     encoder_attention_mask
                 )
@@ -2728,9 +2606,7 @@ class BertForMaskedLM(BertPreTrainedModel):
             (masked), the loss is only computed for the tokens with labels in ``[0, ..., config.vocab_size]``
         """
         return_dict = (
-            return_dict
-            if return_dict is not None
-            else self.config.use_return_dict
+            return_dict if return_dict is not None else self.config.use_return_dict
         )
 
         outputs = self.bert(
@@ -2776,9 +2652,7 @@ class BertForMaskedLM(BertPreTrainedModel):
         if not return_dict:
             output = (prediction_scores,) + outputs[2:]
             return (
-                ((masked_lm_loss,) + output)
-                if masked_lm_loss is not None
-                else output
+                ((masked_lm_loss,) + output) if masked_lm_loss is not None else output
             )
 
         # changed from MaskedLMOutput to MaskedLMOutputWithDistill
@@ -2987,12 +2861,8 @@ PRETRAINED_INIT_CONFIGURATION = {
     "bert-base-german-cased": {"do_lower_case": False},
     "bert-large-uncased-whole-word-masking": {"do_lower_case": True},
     "bert-large-cased-whole-word-masking": {"do_lower_case": False},
-    "bert-large-uncased-whole-word-masking-finetuned-squad": {
-        "do_lower_case": True
-    },
-    "bert-large-cased-whole-word-masking-finetuned-squad": {
-        "do_lower_case": False
-    },
+    "bert-large-uncased-whole-word-masking-finetuned-squad": {"do_lower_case": True},
+    "bert-large-cased-whole-word-masking-finetuned-squad": {"do_lower_case": False},
     "bert-base-cased-finetuned-mrpc": {"do_lower_case": False},
     "bert-base-german-dbmdz-cased": {"do_lower_case": False},
     "bert-base-german-dbmdz-uncased": {"do_lower_case": True},
@@ -3438,21 +3308,13 @@ class BertTokenizer(PreTrainedTokenizer):
                 )
             return list(
                 map(
-                    lambda x: (
-                        1 if x in [self.sep_token_id, self.cls_token_id] else 0
-                    ),
+                    lambda x: (1 if x in [self.sep_token_id, self.cls_token_id] else 0),
                     token_ids_0,
                 )
             )
 
         if token_ids_1 is not None:
-            return (
-                [1]
-                + ([0] * len(token_ids_0))
-                + [1]
-                + ([0] * len(token_ids_1))
-                + [1]
-            )
+            return [1] + ([0] * len(token_ids_0)) + [1] + ([0] * len(token_ids_1)) + [1]
         return [1] + ([0] * len(token_ids_0)) + [1]
 
     def create_token_type_ids_from_sequences(
@@ -3498,9 +3360,7 @@ class BertTokenizer(PreTrainedTokenizer):
                 filename_prefix + "-" if filename_prefix else ""
             ) + save_directory
         with open(vocab_file, "w", encoding="utf-8") as writer:
-            for token, token_index in sorted(
-                self.vocab.items(), key=lambda kv: kv[1]
-            ):
+            for token, token_index in sorted(self.vocab.items(), key=lambda kv: kv[1]):
                 if index != token_index:
                     print(
                         f"Saving vocabulary to {vocab_file}: vocabulary indices are not consecutive."
@@ -3565,9 +3425,7 @@ def get_vid_feat(frames, vlm):
     return vlm.get_vid_features(frames)
 
 
-def retrieve_text(
-    frames, texts, model, topk: int = 5, device=torch.device("cuda")
-):
+def retrieve_text(frames, texts, model, topk: int = 5, device=torch.device("cuda")):
     vlm = model.to(device)
     config = vlm.config
 
@@ -3599,17 +3457,14 @@ def setup_internvideo2(config):
     model_without_ddp = model
 
     if (
-        config.pretrained_path.strip()
-        and (os.path.isfile(config.pretrained_path))
+        config.pretrained_path.strip() and (os.path.isfile(config.pretrained_path))
     ) or "s3://" in config.pretrained_path:
         checkpoint = torch.load(config.pretrained_path, map_location="cpu")
         try:
             if "model" in checkpoint.keys():
                 state_dict = checkpoint["model"]
             else:
-                state_dict = checkpoint[
-                    "module"
-                ]  # This is a deepspeed stage 1 model
+                state_dict = checkpoint["module"]  # This is a deepspeed stage 1 model
         except:
             state_dict = checkpoint
 
@@ -3691,15 +3546,11 @@ class InternVideo2_Stage2(
     _auto_class = "AutoModel"
     config_class = InternVideo2_Stage2_Config
 
-    def __init__(
-        self, config: InternVideo2_Stage2_Config, is_pretrain: bool = True
-    ):
-        super(InternVideo2_Stage2, self).__init__(config)
+    def __init__(self, config: InternVideo2_Stage2_Config, is_pretrain: bool = True):
+        super().__init__(config)
 
         config = config.to_dict()
-        self._config = (
-            DictToClass(config) if isinstance(config, dict) else config
-        )
+        self._config = DictToClass(config) if isinstance(config, dict) else config
         self.tokenizer = BertTokenizer.from_pretrained(
             self._config.model.text_encoder.pretrained
         )
@@ -3756,8 +3607,8 @@ class InternVideo2_Stage2(
                 image, None, use_image
             )
             return vision_embeds, pooled_vision_embeds
-        mask, targets_clip_middle_vis, targets_clip_final_vis = (
-            self.encode_teacher(image)
+        mask, targets_clip_middle_vis, targets_clip_final_vis = self.encode_teacher(
+            image
         )
         # if mask is not None and (self.video_mask_type != 'tube' or self.image_mask_type != 'tube'):
         #     keep_temporal = False
@@ -3809,13 +3660,9 @@ class InternVideo2_Stage2(
         encoder_name = self._config.model.vision_encoder.name
 
         if encoder_name == "pretrain_internvideo2_1b_patch14_224":
-            vision_encoder = pretrain_internvideo2_1b_patch14_224(
-                self._config.model
-            )
+            vision_encoder = pretrain_internvideo2_1b_patch14_224(self._config.model)
         elif encoder_name == "pretrain_internvideo2_6b_patch14_224":
-            vision_encoder = pretrain_internvideo2_6b_patch14_224(
-                self._config.model
-            )
+            vision_encoder = pretrain_internvideo2_6b_patch14_224(self._config.model)
         else:
             raise ValueError(f"Not implemented: {encoder_name}")
 
@@ -3824,27 +3671,21 @@ class InternVideo2_Stage2(
         num_frames = self._config.model.vision_encoder.num_frames
         tublet_size = self._config.model.vision_encoder.tubelet_size
         patch_size = self._config.model.vision_encoder.patch_size
-        self.clip_img_size = (
-            self._config.model.vision_encoder.clip_input_resolution
-        )
+        self.clip_img_size = self._config.model.vision_encoder.clip_input_resolution
         self.video_mask_type = self._config.model.vision_encoder.video_mask_type
         self.video_window_size = (
             num_frames // tublet_size,
             img_size // patch_size,
             img_size // patch_size,
         )
-        self.video_mask_ratio = (
-            self._config.model.vision_encoder.video_mask_ratio
-        )
+        self.video_mask_ratio = self._config.model.vision_encoder.video_mask_ratio
         self.image_mask_type = self._config.model.vision_encoder.image_mask_type
         self.image_window_size = (
             1,
             img_size // patch_size,
             img_size // patch_size,
         )
-        self.image_mask_ratio = (
-            self._config.model.vision_encoder.image_mask_ratio
-        )
+        self.image_mask_ratio = self._config.model.vision_encoder.image_mask_ratio
 
         return vision_encoder
 

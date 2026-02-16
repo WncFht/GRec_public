@@ -81,9 +81,7 @@ def codes_to_tokens(codes: np.ndarray) -> list[list[str]]:
     # codes: [N, L]
     n_layers = codes.shape[1]
     if n_layers > 26:
-        raise ValueError(
-            f"Too many layers for a-z prefixes: n_layers={n_layers}"
-        )
+        raise ValueError(f"Too many layers for a-z prefixes: n_layers={n_layers}")
     out: list[list[str]] = []
     for row in codes:
         toks = []
@@ -179,16 +177,12 @@ def main():
             f"[warn] Found {num_bad} rows with NaN/Inf in embeddings, dropping them for export."
         )
         bad_indices = np.nonzero(~finite_mask)[0][:10]
-        print(
-            f"[warn] First bad row indices (up to 10): {bad_indices.tolist()}"
-        )
+        print(f"[warn] First bad row indices (up to 10): {bad_indices.tolist()}")
         emb = emb[finite_mask]
         # Keep ids aligned with embeddings
         ids = [ids[i] for i in range(len(ids)) if finite_mask[i]]
         n = int(emb.shape[0])
-        print(
-            f"[info] Clean embeddings shape for export: {emb.shape}, ids: {len(ids)}"
-        )
+        print(f"[info] Clean embeddings shape for export: {emb.shape}, ids: {len(ids)}")
 
     out: dict[str, list[str]] = {}
     seen_codes = set()

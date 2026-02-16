@@ -152,9 +152,7 @@ def debug_item_3186():
     print("\n7. 模型前向传播...")
     try:
         with torch.no_grad():
-            outputs = model(
-                **inputs, output_hidden_states=True, return_dict=True
-            )
+            outputs = model(**inputs, output_hidden_states=True, return_dict=True)
 
         last_hidden_state = outputs.hidden_states[-1]
         print(f"隐藏状态形状: {last_hidden_state.shape}")
@@ -195,14 +193,10 @@ def debug_item_3186():
     try:
         attention_mask = inputs["attention_mask"]
         attention_mask_expanded = (
-            attention_mask.unsqueeze(-1)
-            .expand(last_hidden_state.size())
-            .float()
+            attention_mask.unsqueeze(-1).expand(last_hidden_state.size()).float()
         )
 
-        sum_embeddings = torch.sum(
-            last_hidden_state * attention_mask_expanded, dim=1
-        )
+        sum_embeddings = torch.sum(last_hidden_state * attention_mask_expanded, dim=1)
         sum_mask = torch.clamp(attention_mask_expanded.sum(dim=1), min=1e-9)
 
         print(f"分母最小值: {sum_mask.min().item()}")

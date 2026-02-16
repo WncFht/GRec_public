@@ -91,18 +91,14 @@ tart_prompts_map = {
     # instructions used for X2 evaluations (TART paper table 9: https://arxiv.org/pdf/2211.09260.pdf)
     "wikiqa": {"q_prompt": "Retrieve an answer sentence from Wikipedia"},
     "ambigqa": {"q_prompt": "Retrieve a question that is similar to this"},
-    "scifact_x2": {
-        "q_prompt": "Retrieve scientific evidence to verify this claim"
-    },
+    "scifact_x2": {"q_prompt": "Retrieve scientific evidence to verify this claim"},
     "gooaq-technical": {
         "q_prompt": "Find a StackExchange forum that answers this question"
     },
     "codesearchnet-py": {
         "q_prompt": "Retrieve a python code that implements the following feature"
     },
-    "linkso-py": {
-        "q_prompt": "You have to find a python implementation of this"
-    },
+    "linkso-py": {"q_prompt": "You have to find a python implementation of this"},
     # instructions used for training (https://github.com/facebookresearch/tart/blob/main/BERRI/berri_instructions.tsv)
     "nq": {
         "dataset": "nq",

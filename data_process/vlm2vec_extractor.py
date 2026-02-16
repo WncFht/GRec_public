@@ -115,12 +115,8 @@ class ItemVLM2VecExtractor:
         if item_data.get("tags") and isinstance(item_data["tags"], list):
             text_parts.append(f"Tags: {', '.join(item_data['tags'])}")
 
-        if item_data.get("highlights") and isinstance(
-            item_data["highlights"], list
-        ):
-            text_parts.append(
-                f"Highlights: {', '.join(item_data['highlights'])}"
-            )
+        if item_data.get("highlights") and isinstance(item_data["highlights"], list):
+            text_parts.append(f"Highlights: {', '.join(item_data['highlights'])}")
 
         if item_data.get("characteristics") and isinstance(
             item_data["characteristics"], list
@@ -153,15 +149,13 @@ class ItemVLM2VecExtractor:
         if image is not None:
             # 多模态输入 - 使用图像+文本
             prompt_text = f"{VLM_IMAGE_TOKENS[QWEN2_VL]} Represent the given item with the following information: {text}"
-            inputs = self.processor(
-                text=prompt_text, images=image, return_tensors="pt"
-            )
+            inputs = self.processor(text=prompt_text, images=image, return_tensors="pt")
         else:
             # 纯文本输入
-            prompt_text = f"Represent the given item with the following information: {text}"
-            inputs = self.processor(
-                text=prompt_text, images=None, return_tensors="pt"
+            prompt_text = (
+                f"Represent the given item with the following information: {text}"
             )
+            inputs = self.processor(text=prompt_text, images=None, return_tensors="pt")
 
         # 将输入移动到设备
         inputs = {key: value.to(self.device) for key, value in inputs.items()}
@@ -180,13 +174,8 @@ class ItemVLM2VecExtractor:
             outputs = self.model(qry=inputs)
             representation = outputs["qry_reps"]
 
-            if (
-                torch.isnan(representation).any()
-                or torch.isinf(representation).any()
-            ):
-                print(
-                    "Warning: NaN or Inf detected in representations, skipping..."
-                )
+            if torch.isnan(representation).any() or torch.isinf(representation).any():
+                print("Warning: NaN or Inf detected in representations, skipping...")
                 return None
 
             return representation.cpu().float().numpy()
@@ -210,14 +199,10 @@ class ItemVLM2VecExtractor:
         # 获取图片目录
         image_dir = os.path.join(dataset_path, "images")
 
-        print(
-            f"Extracting VLM2Vec representations for {len(item_info)} items..."
-        )
+        print(f"Extracting VLM2Vec representations for {len(item_info)} items...")
 
         # 遍历所有物品
-        for num_id, item_data in tqdm(
-            item_info.items(), desc="Processing items"
-        ):
+        for num_id, item_data in tqdm(item_info.items(), desc="Processing items"):
             num_id = int(num_id)
             item_id = id2item[num_id]
 
@@ -233,9 +218,7 @@ class ItemVLM2VecExtractor:
             representation = self.extract_item_representation(text, image)
 
             if representation is not None:
-                print(
-                    f"Successfully extract VLM2Vec representation of item {num_id}"
-                )
+                print(f"Successfully extract VLM2Vec representation of item {num_id}")
                 representations[num_id] = {
                     "item_id": item_id,
                     "representation": representation.tolist(),
@@ -264,9 +247,7 @@ class ItemVLM2VecExtractor:
         representation_matrix = []
 
         for num_id in sorted(representations.keys()):  # 从0开始排列
-            representation_matrix.append(
-                representations[num_id]["representation"]
-            )
+            representation_matrix.append(representations[num_id]["representation"])
 
         representation_matrix = np.array(representation_matrix)
         np.save(numpy_output_path, representation_matrix)
@@ -288,9 +269,7 @@ def main(args):
     model_name = args.model_name
     checkpoint_path = args.checkpoint_path
     dataset_path = os.path.abspath(os.path.join("data", dataset))
-    output_path = os.path.abspath(
-        os.path.join("data", dataset, "VLM2Vec_rep.json")
-    )
+    output_path = os.path.abspath(os.path.join("data", dataset, "VLM2Vec_rep.json"))
 
     # 创建提取器
     extractor = ItemVLM2VecExtractor(

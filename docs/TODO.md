@@ -65,7 +65,7 @@ To Do:
 训练完成后仅保存LoRA Adapter, Extra Token Embeddings.
 
 #### 已经实现的部分
-已经实现的版本参见主目录下multimodal_finetune_lora.py 以及 multimodal_finetune_lora.sh 
+已经实现的版本参见主目录下multimodal_finetune_lora.py 以及 multimodal_finetune_lora.sh
 
 - 没有加_lora的是全量微调的版本，资源耗费大，且数据量小的时候太容易过拟合，暂时不考虑。
 - 加了_dis的分布式微调的版本
@@ -81,7 +81,7 @@ To Do:
 
 **To Do** :
 - 首先务必认真读懂并跑通lora微调的代码，务必读懂数据分配机制（collotor.py中的代码也需要读懂）。在资源量较小的情况下，优先微调一个Qwen2.5-VL-3B-Instruct的LoRA版本 （优先做）
-- 调研多阶段的模型训练范式 
+- 调研多阶段的模型训练范式
 - 调研Model Merge: 加权平均LoRA参数
 
 ### 测评benchmark的搭建
@@ -121,4 +121,3 @@ To Do:
 - 在LoRA微调模型后，物品对应的Token ID Embeddings也会存储在adapter_model.safetensors中。在加载模型之后，我们可以根据每个物品对应的Token IDs 提取出其相应的Token Embeddings。目前先考虑Average操作来生成物品的Embeddings.（优先做）
 
 - 得到Embeddings后，构建I2I的评估框架。
-

@@ -62,9 +62,7 @@ def merge_lora_and_save(
 
     # 2. 加载 tokenizer / processor（词汇表扩展已随 LoRA 目录）
     processor = processor_class.from_pretrained(lora_path)
-    tokenizer = (
-        processor if hasattr(processor, "vocab_size") else processor.tokenizer
-    )
+    tokenizer = processor if hasattr(processor, "vocab_size") else processor.tokenizer
     new_vocab_size = len(tokenizer)
     print(f"[INFO] 词汇表大小：{new_vocab_size}")
     # 3. 加载基础模型

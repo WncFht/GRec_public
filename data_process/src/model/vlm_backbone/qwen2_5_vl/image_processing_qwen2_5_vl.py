@@ -220,9 +220,7 @@ class Qwen2_5_VLImageProcessor(BaseImageProcessor):
         self.do_rescale = do_rescale
         self.rescale_factor = rescale_factor
         self.do_normalize = do_normalize
-        self.image_mean = (
-            image_mean if image_mean is not None else OPENAI_CLIP_MEAN
-        )
+        self.image_mean = image_mean if image_mean is not None else OPENAI_CLIP_MEAN
         self.image_std = image_std if image_std is not None else OPENAI_CLIP_STD
         self.min_pixels = min_pixels
         self.max_pixels = max_pixels
@@ -248,13 +246,9 @@ class Qwen2_5_VLImageProcessor(BaseImageProcessor):
                 image_processor_dict["size"] = kwargs.pop("size")
             else:
                 if "max_pixels" in image_processor_dict:
-                    image_processor_dict["max_pixels"] = kwargs["size"][
-                        "max_pixels"
-                    ]
+                    image_processor_dict["max_pixels"] = kwargs["size"]["max_pixels"]
                 if "min_pixels" in image_processor_dict:
-                    image_processor_dict["min_pixels"] = kwargs["size"][
-                        "min_pixels"
-                    ]
+                    image_processor_dict["min_pixels"] = kwargs["size"]["min_pixels"]
         if "crop_size" in kwargs and "crop_size" in image_processor_dict:
             image_processor_dict["crop_size"] = kwargs.pop("crop_size")
 
@@ -408,10 +402,7 @@ class Qwen2_5_VLImageProcessor(BaseImageProcessor):
         patches = patches.transpose(0, 3, 6, 4, 7, 2, 1, 5, 8)
         flatten_patches = patches.reshape(
             grid_t * grid_h * grid_w,
-            channel
-            * self.temporal_patch_size
-            * self.patch_size
-            * self.patch_size,
+            channel * self.temporal_patch_size * self.patch_size * self.patch_size,
         )
 
         return flatten_patches, (grid_t, grid_h, grid_w)
@@ -487,19 +478,13 @@ class Qwen2_5_VLImageProcessor(BaseImageProcessor):
         resample = resample if resample is not None else self.resample
         do_rescale = do_rescale if do_rescale is not None else self.do_rescale
         rescale_factor = (
-            rescale_factor
-            if rescale_factor is not None
-            else self.rescale_factor
+            rescale_factor if rescale_factor is not None else self.rescale_factor
         )
-        do_normalize = (
-            do_normalize if do_normalize is not None else self.do_normalize
-        )
+        do_normalize = do_normalize if do_normalize is not None else self.do_normalize
         image_mean = image_mean if image_mean is not None else self.image_mean
         image_std = image_std if image_std is not None else self.image_std
         do_convert_rgb = (
-            do_convert_rgb
-            if do_convert_rgb is not None
-            else self.do_convert_rgb
+            do_convert_rgb if do_convert_rgb is not None else self.do_convert_rgb
         )
 
         if images is not None:
@@ -575,9 +560,7 @@ class Qwen2_5_VLImageProcessor(BaseImageProcessor):
 
         return BatchFeature(data=data, tensor_type=return_tensors)
 
-    def get_number_of_image_patches(
-        self, height: int, width: int, images_kwargs=None
-    ):
+    def get_number_of_image_patches(self, height: int, width: int, images_kwargs=None):
         """
         A utility that returns number of image patches for a given image size.
 
@@ -593,12 +576,8 @@ class Qwen2_5_VLImageProcessor(BaseImageProcessor):
             `int`: Number of image patches per image.
 
         """
-        min_pixels = (
-            images_kwargs.get("min_pixels", None) or self.size["shortest_edge"]
-        )
-        max_pixels = (
-            images_kwargs.get("max_pixels", None) or self.size["longest_edge"]
-        )
+        min_pixels = images_kwargs.get("min_pixels", None) or self.size["shortest_edge"]
+        max_pixels = images_kwargs.get("max_pixels", None) or self.size["longest_edge"]
         patch_size = images_kwargs.get("patch_size", None) or self.patch_size
         merge_size = images_kwargs.get("merge_size", None) or self.merge_size
 

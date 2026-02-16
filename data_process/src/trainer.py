@@ -78,12 +78,10 @@ logger = logging.get_logger(__name__)
 
 class MMEBTrainer(Trainer):
     def __init__(self, *args, **kwargs):
-        super(MMEBTrainer, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.is_ddp = dist.is_initialized()
         self.processor = self.processing_class
-        self._dist_loss_scale_factor = (
-            dist.get_world_size() if self.is_ddp else 1
-        )
+        self._dist_loss_scale_factor = dist.get_world_size() if self.is_ddp else 1
 
     def get_batch_samples(self, epoch_iterator, num_batches):
         batch_samples = []
@@ -97,17 +95,11 @@ class MMEBTrainer(Trainer):
             # For now we don't support object detection
             try:
                 num_items_in_batch = sum(
-                    [
-                        (batch["labels"].ne(-100)).sum()
-                        for batch in batch_samples
-                    ]
+                    [(batch["labels"].ne(-100)).sum() for batch in batch_samples]
                 )
             except (TypeError, AttributeError):
                 pass
-        if (
-            self.args.average_tokens_across_devices
-            and num_items_in_batch is not None
-        ):
+        if self.args.average_tokens_across_devices and num_items_in_batch is not None:
             num_items_in_batch = (
                 self.accelerator.gather(num_items_in_batch).sum().item()
             )
@@ -170,9 +162,7 @@ class MMEBTrainer(Trainer):
             dataloader_params["sampler"] = self._get_train_sampler()
             dataloader_params["drop_last"] = self.args.dataloader_drop_last
             dataloader_params["worker_init_fn"] = seed_worker
-            dataloader_params["prefetch_factor"] = (
-                self.args.dataloader_prefetch_factor
-            )
+            dataloader_params["prefetch_factor"] = self.args.dataloader_prefetch_factor
         else:
             dataloader_params["sampler"] = None
             dataloader_params["shuffle"] = False
@@ -226,9 +216,7 @@ class MMEBTrainer(Trainer):
         # number of training steps per epoch: num_update_steps_per_epoch
         # total number of training steps to execute: max_steps
         total_train_batch_size = (
-            self._train_batch_size
-            * args.gradient_accumulation_steps
-            * args.world_size
+            self._train_batch_size * args.gradient_accumulation_steps * args.world_size
         )
 
         len_dataloader = None
@@ -242,9 +230,8 @@ class MMEBTrainer(Trainer):
             num_examples = self.num_examples(train_dataloader)
             if args.max_steps > 0:
                 max_steps = args.max_steps
-                num_train_epochs = (
-                    args.max_steps // num_update_steps_per_epoch
-                    + int(args.max_steps % num_update_steps_per_epoch > 0)
+                num_train_epochs = args.max_steps // num_update_steps_per_epoch + int(
+                    args.max_steps % num_update_steps_per_epoch > 0
                 )
                 # May be slightly incorrect if the last batch in the training dataloader has a smaller size but it's
                 # the best we can do.
@@ -264,8 +251,7 @@ class MMEBTrainer(Trainer):
                 )
                 if args.include_tokens_per_second:
                     num_train_tokens = (
-                        self.num_tokens(train_dataloader)
-                        * args.num_train_epochs
+                        self.num_tokens(train_dataloader) * args.num_train_epochs
                     )
         elif (
             args.max_steps > 0
@@ -313,9 +299,7 @@ class MMEBTrainer(Trainer):
         # Compute absolute values for logging, eval, and save if given as ratio
         if args.logging_steps is not None:
             if args.logging_steps < 1:
-                self.state.logging_steps = math.ceil(
-                    max_steps * args.logging_steps
-                )
+                self.state.logging_steps = math.ceil(max_steps * args.logging_steps)
             else:
                 self.state.logging_steps = args.logging_steps
         if args.eval_steps is not None:
@@ -360,10 +344,8 @@ class MMEBTrainer(Trainer):
                     )
             else:
                 # to handle cases wherein we pass "DummyScheduler" such as when it is specified in DeepSpeed config.
-                model, self.optimizer, self.lr_scheduler = (
-                    self.accelerator.prepare(
-                        self.model, self.optimizer, self.lr_scheduler
-                    )
+                model, self.optimizer, self.lr_scheduler = self.accelerator.prepare(
+                    self.model, self.optimizer, self.lr_scheduler
                 )
         elif self.args.optim in [OptimizerNames.LOMO, OptimizerNames.ADALOMO]:
             # In this case we are in DDP + LOMO, which should be supported
@@ -428,16 +410,12 @@ class MMEBTrainer(Trainer):
             )
             self.compare_trainer_and_checkpoint_args(self.args, self.state)
             self._load_callback_state()
-            epochs_trained = int(
-                self.state.global_step // num_update_steps_per_epoch
-            )
+            epochs_trained = int(self.state.global_step // num_update_steps_per_epoch)
             if not args.ignore_data_skip:
                 steps_trained_in_current_epoch = self.state.global_step % (
                     num_update_steps_per_epoch
                 )
-                steps_trained_in_current_epoch *= (
-                    args.gradient_accumulation_steps
-                )
+                steps_trained_in_current_epoch *= args.gradient_accumulation_steps
             else:
                 steps_trained_in_current_epoch = 0
 
@@ -525,9 +503,7 @@ class MMEBTrainer(Trainer):
             if remainder == 0:
                 remainder = args.gradient_accumulation_steps
             update_step = -1
-            total_updates = (
-                steps_in_epoch // args.gradient_accumulation_steps + 1
-            )
+            total_updates = steps_in_epoch // args.gradient_accumulation_steps + 1
             for _ in range(total_updates):
                 update_step += 1
                 num_batches = (
@@ -542,9 +518,7 @@ class MMEBTrainer(Trainer):
                     step += 1
                     total_batched_samples += 1
 
-                    dataset_stat = collections.Counter(
-                        inputs[0]["global_dataset_name"]
-                    )
+                    dataset_stat = collections.Counter(inputs[0]["global_dataset_name"])
                     # print_rank(f"dataset name: {str(set(inputs[0]['global_dataset_name']))}")
                     # for dname, count in sorted(dataset_stat.items(), key=lambda t:t[1], reverse=True):
                     #     print_rank(f"\t\tdataset_name={dname}, count={count}")
@@ -553,23 +527,14 @@ class MMEBTrainer(Trainer):
                         steps_in_epoch <= args.gradient_accumulation_steps
                         and (step + 1) == steps_in_epoch
                     )
-                    do_sync_step = (
-                        is_last_step_and_steps_less_than_grad_acc
-                        or (
-                            total_batched_samples
-                            % args.gradient_accumulation_steps
-                            == 0
-                        )
+                    do_sync_step = is_last_step_and_steps_less_than_grad_acc or (
+                        total_batched_samples % args.gradient_accumulation_steps == 0
                     )
                     # Since we perform prefetching, we need to manually set sync_gradients
                     if not do_sync_step:
-                        self.accelerator.gradient_state._set_sync_gradients(
-                            False
-                        )
+                        self.accelerator.gradient_state._set_sync_gradients(False)
                     else:
-                        self.accelerator.gradient_state._set_sync_gradients(
-                            True
-                        )
+                        self.accelerator.gradient_state._set_sync_gradients(True)
 
                     if self.args.include_num_input_tokens_seen:
                         main_input_name = getattr(
@@ -589,9 +554,7 @@ class MMEBTrainer(Trainer):
                                 dtype=torch.int64,
                             )
                             self.state.num_input_tokens_seen += (
-                                self.accelerator.gather(input_tokens)
-                                .cpu()
-                                .item()
+                                self.accelerator.gather(input_tokens).cpu().item()
                             )
                     if rng_to_sync:
                         self._load_rng_state(resume_from_checkpoint)
@@ -628,16 +591,11 @@ class MMEBTrainer(Trainer):
                     if (
                         args.logging_nan_inf_filter
                         and not is_torch_xla_available()
-                        and (
-                            torch.isnan(tr_loss_step)
-                            or torch.isinf(tr_loss_step)
-                        )
+                        and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step))
                     ):
                         # if loss is nan or inf simply add the average of previous logged losses
                         tr_loss = tr_loss + tr_loss / (
-                            1
-                            + self.state.global_step
-                            - self._globalstep_last_logged
+                            1 + self.state.global_step - self._globalstep_last_logged
                         )
                     else:
                         if tr_loss.device != tr_loss_step.device:
@@ -650,15 +608,10 @@ class MMEBTrainer(Trainer):
 
                     if do_sync_step:
                         # Since we perform prefetching, we need to manually set sync_gradients to True
-                        self.accelerator.gradient_state._set_sync_gradients(
-                            True
-                        )
+                        self.accelerator.gradient_state._set_sync_gradients(True)
 
                         # Gradient clipping
-                        if (
-                            args.max_grad_norm is not None
-                            and args.max_grad_norm > 0
-                        ):
+                        if args.max_grad_norm is not None and args.max_grad_norm > 0:
                             # deepspeed does its own clipping
 
                             if self.use_apex:
@@ -685,10 +638,8 @@ class MMEBTrainer(Trainer):
                             else:
                                 grad_norm = _grad_norm
 
-                        self.control = (
-                            self.callback_handler.on_pre_optimizer_step(
-                                args, self.state, self.control
-                            )
+                        self.control = self.callback_handler.on_pre_optimizer_step(
+                            args, self.state, self.control
                         )
 
                         self.optimizer.step()
@@ -741,10 +692,7 @@ class MMEBTrainer(Trainer):
                             xm.mark_step()
                         break
                 # We also need to break out of the nested loop
-                if (
-                    self.control.should_epoch_stop
-                    or self.control.should_training_stop
-                ):
+                if self.control.should_epoch_stop or self.control.should_training_stop:
                     if is_torch_xla_available():
                         xm.mark_step()
                     break
@@ -779,10 +727,7 @@ class MMEBTrainer(Trainer):
         logger.info(
             "\n\nTraining completed. Do not forget to share your model on huggingface.co/models =)\n\n"
         )
-        if (
-            args.load_best_model_at_end
-            and self.state.best_model_checkpoint is not None
-        ):
+        if args.load_best_model_at_end and self.state.best_model_checkpoint is not None:
             # Wait for everyone to get here so we are sure the model has been saved by process 0.
             if is_torch_xla_available():
                 xm.rendezvous("load_best_model_at_end")
@@ -827,9 +772,7 @@ class MMEBTrainer(Trainer):
             and self.args.save_total_limit == 1
         ):
             for checkpoint in checkpoints_sorted:
-                if not os.path.samefile(
-                    checkpoint, self.state.best_model_checkpoint
-                ):
+                if not os.path.samefile(checkpoint, self.state.best_model_checkpoint):
                     logger.info(
                         f"Deleting older checkpoint [{checkpoint}] due to args.save_total_limit"
                     )
@@ -860,11 +803,9 @@ class GradCacheLateProcessTrainer(MMEBTrainer):
         kwargs.pop("max_length", None)
         self.model_args = kwargs.get("model_args")
         kwargs.pop("model_args", None)
-        super(GradCacheLateProcessTrainer, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.is_ddp = dist.is_initialized()
-        self._dist_loss_scale_factor = (
-            dist.get_world_size() if self.is_ddp else 1
-        )
+        self._dist_loss_scale_factor = dist.get_world_size() if self.is_ddp else 1
         loss_fn_cls = (
             DistributedContrastiveLoss if self.is_ddp else SimpleContrastiveLoss
         )
@@ -918,6 +859,4 @@ class GradCacheLateProcessTrainer(MMEBTrainer):
             self.tokenizer.save_pretrained(output_dir)
 
         torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
-        self.model.encoder.config.to_json_file(
-            os.path.join(output_dir, "config.json")
-        )
+        self.model.encoder.config.to_json_file(os.path.join(output_dir, "config.json"))

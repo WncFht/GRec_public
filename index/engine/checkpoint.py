@@ -114,9 +114,7 @@ class CheckpointManager:
 
         return ckpt_path
 
-    def update_and_prune_checkpoints(
-        self, epoch_idx, collision_rate, avg_utilization
-    ):
+    def update_and_prune_checkpoints(self, epoch_idx, collision_rate, avg_utilization):
         ckpt_path = self.save_checkpoint(
             epoch_idx,
             collision_rate=collision_rate,

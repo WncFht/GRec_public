@@ -15,4 +15,4 @@ usermod -aG root user
 export HOME=/home/user
 
 # 使用gosu切换到新创建的用户，并执行传递给脚本的任何命令（即Dockerfile中的CMD）
-exec /usr/local/bin/gosu user "$@" 
+exec /usr/local/bin/gosu user "$@"

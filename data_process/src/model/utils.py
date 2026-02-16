@@ -27,9 +27,7 @@ def get_select_mask(tensor, skip_ratio=0, rand=False):
         retain_mask = (tensor == -1).clone()
         unique_vals, counts = torch.unique(tensor, return_counts=True)
 
-        for i, (val, count) in enumerate(
-            zip(unique_vals, counts, strict=False)
-        ):
+        for i, (val, count) in enumerate(zip(unique_vals, counts, strict=False)):
             if val == -1:
                 continue
             positions = (tensor == val).nonzero(as_tuple=True)[0]

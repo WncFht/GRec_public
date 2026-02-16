@@ -83,9 +83,7 @@ def train(args):
     if local_rank == 0:
         print(f"添加了 {add_num} 个新token")
         print(f"新词汇表大小: {len(tokenizer)}")
-        print(
-            f"调整后embedding层大小: {model.get_input_embeddings().weight.shape}"
-        )
+        print(f"调整后embedding层大小: {model.get_input_embeddings().weight.shape}")
         print(f"数据量: {len(train_data)}")
         print(
             f"有效batch size: {args.per_device_batch_size * args.gradient_accumulation_steps * world_size}"

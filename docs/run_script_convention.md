@@ -345,4 +345,3 @@ bash scripts/tools/gen_run.sh \
 - 运行脚本：`runs/generated/<stage>/<yyyymmdd>/<RUN_ID>.sh`
 - 参数快照：`runs/specs/<stage>/<yyyymmdd>/<RUN_ID>.env`
 - 元信息：`runs/meta/<stage>/<yyyymmdd>/<RUN_ID>.txt`
-

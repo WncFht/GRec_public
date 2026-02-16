@@ -41,4 +41,4 @@ COPY ./requirements.txt ./requirements.txt
 RUN pip3 install --no-cache-dir -r requirements.txt
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-CMD ["fish"] 
+CMD ["fish"]

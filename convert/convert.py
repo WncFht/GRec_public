@@ -2,7 +2,6 @@ import argparse
 import os
 
 from transformers import (
-    Qwen2_5_VLForConditionalGeneration,
     AutoModelForCausalLM,
 )
 

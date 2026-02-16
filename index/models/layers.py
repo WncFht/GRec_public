@@ -6,7 +6,7 @@ from torch.nn.init import xavier_normal_
 
 class MLPLayers(nn.Module):
     def __init__(self, layers, dropout=0.0, activation="relu", bn=False):
-        super(MLPLayers, self).__init__()
+        super().__init__()
         self.layers = layers
         self.dropout = dropout
         self.activation = activation

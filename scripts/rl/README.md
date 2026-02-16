@@ -67,4 +67,3 @@ bash scripts/rl/rl.sh
 - 新 RL 实验优先从 `rl.sh` 起步，先用环境变量改参数。
 - 某组固定配置可另建极简 wrapper（只负责导出环境变量并调用 `rl.sh`）。
 - `scripts/rl/hope/*.sh` 暂保留，后续确认不再使用后再清理。
-

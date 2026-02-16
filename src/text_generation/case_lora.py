@@ -61,13 +61,9 @@ def main(args: argparse.Namespace):
 
         # 解码结果
         tokenizer = (
-            processor.tokenizer
-            if hasattr(processor, "tokenizer")
-            else processor
+            processor.tokenizer if hasattr(processor, "tokenizer") else processor
         )
-        output_texts = tokenizer.batch_decode(
-            output_ids, skip_special_tokens=False
-        )
+        output_texts = tokenizer.batch_decode(output_ids, skip_special_tokens=False)
 
         print("生成结果:")
         # 提取"assistant"后面的输出

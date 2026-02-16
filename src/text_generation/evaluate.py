@@ -25,9 +25,7 @@ class TextGenerationBenchmark:
     文本生成质量评估benchmark
     """
 
-    def __init__(
-        self, reference_data_path: str, metrics: str, debug: bool = False
-    ):
+    def __init__(self, reference_data_path: str, metrics: str, debug: bool = False):
         """
         初始化benchmark, 按需加载所需资源
 
@@ -160,9 +158,7 @@ class TextGenerationBenchmark:
             "bert_f1": f1.mean().item(),
         }
 
-    def calculate_semantic_similarity(
-        self, reference: str, candidate: str
-    ) -> float:
+    def calculate_semantic_similarity(self, reference: str, candidate: str) -> float:
         """
         计算语义相似度
 
@@ -282,13 +278,9 @@ class TextGenerationBenchmark:
                     print("-" * 70)
                     print(f"✅ MODEL INPUT (Decoded):\n{decoded_input}")
                     print("-" * 70)
-                    print(
-                        f"✅ MODEL OUTPUT (Generated Text):\n{generated_texts[0]}"
-                    )
+                    print(f"✅ MODEL OUTPUT (Generated Text):\n{generated_texts[0]}")
                     print("-" * 70)
-                    print(
-                        f"✅ GROUND TRUTH (Reference Text):\n{reference_texts[0]}"
-                    )
+                    print(f"✅ GROUND TRUTH (Reference Text):\n{reference_texts[0]}")
                     print("=" * 70)
 
                 # 5. 计算评估指标
@@ -297,9 +289,7 @@ class TextGenerationBenchmark:
                     ref_embeddings = self.sentence_model.encode(reference_texts)
                     gen_embeddings = self.sentence_model.encode(generated_texts)
                     # 计算每对向量的余弦相似度
-                    dot_products = np.sum(
-                        ref_embeddings * gen_embeddings, axis=1
-                    )
+                    dot_products = np.sum(ref_embeddings * gen_embeddings, axis=1)
                     ref_norms = np.linalg.norm(ref_embeddings, axis=1)
                     gen_norms = np.linalg.norm(gen_embeddings, axis=1)
                     # 防止除以零
@@ -488,9 +478,7 @@ class TextGenerationBenchmark:
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
         if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-            self.logger.info(
-                f"发现已存在的结果文件: {file_path}。正在合并结果..."
-            )
+            self.logger.info(f"发现已存在的结果文件: {file_path}。正在合并结果...")
             try:
                 # 1. 加载旧数据
                 existing_df = pd.read_csv(file_path)
@@ -506,18 +494,14 @@ class TextGenerationBenchmark:
                 combined_df.update(results_df)
 
                 # 将新模型的结果（未在combined_df中更新的）追加进去
-                new_models_df = results_df[
-                    ~results_df.index.isin(existing_df.index)
-                ]
+                new_models_df = results_df[~results_df.index.isin(existing_df.index)]
                 final_df = pd.concat([combined_df, new_models_df])
 
                 # 4. 恢复索引
                 final_df.reset_index(inplace=True)
 
             except pd.errors.EmptyDataError:
-                self.logger.warning(
-                    f"结果文件 {file_path} 为空, 将直接写入新数据。"
-                )
+                self.logger.warning(f"结果文件 {file_path} 为空, 将直接写入新数据。")
                 final_df = results_df
             except Exception:
                 self.logger.exception("合并结果时出错，将覆盖旧文件。")

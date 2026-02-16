@@ -104,9 +104,7 @@ def _prepare_4d_causal_attention_mask_with_cache_position(
         causal_mask *= torch.arange(
             target_length, device=cache_position.device
         ) > cache_position.reshape(-1, 1)
-        causal_mask = causal_mask[None, None, :, :].expand(
-            batch_size, 1, -1, -1
-        )
+        causal_mask = causal_mask[None, None, :, :].expand(batch_size, 1, -1, -1)
         if attention_mask is not None:
             causal_mask = (
                 causal_mask.clone()
@@ -124,8 +122,7 @@ def _prepare_4d_causal_attention_mask_with_cache_position(
                 causal_mask[:, :, :, :mask_length] = causal_mask[
                     :, :, :, :mask_length
                 ].masked_fill(
-                    token_type_ids[:, None, None, :].to(causal_mask.device)
-                    == 0,
+                    token_type_ids[:, None, None, :].to(causal_mask.device) == 0,
                     0,
                 )
     return causal_mask
@@ -316,18 +313,14 @@ PALIGEMMA_INPUTS_DOCSTRING = r"""
     """The PALIGEMMA model which consists of a vision backbone and a language model.""",
     PALIGEMMA_START_DOCSTRING,
 )
-class PaliGemmaForConditionalGeneration(
-    PaliGemmaPreTrainedModel, GenerationMixin
-):
+class PaliGemmaForConditionalGeneration(PaliGemmaPreTrainedModel, GenerationMixin):
     def __init__(self, config: PaliGemmaConfig):
         super().__init__(config)
         self.vision_tower = AutoModel.from_config(config=config.vision_config)
         self.multi_modal_projector = PaliGemmaMultiModalProjector(config)
         self.vocab_size = config.text_config.vocab_size
 
-        language_model = AutoModelForCausalLM.from_config(
-            config=config.text_config
-        )
+        language_model = AutoModelForCausalLM.from_config(config=config.text_config)
 
         if language_model._tied_weights_keys is not None:
             self._tied_weights_keys = [
@@ -336,9 +329,7 @@ class PaliGemmaForConditionalGeneration(
         self.language_model = language_model
 
         self.pad_token_id = (
-            self.config.pad_token_id
-            if self.config.pad_token_id is not None
-            else -1
+            self.config.pad_token_id if self.config.pad_token_id is not None else -1
         )
         self.post_init()
 
@@ -384,14 +375,10 @@ class PaliGemmaForConditionalGeneration(
         using_static_cache = isinstance(past_key_values, StaticCache)
         min_dtype = torch.finfo(self.dtype).min
         inputs_lead_dim = (
-            input_ids.shape[0]
-            if input_ids is not None
-            else inputs_embeds.shape[0]
+            input_ids.shape[0] if input_ids is not None else inputs_embeds.shape[0]
         )
         sequence_length = (
-            input_ids.shape[1]
-            if input_ids is not None
-            else inputs_embeds.shape[1]
+            input_ids.shape[1] if input_ids is not None else inputs_embeds.shape[1]
         )
         if using_static_cache or isinstance(past_key_values, HybridCache):
             target_length = past_key_values.get_max_cache_shape()
@@ -422,9 +409,7 @@ class PaliGemmaForConditionalGeneration(
         causal_mask *= torch.arange(
             target_length, device=cache_position.device
         ) > cache_position.reshape(-1, 1)
-        causal_mask = causal_mask[None, None, :, :].expand(
-            inputs_lead_dim, 1, -1, -1
-        )
+        causal_mask = causal_mask[None, None, :, :].expand(inputs_lead_dim, 1, -1, -1)
         if attention_mask is not None:
             causal_mask = (
                 causal_mask.clone()
@@ -442,8 +427,7 @@ class PaliGemmaForConditionalGeneration(
                 causal_mask[:, :, :, :mask_length] = causal_mask[
                     :, :, :, :mask_length
                 ].masked_fill(
-                    token_type_ids[:, None, None, :].to(causal_mask.device)
-                    == 0,
+                    token_type_ids[:, None, None, :].to(causal_mask.device) == 0,
                     0,
                 )
         return causal_mask
@@ -463,14 +447,10 @@ class PaliGemmaForConditionalGeneration(
         image_outputs = self.vision_tower(pixel_values)
         selected_image_feature = image_outputs.last_hidden_state
         image_features = self.multi_modal_projector(selected_image_feature)
-        image_features = image_features / (
-            self.config.text_config.hidden_size**0.5
-        )
+        image_features = image_features / (self.config.text_config.hidden_size**0.5)
         return image_features
 
-    @deprecate_kwarg(
-        "num_logits_to_keep", version="4.50", new_name="logits_to_keep"
-    )
+    @deprecate_kwarg("num_logits_to_keep", version="4.50", new_name="logits_to_keep")
     @add_start_docstrings_to_model_forward(PALIGEMMA_INPUTS_DOCSTRING)
     @replace_return_docstrings(
         output_type=PaliGemmaCausalLMOutputWithPast,
@@ -554,9 +534,7 @@ class PaliGemmaForConditionalGeneration(
             else self.config.output_hidden_states
         )
         return_dict = (
-            return_dict
-            if return_dict is not None
-            else self.config.use_return_dict
+            return_dict if return_dict is not None else self.config.use_return_dict
         )
 
         is_training = token_type_ids is not None and labels is not None
@@ -566,9 +544,7 @@ class PaliGemmaForConditionalGeneration(
 
         if cache_position is None:
             past_seen_tokens = (
-                past_key_values.get_seq_length()
-                if past_key_values is not None
-                else 0
+                past_key_values.get_seq_length() if past_key_values is not None else 0
             )
             cache_position = torch.arange(
                 past_seen_tokens,
@@ -585,16 +561,13 @@ class PaliGemmaForConditionalGeneration(
         if pixel_values is not None:
             image_features = self.get_image_features(pixel_values)
 
-            special_image_mask = (
-                input_ids == self.config.image_token_index
-            ).unsqueeze(-1)
+            special_image_mask = (input_ids == self.config.image_token_index).unsqueeze(
+                -1
+            )
             special_image_mask = special_image_mask.expand_as(inputs_embeds).to(
                 inputs_embeds.device
             )
-            if (
-                inputs_embeds[special_image_mask].numel()
-                != image_features.numel()
-            ):
+            if inputs_embeds[special_image_mask].numel() != image_features.numel():
                 image_tokens_in_text = torch.sum(
                     input_ids == self.config.image_token_index
                 )
@@ -652,9 +625,9 @@ class PaliGemmaForConditionalGeneration(
             if attention_mask is not None:
                 # we use the input attention mask to shift the logits and labels, because it is 2D.
                 # we also crop attn mask in case it is longer, which happens in PrefixTuning with peft
-                shift_attention_mask = attention_mask[
-                    :, -shift_logits.shape[1] :
-                ].to(logits.device)
+                shift_attention_mask = attention_mask[:, -shift_logits.shape[1] :].to(
+                    logits.device
+                )
                 shift_logits = shift_logits[
                     shift_attention_mask.to(logits.device) != 0
                 ].contiguous()
@@ -667,9 +640,7 @@ class PaliGemmaForConditionalGeneration(
             # Flatten the tokens
             loss_fct = nn.CrossEntropyLoss()
 
-            flat_logits = shift_logits.view(
-                -1, self.config.text_config.vocab_size
-            )
+            flat_logits = shift_logits.view(-1, self.config.text_config.vocab_size)
             flat_labels = shift_labels.view(-1).to(shift_logits.device)
             loss = loss_fct(flat_logits, flat_labels)
         if not return_dict:
@@ -682,9 +653,7 @@ class PaliGemmaForConditionalGeneration(
             past_key_values=outputs.past_key_values,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
-            image_hidden_states=image_features
-            if pixel_values is not None
-            else None,
+            image_hidden_states=image_features if pixel_values is not None else None,
         )
 
     def prepare_inputs_for_generation(

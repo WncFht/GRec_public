@@ -29,9 +29,7 @@ def setup_distributed():
     local_rank = int(os.environ["LOCAL_RANK"])
     torch.cuda.set_device(local_rank)
 
-    print(
-        f"[Rank {rank}] DDP setup: world_size={world_size}, local_rank={local_rank}"
-    )
+    print(f"[Rank {rank}] DDP setup: world_size={world_size}, local_rank={local_rank}")
     return rank, world_size, local_rank
 
 
@@ -79,9 +77,7 @@ def test(args: argparse.Namespace):
     # 这里我们假设是数据并行推理。
 
     # 设置tokenizer
-    tokenizer = (
-        processor.tokenizer if hasattr(processor, "tokenizer") else processor
-    )
+    tokenizer = processor.tokenizer if hasattr(processor, "tokenizer") else processor
     tokenizer.padding_side = "left"
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -208,9 +204,7 @@ def test(args: argparse.Namespace):
 
             # --- DDP 聚合 ---
             # 1. 聚合样本总数
-            total_tensor = torch.tensor(
-                local_total, dtype=torch.long, device=device
-            )
+            total_tensor = torch.tensor(local_total, dtype=torch.long, device=device)
             dist.all_reduce(total_tensor, op=dist.ReduceOp.SUM)
             global_total = total_tensor.item()
 

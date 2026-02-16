@@ -50,9 +50,7 @@ def _make_indexed_collator(base_collator):
         indices, samples = zip(*batch, strict=False)
         collated = base_collator(list(samples))
         if not isinstance(collated, tuple) or len(collated) < 2:
-            raise ValueError(
-                "Base collator must return a tuple (inputs, targets, ...)"
-            )
+            raise ValueError("Base collator must return a tuple (inputs, targets, ...)")
         return (collated[0], collated[1], list(indices), *collated[2:])
 
     return collate
@@ -161,9 +159,7 @@ def load_test_dataset_rl(args: argparse.Namespace, logger=None, local_rank=0):
                 local_rank=local_rank,
             )
         else:
-            error_string = (
-                f"Unsupported task {args.test_task} for constrained metric"
-            )
+            error_string = f"Unsupported task {args.test_task} for constrained metric"
             raise NotImplementedError(error_string)
 
     if test_data is None:
@@ -249,21 +245,15 @@ def test(args: argparse.Namespace):
                         }
 
                         all_prompt_results.append(metrics_results)
-                        print(
-                            "======================================================"
-                        )
+                        print("======================================================")
                         print(args.ckpt_path)
-                        print(
-                            "======================================================"
-                        )
+                        print("======================================================")
                         print(
                             f"Prompt {prompt_id} cached constrained results: ",
                             metrics_results,
                         )
                         print(f"(Based on {len(targets)} total samples)")
-                        print(
-                            "======================================================"
-                        )
+                        print("======================================================")
                         print()
 
                     mean_results = {}
@@ -276,15 +266,11 @@ def test(args: argparse.Namespace):
                             min_results[m] = min(all_res)
                             max_results[m] = max(all_res)
 
-                    print(
-                        "======================================================"
-                    )
+                    print("======================================================")
                     print("Mean results: ", mean_results)
                     print("Min results: ", min_results)
                     print("Max results: ", max_results)
-                    print(
-                        "======================================================"
-                    )
+                    print("======================================================")
 
                     save_data = {
                         "test_prompt_ids": args.test_prompt_ids,
@@ -335,9 +321,7 @@ def test(args: argparse.Namespace):
     if not hasattr(model, "device"):
         model.to(device)
 
-    tokenizer = (
-        processor.tokenizer if hasattr(processor, "tokenizer") else processor
-    )
+    tokenizer = processor.tokenizer if hasattr(processor, "tokenizer") else processor
     tokenizer.padding_side = "left"
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -353,9 +337,7 @@ def test(args: argparse.Namespace):
     else:
         collator = UnifiedTestCollator(args, processor_or_tokenizer=processor)
 
-    dataset_for_loader = (
-        _IndexedDataset(test_data) if rollout_file else test_data
-    )
+    dataset_for_loader = _IndexedDataset(test_data) if rollout_file else test_data
     collate_fn = _make_indexed_collator(collator) if rollout_file else collator
 
     test_loader = DataLoader(
@@ -400,9 +382,7 @@ def test(args: argparse.Namespace):
                 predictions_cache = [None] * len(test_data)
                 scores_cache = [None] * len(test_data)
 
-            for step, batch in enumerate(
-                tqdm(test_loader, desc=f"Prompt {prompt_id}")
-            ):
+            for step, batch in enumerate(tqdm(test_loader, desc=f"Prompt {prompt_id}")):
                 inputs = batch[0]
                 targets = batch[1]
                 indices = batch[2] if rollout_file else None
@@ -471,9 +451,7 @@ def test(args: argparse.Namespace):
                         metrics_results[m] += res
 
                 if (step + 1) % 10 == 0:
-                    temp = {
-                        m: metrics_results[m] / total for m in metrics_results
-                    }
+                    temp = {m: metrics_results[m] / total for m in metrics_results}
                     print(temp)
 
             for m in metrics_results:
@@ -498,9 +476,7 @@ def test(args: argparse.Namespace):
                         f"rollout predictions 缺失，prompt_id={prompt_id}"
                     )
                 if any(v is None for v in scores_cache):
-                    raise RuntimeError(
-                        f"rollout scores 缺失，prompt_id={prompt_id}"
-                    )
+                    raise RuntimeError(f"rollout scores 缺失，prompt_id={prompt_id}")
                 prompts_cache[str(prompt_id)] = {
                     "predictions": predictions_cache,
                     "scores": scores_cache,

@@ -5,9 +5,7 @@ import jax
 
 def tree_chunk(tree: Any, n_chunk: int, axis: int = 0) -> Any:
     return jax.tree_map(
-        lambda v: v.reshape(
-            v.shape[:axis] + (n_chunk, -1) + v.shape[axis + 1 :]
-        ),
+        lambda v: v.reshape(v.shape[:axis] + (n_chunk, -1) + v.shape[axis + 1 :]),
         tree,
     )
 

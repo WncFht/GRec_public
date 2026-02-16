@@ -151,9 +151,7 @@ def get_tqdm_compatible_logger(
                 super().emit(record)
                 self.flush()
 
-        file_handler = ImmediateFileHandler(
-            log_path, mode="a", encoding="utf-8"
-        )
+        file_handler = ImmediateFileHandler(log_path, mode="a", encoding="utf-8")
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)

@@ -20,4 +20,3 @@ for d in "${DATASETS[@]}"; do
   fi
 done
 echo "Done. Missing ids files: $missing_ids"
-

@@ -21,9 +21,7 @@ def main():
     parser.add_argument("--dataset", type=str, default="Instruments")
     parser.add_argument("--model", type=str, default="Qwen2.5-VL-3B-Instruct")
     parser.add_argument("--out-dir", type=str, default="reps")
-    parser.add_argument(
-        "--modes", type=str, default="orig,orig_enhanced,enhanced"
-    )
+    parser.add_argument("--modes", type=str, default="orig,orig_enhanced,enhanced")
     parser.add_argument("--limit", type=int, default=None)
     args = parser.parse_args()
 
@@ -73,9 +71,7 @@ def main():
     for combo in combos:
         mode_tag = combo["mode_tag"]
         img_flag = "img" if combo["include_image"] else "noimg"
-        out_path = os.path.join(
-            out_dir, f"{fname_prefix}_{mode_tag}_{img_flag}.json"
-        )
+        out_path = os.path.join(out_dir, f"{fname_prefix}_{mode_tag}_{img_flag}.json")
         npy_path = out_path.replace(".json", ".npy")
 
         # skip if both json and npy exist

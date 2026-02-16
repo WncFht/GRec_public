@@ -174,9 +174,7 @@ def load_processor(model_args, data_args=None):
             Qwen2TokenizerFast,
         )
 
-        image_processor = Qwen2VLImageProcessor.from_pretrained(
-            model_name_or_path
-        )
+        image_processor = Qwen2VLImageProcessor.from_pretrained(model_name_or_path)
         if data_args is not None:
             image_processor.do_resize = data_args.resize_use_processor
             image_processor.min_pixels = data_args.resize_min_pixels
@@ -298,9 +296,7 @@ def Llava_NEXT_process_fn(model_inputs: dict, processor, max_length=None):
     for text, images in zip(texts, visual_inputs, strict=False):
         # in theory, each batch item should contain a list of frames, but we still check for exceptions here
         # if no images as input (not likely to happen in mmeb pro cases)
-        if images is None or (
-            type(images) == list and any(i is None for i in images)
-        ):
+        if images is None or (type(images) == list and any(i is None for i in images)):
             inputs = processor(
                 images=None,
                 text=text,
@@ -359,9 +355,7 @@ def Llava_NEXT_process_fn(model_inputs: dict, processor, max_length=None):
         image_sizes = image_sizes.reshape(
             image_sizes_shape[0] * image_sizes_shape[1], *image_sizes_shape[2:]
         )
-        inputs["pixel_values"] = torch.from_numpy(
-            np.array(pixel_values)
-        ).float()
+        inputs["pixel_values"] = torch.from_numpy(np.array(pixel_values)).float()
         inputs["image_sizes"] = torch.tensor(np.array(image_sizes)).long()
     else:
         inputs["pixel_values"] = torch.zeros(input_ids.shape[0], 1)
@@ -454,9 +448,7 @@ def Qwen2_VL_process_fn(
 
     # 1. iterate each pair and process, since processors do not support processing for mixed batch (contains data w/ and w/o visual inputs)
     for text, images in zip(texts, visual_inputs, strict=False):
-        if images is None or (
-            type(images) == list and any(i is None for i in images)
-        ):
+        if images is None or (type(images) == list and any(i is None for i in images)):
             # all images must be valid
             inputs = processor(
                 text=[text],
@@ -550,9 +542,7 @@ def Qwen2_VL_process_fn(
     return inputs
 
 
-def Gme_process_fn(
-    model_inputs: dict, processor: Qwen2VLProcessor, max_length=None
-):
+def Gme_process_fn(model_inputs: dict, processor: Qwen2VLProcessor, max_length=None):
     inputs = {
         "texts": model_inputs["text"],
         "images": model_inputs["images"],
@@ -578,9 +568,7 @@ def Qwen2_VL_TokenSelection_process_fn(
     image_exists = False
     # 1. iterate each pair and process (since processors do not support batch processing)
     for text, images in zip(texts, visual_inputs, strict=False):
-        if images is None or (
-            type(images) == list and any(i is None for i in images)
-        ):
+        if images is None or (type(images) == list and any(i is None for i in images)):
             # all images must be valid
             inputs = processor(
                 text=[text],
@@ -626,9 +614,7 @@ def Qwen2_VL_TokenSelection_process_fn(
                     input_data_format=ChannelDimension.LAST,
                 )
             else:
-                raise NotImplementedError(
-                    f"Unsupported visual token in text: {text}"
-                )
+                raise NotImplementedError(f"Unsupported visual token in text: {text}")
             input_ids.append(inputs["input_ids"].squeeze().tolist())
             if "pixel_values" in inputs:
                 pixel_values.append(inputs["pixel_values"])
@@ -669,9 +655,7 @@ def Qwen2_VL_TokenSelection_process_fn(
             ]
             max_length = input_ids.size(1)
             padded_key = [
-                torch.nn.functional.pad(
-                    pos, (0, max_length - pos.size(1)), value=-1
-                )
+                torch.nn.functional.pad(pos, (0, max_length - pos.size(1)), value=-1)
                 for pos in key_tmp
             ]
             patch_pos = torch.cat(padded_key, dim=0)
@@ -687,9 +671,7 @@ def Qwen2_VL_TokenSelection_process_fn(
             ]
             max_length = input_ids.size(1)
             padded_key = [
-                torch.nn.functional.pad(
-                    pos, (0, max_length - pos.size(1)), value=True
-                )
+                torch.nn.functional.pad(pos, (0, max_length - pos.size(1)), value=True)
                 for pos in key_tmp
             ]
             select_mask = torch.cat(padded_key, dim=0)
@@ -845,9 +827,7 @@ def InternVideo2_process_fn(model_inputs: dict, processor, max_length=None):
             for frames in frame_list
         ]
 
-        pixel_values = torch.stack(
-            pixel_values, dim=0
-        )  # (B, num_frames, C, H, W)
+        pixel_values = torch.stack(pixel_values, dim=0)  # (B, num_frames, C, H, W)
         inputs = {"pixel_values": pixel_values}
 
     return inputs
@@ -856,21 +836,13 @@ def InternVideo2_process_fn(model_inputs: dict, processor, max_length=None):
 def e5_v_prompt_template(text, add_video_token, add_image_token):
     llama3_template = "<|start_header_id|>user<|end_header_id|>\n\n{}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n \n"
     if (
-        text is not None
-        and add_video_token is False
-        and add_image_token is False
+        text is not None and add_video_token is False and add_image_token is False
     ):  # only text
-        prompt = llama3_template.format(
-            f"{text}\nSummary above sentence in one word: "
-        )
+        prompt = llama3_template.format(f"{text}\nSummary above sentence in one word: ")
     if text is None and add_video_token:  # only video
-        prompt = llama3_template.format(
-            "<image>\nSummary above video in one word: "
-        )
+        prompt = llama3_template.format("<image>\nSummary above video in one word: ")
     if text is None and add_image_token:  # only image
-        prompt = llama3_template.format(
-            "<image>\nSummary above image in one word: "
-        )
+        prompt = llama3_template.format("<image>\nSummary above image in one word: ")
     if text is not None and add_video_token:  # video + text
         prompt = llama3_template.format(
             f"<image>\n{text}\nSummary above video and text in one word: "
@@ -901,9 +873,7 @@ def process_input_text(
         return text
     if model_backbone in [GME, LamRA, LamRA_QWEN2_5]:
         if text:
-            return (
-                instruction + " " + text
-            )  # GME and LamRA do not need special tokens
+            return instruction + " " + text  # GME and LamRA do not need special tokens
         return instruction + " "
     if model_backbone == E5_V:
         return PROMPT_TEMPLATE_DICT[model_backbone](

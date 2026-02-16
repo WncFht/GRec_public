@@ -20,9 +20,9 @@ def cache_train_step(loss_fn, state, ss, tt, axis="device"):
     def grad_cache_fn(xx, yy):
         return jnp.mean(loss_fn(xx, yy, axis=axis))
 
-    loss, (s_grads, t_grads) = jax.value_and_grad(
-        grad_cache_fn, argnums=(0, 1)
-    )(s_reps, t_reps)
+    loss, (s_grads, t_grads) = jax.value_and_grad(grad_cache_fn, argnums=(0, 1))(
+        s_reps, t_reps
+    )
 
     grads = jax.tree_map(lambda v: jnp.zeros_like(v), state.params)
     grads = grad_fn(state.params, grads, s_grads, **ss)

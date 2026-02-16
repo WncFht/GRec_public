@@ -85,7 +85,7 @@ COMMON_ARGS=(
     --ratio_dataset 1
     --report_to wandb
     --index_file .index_qwen3-embedding-4B.json
-    --eval_by_dataset 
+    --eval_by_dataset
     --eval_main_dataset Instruments
 )
 

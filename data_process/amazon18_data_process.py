@@ -269,9 +269,7 @@ def convert_to_atomic_files(args, train_data, valid_data, test_data):
     uid_list.sort(key=lambda t: int(t))
 
     with open(
-        os.path.join(
-            args.output_path, args.dataset, f"{args.dataset}.train.inter"
-        ),
+        os.path.join(args.output_path, args.dataset, f"{args.dataset}.train.inter"),
         "w",
     ) as file:
         file.write("user_id:token\titem_id_list:token_seq\titem_id:token\n")
@@ -284,9 +282,7 @@ def convert_to_atomic_files(args, train_data, valid_data, test_data):
                 file.write(f"{uid}\t{' '.join(seq)}\t{target_item}\n")
 
     with open(
-        os.path.join(
-            args.output_path, args.dataset, f"{args.dataset}.valid.inter"
-        ),
+        os.path.join(args.output_path, args.dataset, f"{args.dataset}.valid.inter"),
         "w",
     ) as file:
         file.write("user_id:token\titem_id_list:token_seq\titem_id:token\n")
@@ -296,9 +292,7 @@ def convert_to_atomic_files(args, train_data, valid_data, test_data):
             file.write(f"{uid}\t{' '.join(item_seq)}\t{target_item}\n")
 
     with open(
-        os.path.join(
-            args.output_path, args.dataset, f"{args.dataset}.test.inter"
-        ),
+        os.path.join(args.output_path, args.dataset, f"{args.dataset}.test.inter"),
         "w",
     ) as file:
         file.write("user_id:token\titem_id_list:token_seq\titem_id:token\n")
@@ -313,12 +307,8 @@ def parse_args():
     parser.add_argument(
         "--dataset", type=str, default="Arts", help="Instruments / Arts / Games"
     )
-    parser.add_argument(
-        "--user_k", type=int, default=5, help="user k-core filtering"
-    )
-    parser.add_argument(
-        "--item_k", type=int, default=5, help="item k-core filtering"
-    )
+    parser.add_argument("--user_k", type=int, default=5, help="user k-core filtering")
+    parser.add_argument("--item_k", type=int, default=5, help="item k-core filtering")
     parser.add_argument("--input_path", type=str, default="")
     parser.add_argument("--output_path", type=str, default="")
     return parser.parse_args()
@@ -344,9 +334,7 @@ if __name__ == "__main__":
 
     write_json_file(
         all_inters,
-        os.path.join(
-            args.output_path, args.dataset, f"{args.dataset}.inter.json"
-        ),
+        os.path.join(args.output_path, args.dataset, f"{args.dataset}.inter.json"),
     )
     convert_to_atomic_files(args, train_inters, valid_inters, test_inters)
 
@@ -361,9 +349,7 @@ if __name__ == "__main__":
 
     write_json_file(
         item2feature,
-        os.path.join(
-            args.output_path, args.dataset, f"{args.dataset}.item.json"
-        ),
+        os.path.join(args.output_path, args.dataset, f"{args.dataset}.item.json"),
     )
     # write_json_file(reviews, os.path.join(args.output_path, args.dataset, f'{args.dataset}.review.json'))
 

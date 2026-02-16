@@ -124,11 +124,7 @@ QUOTES = APOSTROPHES | SINGLE_QUOTES | DOUBLE_QUOTES | ACCENTS | PRIMES
 def normalize(text):
     for control in CONTROLS:
         text = text.replace(control, "")
-    text = (
-        text.replace("\u000b", " ")
-        .replace("\u000c", " ")
-        .replace("\u0085", " ")
-    )
+    text = text.replace("\u000b", " ").replace("\u000c", " ").replace("\u0085", " ")
 
     for hyphen in HYPHENS | MINUSES:
         text = text.replace(hyphen, "-")

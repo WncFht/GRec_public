@@ -64,4 +64,4 @@ test_args:
       model_type: "instructblip"
       path: "./ckpt/base_model/AI-ModelScope/instructblip-vicuna-7b"
       lora: false
-      ckpt_path: "" 
+      ckpt_path: ""

@@ -25,14 +25,14 @@ class TextEnricher:
 
     def get_item_prompt(self) -> str:
         """Get standardized prompt template for item enrichment"""
-        return """You are an expert product content creator for e-commerce recommendation systems. 
+        return """You are an expert product content creator for e-commerce recommendation systems.
     Based on the image and original product information, please generate:
-    
+
     1. An optimized, more engaging title (maintaining the original brand and product type)
     2. 5-10 relevant tags that capture key attributes
     3. 3-5 product highlights that emphasize unique selling points
     4. 3-5 product characteristics with technical details
-    
+
     CRITICAL CONSTRAINTS - YOU MUST FOLLOW THESE RULES:
     - Only use information that is explicitly visible in the image and stated in the original product information
     - Do NOT invent, assume, or add any features, specifications, or characteristics not present in the source materials
@@ -44,7 +44,7 @@ class TextEnricher:
     Brand: {brand}
     Categories: {categories}
     Description: {description}
-    
+
     Please respond in strict JSON format with these fields:
     {{
         "optimized_title": "optimized title here",
@@ -96,14 +96,14 @@ class TextEnricher:
         categories = item_info.get("categories", "")
         description = item_info.get("description", "")
 
-        prompt_text = f"""You are an expert product content creator for e-commerce recommendation systems. 
+        prompt_text = f"""You are an expert product content creator for e-commerce recommendation systems.
         Based on the original product information provided, please generate:
-        
+
         1. An optimized, more engaging title (maintaining the original brand and product type)
         2. 5-10 relevant tags that capture key attributes
         3. 3-5 product highlights that emphasize unique selling points
         4. 3-5 product characteristics with technical details
-        
+
         CRITICAL CONSTRAINTS - YOU MUST FOLLOW THESE RULES:
         - Only use information that is stated in the original product information
         - Do NOT invent, assume, or add any features, specifications, or characteristics not present in the source materials
@@ -115,7 +115,7 @@ class TextEnricher:
         Brand: {brand}
         Categories: {categories}
         Description: {description}
-        
+
         Please respond in strict JSON format with these fields:
         {{
             "optimized_title": "optimized title here",
@@ -159,9 +159,7 @@ class TextEnricher:
             )
             item_info["tags"] = enriched_data.get("tags", [])
             item_info["highlights"] = enriched_data.get("highlights", [])
-            item_info["characteristics"] = enriched_data.get(
-                "characteristics", []
-            )
+            item_info["characteristics"] = enriched_data.get("characteristics", [])
             item_info["has_image"] = has_image  # Track whether image was used
 
             return item_info
@@ -178,9 +176,7 @@ class TextEnricher:
         with open(item_info_path) as f:
             return json.load(f)
 
-    def load_item_ids(
-        self, dataset_path: str, dataset_name: str
-    ) -> dict[int, str]:
+    def load_item_ids(self, dataset_path: str, dataset_name: str) -> dict[int, str]:
         """Load item ID mapping"""
         item2id_path = os.path.join(dataset_path, f"{dataset_name}.item2id")
         item2id = {}
@@ -224,9 +220,7 @@ class TextEnricher:
         # Process items
         image_dir = os.path.join(dataset_path, "images")
         items_to_process = (
-            list(items.items())
-            if limit is None
-            else list(items.items())[:limit]
+            list(items.items()) if limit is None else list(items.items())[:limit]
         )
 
         # Filter out already processed items
@@ -236,18 +230,14 @@ class TextEnricher:
             if num_id not in enriched_items
         ]
 
-        print(
-            f"Processing {len(items_to_process)} new items for text enrichment..."
-        )
+        print(f"Processing {len(items_to_process)} new items for text enrichment...")
 
         for num_id, item_data in tqdm(items_to_process, desc="Enriching items"):
             item_id = item_ids.get(int(num_id), num_id)
             image_path = os.path.join(image_dir, f"{item_id}.jpg")
 
             try:
-                enriched_item = self.enrich_item_text(
-                    item_data, image_path, num_id
-                )
+                enriched_item = self.enrich_item_text(item_data, image_path, num_id)
                 enriched_items[num_id] = enriched_item
 
                 # Incremental save after each successful processing
@@ -259,17 +249,13 @@ class TextEnricher:
             except Exception as e:
                 logging.exception(f"Failed to process item {num_id}: {e}")
                 failed_items.append(num_id)
-                enriched_items[num_id] = (
-                    item_data  # Save original if enrichment fails
-                )
+                enriched_items[num_id] = item_data  # Save original if enrichment fails
 
                 # Save failed items incrementally
                 with open(failed_path, "w", encoding="utf-8") as f:
                     json.dump(failed_items, f, indent=2, ensure_ascii=False)
 
-        print(
-            f"Successfully enriched {len(enriched_items) - len(failed_items)} items"
-        )
+        print(f"Successfully enriched {len(enriched_items) - len(failed_items)} items")
         print("Text enrichment completed!")
         return enriched_items, failed_items
 
@@ -281,9 +267,7 @@ def main(args):
     # Process dataset
     dataset_path = os.path.abspath(os.path.join("data", args.dataset))
     output_path = os.path.abspath(
-        os.path.join(
-            "data", args.dataset, f"{args.dataset}.item_enriched_v2.json"
-        )
+        os.path.join("data", args.dataset, f"{args.dataset}.item_enriched_v2.json")
     )
 
     print(f"Starting text enrichment for dataset: {args.dataset}")
@@ -294,9 +278,7 @@ def main(args):
         limit=args.limit,
     )
 
-    print(
-        f"Text enrichment completed. {len(failed_items)} items failed processing."
-    )
+    print(f"Text enrichment completed. {len(failed_items)} items failed processing.")
     print(f"Enhanced data saved to {output_path}")
 
 
@@ -305,9 +287,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.WARNING)
 
     # Parse command line arguments
-    parser = argparse.ArgumentParser(
-        description="Enrich Product Text Information"
-    )
+    parser = argparse.ArgumentParser(description="Enrich Product Text Information")
     parser.add_argument(
         "--dataset", type=str, default="Instruments", help="Dataset Name"
     )

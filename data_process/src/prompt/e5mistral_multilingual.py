@@ -24,7 +24,9 @@ def load_e5mistral_multilingual_prompt(task_name, task_type, *args, **kwargs):
 def get_task_def_by_task_name_and_type(task_type: str, task_name: str) -> str:
     # @ruimeng added
     if task_name.lower() in ["nli", "allnli"]:
-        return "Retrieve a sentence that is semantically entailed by the given sentence."
+        return (
+            "Retrieve a sentence that is semantically entailed by the given sentence."
+        )
 
     if task_type in ["STS", "sts"]:
         return "Retrieve semantically similar text."
@@ -186,15 +188,9 @@ def get_task_def_by_task_name_and_type(task_type: str, task_name: str) -> str:
         )
         # other cases where lower case match still doesn't work
         task_name_to_instruct["trec-covid"] = task_name_to_instruct["TRECCOVID"]
-        task_name_to_instruct["climate-fever"] = task_name_to_instruct[
-            "ClimateFEVER"
-        ]
-        task_name_to_instruct["dbpedia-entity"] = task_name_to_instruct[
-            "DBPedia"
-        ]
-        task_name_to_instruct["webis-touche2020"] = task_name_to_instruct[
-            "Touche2020"
-        ]
+        task_name_to_instruct["climate-fever"] = task_name_to_instruct["ClimateFEVER"]
+        task_name_to_instruct["dbpedia-entity"] = task_name_to_instruct["DBPedia"]
+        task_name_to_instruct["webis-touche2020"] = task_name_to_instruct["Touche2020"]
         task_name_to_instruct["fiqa"] = task_name_to_instruct["FiQA2018"]
         task_name_to_instruct["scidocs"] = task_name_to_instruct["SCIDOCS"]
         task_name_to_instruct["quora"] = task_name_to_instruct["QuoraRetrieval"]

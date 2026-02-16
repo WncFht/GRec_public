@@ -4,16 +4,17 @@ import json
 import os
 
 import torch
-from collator import UnifiedTestCollator
-from evaluate import get_metrics_results, get_topk_results
 from peft import PeftModel
-from prompt import all_prompt
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import (
     AutoProcessor,
     Qwen2_5_VLForConditionalGeneration,
 )
+
+from collator import UnifiedTestCollator
+from evaluate import get_metrics_results, get_topk_results
+from prompt import all_prompt
 from utils import *
 
 
@@ -114,15 +115,11 @@ def test(args):
 
     # 加载测试数据
     test_data = load_test_dataset(args)
-    collator = UnifiedTestCollator(
-        args, processor
-    )  # 序列推荐评估不需要多模态数据
+    collator = UnifiedTestCollator(args, processor)  # 序列推荐评估不需要多模态数据
     all_items = test_data.get_all_items()
 
     # 获取前缀允许的tokens函数（用于约束生成）
-    prefix_allowed_tokens = test_data.get_prefix_allowed_tokens_fn(
-        processor.tokenizer
-    )
+    prefix_allowed_tokens = test_data.get_prefix_allowed_tokens_fn(processor.tokenizer)
 
     test_loader = DataLoader(
         test_data,
@@ -148,9 +145,7 @@ def test(args):
             metrics_results = {}
             total = 0
 
-            for step, batch in enumerate(
-                tqdm(test_loader, desc=f"Prompt {prompt_id}")
-            ):
+            for step, batch in enumerate(tqdm(test_loader, desc=f"Prompt {prompt_id}")):
                 inputs = batch[0]
                 targets = batch[1]
                 total += len(targets)
@@ -308,9 +303,7 @@ def test(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="MultiModal Recommendation Model Test"
-    )
+    parser = argparse.ArgumentParser(description="MultiModal Recommendation Model Test")
     parser = parse_global_args(parser)
     parser = parse_dataset_args(parser)
     parser = parse_test_args(parser)
@@ -325,9 +318,7 @@ if __name__ == "__main__":
         default=4,
         help="Maximum number of new tokens to generate",
     )  # 物品序列推荐只生成4个token ids
-    parser.add_argument(
-        "--print_freq", type=int, default=4, help="Print frequency"
-    )
+    parser.add_argument("--print_freq", type=int, default=4, help="Print frequency")
 
     args = parser.parse_args()
     test(args)

@@ -23,9 +23,7 @@ class AutoPrompt(metaclass=ABCMeta):
         cls, prompt_family, task_name=None, task_type=None, *args, **kwargs
     ):
         try:
-            return cls.registry[prompt_family](
-                task_name, task_type, *args, **kwargs
-            )
+            return cls.registry[prompt_family](task_name, task_type, *args, **kwargs)
         except Exception as e:
             if prompt_family not in cls.registry:
                 f"Unknown prompt_family: {prompt_family}"

@@ -16,9 +16,7 @@ class ModelArguments:
         default=None,
         metadata={"help": "processor_name, huggingface model name or path"},
     )
-    model_backbone: str = field(
-        default=None, metadata={"help": "HF model type"}
-    )
+    model_backbone: str = field(default=None, metadata={"help": "HF model type"})
     checkpoint_path: str = field(
         default=None,
         metadata={"help": "a local model path, could be a LoRA version"},
@@ -58,9 +56,7 @@ class ModelArguments:
     )
     uigraph_rand: bool = field(
         default=False,
-        metadata={
-            "help": "Enable random graph construction for token selection"
-        },
+        metadata={"help": "Enable random graph construction for token selection"},
     )
     uimask_ratio: float = field(
         default=0.5,
@@ -70,9 +66,7 @@ class ModelArguments:
     )
     uimask_rand: bool = field(
         default=False,
-        metadata={
-            "help": "Enable random token selection instead of uniform selection"
-        },
+        metadata={"help": "Enable random token selection instead of uniform selection"},
     )
     lm_skip_layer: str = field(
         default="[1,28,0]",
@@ -105,15 +99,11 @@ class DataArguments:
     subset_name: list[str] = field(
         default=None, metadata={"help": "Useful for datasets with subsets"}
     )
-    dataset_split: str = field(
-        default="train", metadata={"help": "dataset split"}
-    )
+    dataset_split: str = field(default="train", metadata={"help": "dataset split"})
     num_sample_per_subset: int = field(
         default=None, metadata={"help": "number of training samples per subset"}
     )
-    image_dir: str = field(
-        default=None, metadata={"help": "Image directory path"}
-    )
+    image_dir: str = field(default=None, metadata={"help": "Image directory path"})
     encode_output_path: str = field(
         default=None, metadata={"help": "encode output path"}
     )
@@ -150,13 +140,9 @@ class DataArguments:
     )
     image_decay_factor: float = field(
         default=None,
-        metadata={
-            "help": "The image decay factor for resizing temporal images"
-        },
+        metadata={"help": "The image decay factor for resizing temporal images"},
     )
-    num_hardneg: int = field(
-        default=0, metadata={"help": "hard negative number"}
-    )
+    num_hardneg: int = field(default=0, metadata={"help": "hard negative number"})
 
 
 @dataclass
@@ -181,9 +167,7 @@ class TrainingArguments(TrainingArguments):
     grad_cache: bool = field(
         default=False, metadata={"help": "Use gradient cache update"}
     )
-    gc_q_chunk_size: int = field(
-        default=2, metadata={"help": "query side subset size"}
-    )
+    gc_q_chunk_size: int = field(default=2, metadata={"help": "query side subset size"})
     gc_p_chunk_size: int = field(
         default=2, metadata={"help": "target side subset size"}
     )

@@ -180,10 +180,7 @@ class Phi3VConfig(PretrainedConfig):
         if self.rope_scaling is None:
             return
 
-        if (
-            not isinstance(self.rope_scaling, dict)
-            or len(self.rope_scaling) != 3
-        ):
+        if not isinstance(self.rope_scaling, dict) or len(self.rope_scaling) != 3:
             raise ValueError(
                 "`rope_scaling` must be a dictionary with three fields, `type`, `short_factor` and `long_factor`, "
                 f"got {self.rope_scaling}"
@@ -197,9 +194,7 @@ class Phi3VConfig(PretrainedConfig):
             )
         if not (
             isinstance(rope_scaling_short_factor, list)
-            and all(
-                isinstance(x, (int, float)) for x in rope_scaling_short_factor
-            )
+            and all(isinstance(x, (int, float)) for x in rope_scaling_short_factor)
         ):
             raise ValueError(
                 f"`rope_scaling`'s short_factor field must be a list of numbers, got {rope_scaling_short_factor}"
@@ -213,9 +208,7 @@ class Phi3VConfig(PretrainedConfig):
             )
         if not (
             isinstance(rope_scaling_long_factor, list)
-            and all(
-                isinstance(x, (int, float)) for x in rope_scaling_long_factor
-            )
+            and all(isinstance(x, (int, float)) for x in rope_scaling_long_factor)
         ):
             raise ValueError(
                 f"`rope_scaling`'s long_factor field must be a list of numbers, got {rope_scaling_long_factor}"

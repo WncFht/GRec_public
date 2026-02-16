@@ -26,7 +26,7 @@ class RQVAE(nn.Module):
         sk_epsilons=None,
         sk_iters=100,
     ):
-        super(RQVAE, self).__init__()
+        super().__init__()
 
         self.in_dim = in_dim
         self.num_emb_list = num_emb_list
@@ -73,9 +73,7 @@ class RQVAE(nn.Module):
         return out, rq_loss, indices
 
     @torch.no_grad()
-    def get_indices(
-        self, xs: torch.Tensor, use_sk: bool = False
-    ) -> torch.Tensor:
+    def get_indices(self, xs: torch.Tensor, use_sk: bool = False) -> torch.Tensor:
         x_e = self.encoder(xs)
         _, _, indices = self.rq(x_e, use_sk=use_sk)
         return indices

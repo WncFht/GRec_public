@@ -125,21 +125,14 @@ class Qwen2_5_VLMLP(nn.Module):
         super().__init__()
         self.hidden_size = config.hidden_size
         self.intermediate_size = config.intermediate_size
-        self.gate_proj = nn.Linear(
-            self.hidden_size, self.intermediate_size, bias=bias
-        )
-        self.up_proj = nn.Linear(
-            self.hidden_size, self.intermediate_size, bias=bias
-        )
-        self.down_proj = nn.Linear(
-            self.intermediate_size, self.hidden_size, bias=bias
-        )
+        self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=bias)
+        self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=bias)
+        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=bias)
         self.act_fn = ACT2FN[config.hidden_act]
 
     def forward(self, hidden_state):
         return self.down_proj(
-            self.act_fn(self.gate_proj(hidden_state))
-            * self.up_proj(hidden_state)
+            self.act_fn(self.gate_proj(hidden_state)) * self.up_proj(hidden_state)
         )
 
 
@@ -152,9 +145,7 @@ class Qwen2_5_VisionRotaryEmbedding(VisionRotaryEmbedding):
 
 
 class Qwen2_5_VLPatchMerger(PatchMerger):
-    def __init__(
-        self, dim: int, context_dim: int, spatial_merge_size: int = 2
-    ) -> None:
+    def __init__(self, dim: int, context_dim: int, spatial_merge_size: int = 2) -> None:
         super().__init__(dim, context_dim, spatial_merge_size)
         self.ln_q = Qwen2RMSNorm(context_dim, eps=1e-6)
 
@@ -179,12 +170,8 @@ class Qwen2_5_VLVisionFlashAttention2(nn.Module):
             .permute(1, 0, 2, 3)
             .unbind(0)
         )
-        q = apply_rotary_pos_emb_flashatt(
-            q.unsqueeze(0), rotary_pos_emb
-        ).squeeze(0)
-        k = apply_rotary_pos_emb_flashatt(
-            k.unsqueeze(0), rotary_pos_emb
-        ).squeeze(0)
+        q = apply_rotary_pos_emb_flashatt(q.unsqueeze(0), rotary_pos_emb).squeeze(0)
+        k = apply_rotary_pos_emb_flashatt(k.unsqueeze(0), rotary_pos_emb).squeeze(0)
 
         max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
         attn_output = flash_attn_varlen_func(
@@ -219,9 +206,7 @@ class Qwen2_5_VLVisionBlock(nn.Module):
         )
         self.mlp = Qwen2_5_VLMLP(config, bias=True)
 
-    def forward(
-        self, hidden_states, cu_seqlens, rotary_pos_emb
-    ) -> torch.Tensor:
+    def forward(self, hidden_states, cu_seqlens, rotary_pos_emb) -> torch.Tensor:
         hidden_states = hidden_states + self.attn(
             self.norm1(hidden_states),
             cu_seqlens=cu_seqlens,
@@ -245,9 +230,7 @@ class Qwen2_5_VisionTransformerPretrainedModel(Qwen2_5_VLPreTrainedModel):
         self.patch_size = config.patch_size
         self.fullatt_block_indexes = config.fullatt_block_indexes
         self.window_size = config.window_size
-        self.spatial_merge_unit = (
-            self.spatial_merge_size * self.spatial_merge_size
-        )
+        self.spatial_merge_unit = self.spatial_merge_size * self.spatial_merge_size
 
         self.patch_embed = Qwen2_5_VisionPatchEmbed(
             patch_size=config.patch_size,
@@ -294,9 +277,7 @@ class Qwen2_5_VisionTransformerPretrainedModel(Qwen2_5_VLPreTrainedModel):
             )
             wpos_ids = wpos_ids.permute(0, 2, 1, 3)
             wpos_ids = wpos_ids.flatten()
-            pos_ids.append(
-                torch.stack([hpos_ids, wpos_ids], dim=-1).repeat(t, 1)
-            )
+            pos_ids.append(torch.stack([hpos_ids, wpos_ids], dim=-1).repeat(t, 1))
         pos_ids = torch.cat(pos_ids, dim=0)
         max_grid_size = grid_thw[:, 1:].max()
         rotary_pos_emb_full = self.rotary_pos_emb(max_grid_size)
@@ -342,8 +323,7 @@ class Qwen2_5_VisionTransformerPretrainedModel(Qwen2_5_VLPreTrainedModel):
             index_new = index_padded[index_padded != -100]
             window_index.append(index_new + window_index_id)
             cu_seqlens_tmp = (
-                seqlens.cumsum(0) * self.spatial_merge_unit
-                + cu_window_seqlens[-1]
+                seqlens.cumsum(0) * self.spatial_merge_unit + cu_window_seqlens[-1]
             )
             cu_window_seqlens.extend(cu_seqlens_tmp.tolist())
             window_index_id += (grid_t * llm_grid_h * llm_grid_w).item()
@@ -584,14 +564,11 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
                         else 0
                     )
                     llm_pos_ids_list.append(
-                        torch.arange(text_len).view(1, -1).expand(3, -1)
-                        + st_idx
+                        torch.arange(text_len).view(1, -1).expand(3, -1) + st_idx
                     )
 
                     range_tensor = torch.arange(llm_grid_t).view(-1, 1)
-                    expanded_range = range_tensor.expand(
-                        -1, llm_grid_h * llm_grid_w
-                    )
+                    expanded_range = range_tensor.expand(-1, llm_grid_h * llm_grid_w)
 
                     time_tensor = (
                         expanded_range
@@ -615,9 +592,7 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
                         .flatten()
                     )
                     llm_pos_ids_list.append(
-                        torch.stack([t_index, h_index, w_index])
-                        + text_len
-                        + st_idx
+                        torch.stack([t_index, h_index, w_index]) + text_len + st_idx
                     )
                     st = ed + llm_grid_t * llm_grid_h * llm_grid_w
 
@@ -629,13 +604,10 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
                     )
                     text_len = len(input_tokens) - st
                     llm_pos_ids_list.append(
-                        torch.arange(text_len).view(1, -1).expand(3, -1)
-                        + st_idx
+                        torch.arange(text_len).view(1, -1).expand(3, -1) + st_idx
                     )
 
-                llm_positions = torch.cat(llm_pos_ids_list, dim=1).reshape(
-                    3, -1
-                )
+                llm_positions = torch.cat(llm_pos_ids_list, dim=1).reshape(3, -1)
                 position_ids[..., i, attention_mask[i] == 1] = llm_positions.to(
                     position_ids.device
                 )
@@ -650,16 +622,12 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
             position_ids = attention_mask.long().cumsum(-1) - 1
             position_ids.masked_fill_(attention_mask == 0, 1)
             position_ids = (
-                position_ids.unsqueeze(0)
-                .expand(3, -1, -1)
-                .to(attention_mask.device)
+                position_ids.unsqueeze(0).expand(3, -1, -1).to(attention_mask.device)
             )
             max_position_ids = position_ids.max(0, keepdim=False)[0].max(
                 -1, keepdim=True
             )[0]
-            mrope_position_deltas = (
-                max_position_ids + 1 - attention_mask.shape[-1]
-            )
+            mrope_position_deltas = max_position_ids + 1 - attention_mask.shape[-1]
         else:
             position_ids = (
                 torch.arange(input_ids.shape[1], device=input_ids.device)
@@ -745,21 +713,15 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
             else self.config.output_hidden_states
         )
         return_dict = (
-            return_dict
-            if return_dict is not None
-            else self.config.use_return_dict
+            return_dict if return_dict is not None else self.config.use_return_dict
         )
 
         if inputs_embeds is None:
             inputs_embeds = self.model.embed_tokens(input_ids)
             if pixel_values is not None:
                 pixel_values = pixel_values.type(self.visual.dtype)
-                image_embeds = self.visual(
-                    pixel_values, grid_thw=image_grid_thw
-                )
-                n_image_tokens = (
-                    (input_ids == self.config.image_token_id).sum().item()
-                )
+                image_embeds = self.visual(pixel_values, grid_thw=image_grid_thw)
+                n_image_tokens = (input_ids == self.config.image_token_id).sum().item()
                 n_image_features = image_embeds.shape[0]
                 if n_image_tokens != n_image_features:
                     raise ValueError(
@@ -774,20 +736,12 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
                 image_embeds = image_embeds.to(
                     inputs_embeds.device, inputs_embeds.dtype
                 )
-                inputs_embeds = inputs_embeds.masked_scatter(
-                    image_mask, image_embeds
-                )
+                inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
 
             if pixel_values_videos is not None:
-                pixel_values_videos = pixel_values_videos.type(
-                    self.visual.dtype
-                )
-                video_embeds = self.visual(
-                    pixel_values_videos, grid_thw=video_grid_thw
-                )
-                n_video_tokens = (
-                    (input_ids == self.config.video_token_id).sum().item()
-                )
+                pixel_values_videos = pixel_values_videos.type(self.visual.dtype)
+                video_embeds = self.visual(pixel_values_videos, grid_thw=video_grid_thw)
+                n_video_tokens = (input_ids == self.config.video_token_id).sum().item()
                 n_video_features = video_embeds.shape[0]
                 if n_video_tokens != n_video_features:
                     raise ValueError(
@@ -802,9 +756,7 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
                 video_embeds = video_embeds.to(
                     inputs_embeds.device, inputs_embeds.dtype
                 )
-                inputs_embeds = inputs_embeds.masked_scatter(
-                    video_mask, video_embeds
-                )
+                inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
 
             if attention_mask is not None:
                 attention_mask = attention_mask.to(inputs_embeds.device)
@@ -829,22 +781,14 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
             else:
                 batch_size, seq_length, _ = inputs_embeds.shape
                 delta = (
-                    (cache_position[0] + self.rope_deltas).to(
-                        inputs_embeds.device
-                    )
+                    (cache_position[0] + self.rope_deltas).to(inputs_embeds.device)
                     if cache_position is not None
                     else 0
                 )
-                position_ids = torch.arange(
-                    seq_length, device=inputs_embeds.device
-                )
+                position_ids = torch.arange(seq_length, device=inputs_embeds.device)
                 position_ids = position_ids.view(1, -1).expand(batch_size, -1)
-                if (
-                    cache_position is not None
-                ):  # otherwise `deltas` is an int `0`
-                    delta = delta.repeat_interleave(
-                        batch_size // delta.shape[0], dim=0
-                    )
+                if cache_position is not None:  # otherwise `deltas` is an int `0`
+                    delta = delta.repeat_interleave(batch_size // delta.shape[0], dim=0)
                 position_ids = position_ids.add(delta)
                 position_ids = position_ids.unsqueeze(0).expand(3, -1, -1)
 
@@ -931,10 +875,7 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
         else:
             model_inputs = {"input_ids": input_ids, "inputs_embeds": None}
 
-        if (
-            isinstance(past_key_values, StaticCache)
-            and attention_mask.ndim == 2
-        ):
+        if isinstance(past_key_values, StaticCache) and attention_mask.ndim == 2:
             if model_inputs["inputs_embeds"] is not None:
                 batch_size, sequence_length, _ = inputs_embeds.shape
                 device = inputs_embeds.device
@@ -942,16 +883,18 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2VLForConditionalGeneration):
                 batch_size, sequence_length = input_ids.shape
                 device = input_ids.device
 
-            attention_mask = self.model._prepare_4d_causal_attention_mask_with_cache_position(
-                attention_mask,
-                sequence_length=sequence_length,
-                target_length=past_key_values.get_max_cache_shape(),
-                dtype=self.lm_head.weight.dtype,
-                device=device,
-                cache_position=cache_position,
-                batch_size=batch_size,
-                config=self.config,
-                past_key_values=past_key_values,
+            attention_mask = (
+                self.model._prepare_4d_causal_attention_mask_with_cache_position(
+                    attention_mask,
+                    sequence_length=sequence_length,
+                    target_length=past_key_values.get_max_cache_shape(),
+                    dtype=self.lm_head.weight.dtype,
+                    device=device,
+                    cache_position=cache_position,
+                    batch_size=batch_size,
+                    config=self.config,
+                    past_key_values=past_key_values,
+                )
             )
 
         model_inputs.update(
@@ -1121,8 +1064,7 @@ class Qwen2_5_VLProcessor(Qwen2VLProcessor):
                 ] * len(video_grid_thw)
             elif hasattr(fps, "__len__") and len(fps) == len(video_grid_thw):
                 second_per_grid_ts = [
-                    self.image_processor.temporal_patch_size / tmp
-                    for tmp in fps
+                    self.image_processor.temporal_patch_size / tmp for tmp in fps
                 ]
             else:
                 raise ValueError(
@@ -1167,9 +1109,7 @@ class Qwen2_5_VLProcessor(Qwen2VLProcessor):
 
         text_inputs = self.tokenizer(text, **output_kwargs["text_kwargs"])
 
-        return BatchFeature(
-            data={**text_inputs, **image_inputs, **videos_inputs}
-        )
+        return BatchFeature(data={**text_inputs, **image_inputs, **videos_inputs})
 
 
 __all__ = [

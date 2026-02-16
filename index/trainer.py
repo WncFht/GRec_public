@@ -45,13 +45,9 @@ class Trainer:
             self.logger.setLevel(logging.WARNING)
 
         want_wandb = getattr(self.args, "use_wandb", False)
-        self.use_wandb = bool(
-            want_wandb and self.is_main_process and wandb is not None
-        )
+        self.use_wandb = bool(want_wandb and self.is_main_process and wandb is not None)
         if want_wandb and wandb is None and self.is_main_process:
-            self.logger.warning(
-                "use_wandb=True 但未安装 wandb，自动关闭 wandb 日志。"
-            )
+            self.logger.warning("use_wandb=True 但未安装 wandb，自动关闭 wandb 日志。")
 
         if self.use_wandb:
             wandb_project = getattr(self.args, "wandb_project", "grec_index")
@@ -62,9 +58,7 @@ class Trainer:
                 reinit=True,
                 name=wandb_name,
             )
-            wandb.watch(
-                self.model, log="all", log_freq=max(100, data_num // 10)
-            )
+            wandb.watch(self.model, log="all", log_freq=max(100, data_num // 10))
 
         self.lr = args.lr
         self.learner = args.learner
@@ -103,9 +97,7 @@ class Trainer:
         return wandb
 
     def _unwrap_model(self):
-        return (
-            self.model.module if hasattr(self.model, "module") else self.model
-        )
+        return self.model.module if hasattr(self.model, "module") else self.model
 
     def _broadcast_vq_codebooks(self):
         if not self.distributed:
@@ -122,13 +114,9 @@ class Trainer:
         weight_decay = self.weight_decay
 
         if learner.lower() == "adam":
-            optimizer = optim.Adam(
-                params, lr=learning_rate, weight_decay=weight_decay
-            )
+            optimizer = optim.Adam(params, lr=learning_rate, weight_decay=weight_decay)
         elif learner.lower() == "sgd":
-            optimizer = optim.SGD(
-                params, lr=learning_rate, weight_decay=weight_decay
-            )
+            optimizer = optim.SGD(params, lr=learning_rate, weight_decay=weight_decay)
         elif learner.lower() == "adagrad":
             optimizer = optim.Adagrad(
                 params, lr=learning_rate, weight_decay=weight_decay
@@ -142,9 +130,7 @@ class Trainer:
                 params, lr=learning_rate, weight_decay=weight_decay
             )
         elif learner.lower() == "adamw":
-            optimizer = optim.AdamW(
-                params, lr=learning_rate, weight_decay=weight_decay
-            )
+            optimizer = optim.AdamW(params, lr=learning_rate, weight_decay=weight_decay)
         else:
             self.logger.warning(
                 "Received unrecognized optimizer, set default Adam optimizer"
@@ -170,9 +156,7 @@ class Trainer:
         if not torch.isfinite(loss):
             raise ValueError("Training loss is NaN or Inf")
 
-    def _generate_train_loss_output(
-        self, epoch_idx, s_time, e_time, loss, recon_loss
-    ):
+    def _generate_train_loss_output(self, epoch_idx, s_time, e_time, loss, recon_loss):
         from index.utils import set_color
 
         train_loss_output = (

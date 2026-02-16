@@ -75,9 +75,7 @@ def check_path(path):
 def set_device(gpu_id):
     if gpu_id == -1:
         return torch.device("cpu")
-    return torch.device(
-        "cuda:" + str(gpu_id) if torch.cuda.is_available() else "cpu"
-    )
+    return torch.device("cuda:" + str(gpu_id) if torch.cuda.is_available() else "cpu")
 
 
 def load_plm(model_path="bert-base-uncased"):

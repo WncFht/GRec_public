@@ -46,11 +46,7 @@ EXTRA_TOKENS = [f"<loc{i:0>4}>" for i in range(1024)] + [
 
 class PaliGemmaTextKwargs(TextKwargs):
     suffix: (
-        TextInput
-        | PreTokenizedInput
-        | list[TextInput]
-        | list[PreTokenizedInput]
-        | None
+        TextInput | PreTokenizedInput | list[TextInput] | list[PreTokenizedInput] | None
     )
 
 
@@ -85,9 +81,7 @@ def _is_str_or_image(elem):
     return isinstance(elem, (str)) or is_image_or_image_url(elem)
 
 
-def build_string_from_input(
-    prompt, bos_token, image_seq_len, image_token, num_images
-):
+def build_string_from_input(prompt, bos_token, image_seq_len, image_token, num_images):
     """
     Builds a string from the input prompt and image tokens.
     For example, for the call:
@@ -150,9 +144,7 @@ class PaliGemmaProcessor(ProcessorMixin):
         self.image_seq_length = image_processor.image_seq_length
 
         if not hasattr(tokenizer, "image_token"):
-            image_token = AddedToken(
-                IMAGE_TOKEN, normalized=False, special=True
-            )
+            image_token = AddedToken(IMAGE_TOKEN, normalized=False, special=True)
             tokens_to_add = {"additional_special_tokens": [image_token]}
             tokenizer.add_special_tokens(tokens_to_add)
             self.image_token_id = tokenizer.convert_tokens_to_ids(IMAGE_TOKEN)
@@ -163,9 +155,7 @@ class PaliGemmaProcessor(ProcessorMixin):
         tokenizer.add_bos_token = False
         tokenizer.add_eos_token = False
 
-        super().__init__(
-            image_processor, tokenizer, chat_template=chat_template
-        )
+        super().__init__(image_processor, tokenizer, chat_template=chat_template)
 
     def __call__(
         self,
@@ -329,9 +319,9 @@ class PaliGemmaProcessor(ProcessorMixin):
             suffix = [suffix]
         if suffix is not None:
             suffix = [sfx + self.tokenizer.eos_token for sfx in suffix]
-        pixel_values = self.image_processor(
-            images, **output_kwargs["images_kwargs"]
-        )["pixel_values"]
+        pixel_values = self.image_processor(images, **output_kwargs["images_kwargs"])[
+            "pixel_values"
+        ]
 
         # max_length has to account for the image tokens
         if output_kwargs["text_kwargs"].get("max_length", None) is not None:
@@ -374,9 +364,7 @@ class PaliGemmaProcessor(ProcessorMixin):
     def model_input_names(self):
         tokenizer_input_names = self.tokenizer.model_input_names
         image_processor_input_names = self.image_processor.model_input_names
-        return list(
-            dict.fromkeys(tokenizer_input_names + image_processor_input_names)
-        )
+        return list(dict.fromkeys(tokenizer_input_names + image_processor_input_names))
 
 
 __all__ = ["PaliGemmaProcessor"]

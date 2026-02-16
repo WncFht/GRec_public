@@ -89,9 +89,7 @@ def setup_process():
     local_rank = int(os.environ.get("LOCAL_RANK", str(rank)))
     if torch.cuda.is_available():
         torch.cuda.set_device(local_rank)
-    print(
-        f"[Rank {rank}] setup: world_size={world_size}, local_rank={local_rank}"
-    )
+    print(f"[Rank {rank}] setup: world_size={world_size}, local_rank={local_rank}")
     return rank, world_size, local_rank
 
 
@@ -216,9 +214,7 @@ def test(args: argparse.Namespace):
                 if rank == 0:
                     print(f"使用缓存 rollout 结果: {rollout_file}")
 
-                    test_data_for_debug = load_test_dataset_rl(
-                        args, local_rank=rank
-                    )
+                    test_data_for_debug = load_test_dataset_rl(args, local_rank=rank)
                     first_prompt_text = _extract_first_sample_prompt(
                         test_data_for_debug, prompt_ids[0]
                     )
@@ -253,21 +249,15 @@ def test(args: argparse.Namespace):
                         }
 
                         all_prompt_results.append(metrics_results)
-                        print(
-                            "======================================================"
-                        )
+                        print("======================================================")
                         print(args.ckpt_path)
-                        print(
-                            "======================================================"
-                        )
+                        print("======================================================")
                         print(
                             f"Prompt {prompt_id} cached constrained results: ",
                             metrics_results,
                         )
                         print(f"(Based on {len(targets)} total samples)")
-                        print(
-                            "======================================================"
-                        )
+                        print("======================================================")
                         print()
 
                     mean_results = {}
@@ -280,15 +270,11 @@ def test(args: argparse.Namespace):
                             min_results[m] = min(all_res)
                             max_results[m] = max(all_res)
 
-                    print(
-                        "======================================================"
-                    )
+                    print("======================================================")
                     print("Mean results: ", mean_results)
                     print("Min results: ", min_results)
                     print("Max results: ", max_results)
-                    print(
-                        "======================================================"
-                    )
+                    print("======================================================")
 
                     save_data = {
                         "test_prompt_ids": args.test_prompt_ids,
@@ -338,9 +324,7 @@ def test(args: argparse.Namespace):
             if rank == 0:
                 print(f"读取 rollout 缓存失败，将重新 rollout: {exc}")
     elif skip_rollout and rollout_file and not os.path.exists(rollout_file):
-        raise FileNotFoundError(
-            f"--skip_rollout 但未找到 rollout_file: {rollout_file}"
-        )
+        raise FileNotFoundError(f"--skip_rollout 但未找到 rollout_file: {rollout_file}")
     elif skip_rollout and not rollout_file:
         raise ValueError("--skip_rollout 需要同时设置 --rollout_file")
     elif not rollout_file:
@@ -360,9 +344,7 @@ def test(args: argparse.Namespace):
         device=device,
     )
 
-    tokenizer = (
-        processor.tokenizer if hasattr(processor, "tokenizer") else processor
-    )
+    tokenizer = processor.tokenizer if hasattr(processor, "tokenizer") else processor
     tokenizer.padding_side = "left"
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -373,9 +355,7 @@ def test(args: argparse.Namespace):
     if rank == 0:
         print(f"Num {eval_split_lower} data (total):", len(test_data))
 
-    dataset_for_loader = (
-        _IndexedDataset(test_data) if rollout_file else test_data
-    )
+    dataset_for_loader = _IndexedDataset(test_data) if rollout_file else test_data
     test_sampler = _DistributedEvalSampler(
         dataset_for_loader,
         num_replicas=world_size,
@@ -496,9 +476,7 @@ def test(args: argparse.Namespace):
                             "scores": scores_list[start:end],
                         }
                         lines.append(
-                            json.dumps(
-                                rec, ensure_ascii=False, separators=(",", ":")
-                            )
+                            json.dumps(rec, ensure_ascii=False, separators=(",", ":"))
                         )
                     shard_fp.write("\n".join(lines) + "\n")
 
@@ -512,21 +490,15 @@ def test(args: argparse.Namespace):
 
         if rank == 0:
             # Wait for all ranks to finish writing shards.
-            expected_done = [
-                f"{rollout_file}.rank{r}.done" for r in range(world_size)
-            ]
+            expected_done = [f"{rollout_file}.rank{r}.done" for r in range(world_size)]
             timeout_s = 24 * 60 * 60
             start = time.time()
             while True:
                 if all(os.path.exists(p) for p in expected_done):
                     break
                 if time.time() - start > timeout_s:
-                    missing = [
-                        p for p in expected_done if not os.path.exists(p)
-                    ]
-                    raise TimeoutError(
-                        f"Timeout waiting for rollout shards: {missing}"
-                    )
+                    missing = [p for p in expected_done if not os.path.exists(p)]
+                    raise TimeoutError(f"Timeout waiting for rollout shards: {missing}")
                 time.sleep(1.0)
 
             num_samples = len(test_data)
@@ -552,9 +524,7 @@ def test(args: argparse.Namespace):
                         idx = int(rec["index"])
                         if targets[idx] is None:
                             targets[idx] = rec["target"]
-                        prompts_cache[pid]["predictions"][idx] = rec[
-                            "predictions"
-                        ]
+                        prompts_cache[pid]["predictions"][idx] = rec["predictions"]
                         prompts_cache[pid]["scores"][idx] = rec["scores"]
 
             if any(v is None for v in targets):
@@ -563,9 +533,7 @@ def test(args: argparse.Namespace):
                 preds = prompts_cache[str(pid)]["predictions"]
                 scs = prompts_cache[str(pid)]["scores"]
                 if any(v is None for v in preds):
-                    raise RuntimeError(
-                        f"rollout predictions 缺失，prompt_id={pid}"
-                    )
+                    raise RuntimeError(f"rollout predictions 缺失，prompt_id={pid}")
                 if any(v is None for v in scs):
                     raise RuntimeError(f"rollout scores 缺失，prompt_id={pid}")
 
@@ -600,27 +568,19 @@ def test(args: argparse.Namespace):
                     scores_flat,
                     rollout_payload["targets"],
                     args.num_beams,
-                    all_items=all_items_for_metrics
-                    if args.filter_items
-                    else None,
+                    all_items=all_items_for_metrics if args.filter_items else None,
                     clean=False,
                 )
                 metrics_sum = get_metrics_results(topk_res, metrics)
                 total = max(len(rollout_payload["targets"]), 1)
-                metrics_results = {
-                    m: metrics_sum[m] / total for m in metrics_sum
-                }
+                metrics_results = {m: metrics_sum[m] / total for m in metrics_sum}
 
                 all_prompt_results.append(metrics_results)
                 print("======================================================")
                 print(args.ckpt_path)
                 print("======================================================")
-                print(
-                    f"Prompt {prompt_id} constrained results: ", metrics_results
-                )
-                print(
-                    f"(Based on {len(rollout_payload['targets'])} total samples)"
-                )
+                print(f"Prompt {prompt_id} constrained results: ", metrics_results)
+                print(f"(Based on {len(rollout_payload['targets'])} total samples)")
                 print("======================================================")
                 print()
 
@@ -653,24 +613,18 @@ def test(args: argparse.Namespace):
                 "rollout_cached": False,
             }
 
-            first_prompt_text = _extract_first_sample_prompt(
-                test_data, prompt_ids[0]
-            )
+            first_prompt_text = _extract_first_sample_prompt(test_data, prompt_ids[0])
             first_sample_debug = _build_first_sample_debug_report(
                 rollout_payload,
                 prompt_id=prompt_ids[0],
                 num_beams=args.num_beams,
                 prompt_text=first_prompt_text,
             )
-            debug_file = _emit_first_sample_debug(
-                first_sample_debug, args.results_file
-            )
+            debug_file = _emit_first_sample_debug(first_sample_debug, args.results_file)
             save_data["first_sample_debug"] = first_sample_debug
             save_data["first_sample_debug_file"] = debug_file
 
-            os.makedirs(
-                os.path.dirname(args.results_file) or ".", exist_ok=True
-            )
+            os.makedirs(os.path.dirname(args.results_file) or ".", exist_ok=True)
             with open(args.results_file, "w") as f:
                 json.dump(save_data, f, indent=4, ensure_ascii=False)
 

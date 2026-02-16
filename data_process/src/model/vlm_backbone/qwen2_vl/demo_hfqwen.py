@@ -28,9 +28,7 @@ messages = [
 ]
 
 image = Image.open(
-    requests.get(
-        "https://www.ilankelman.org/stopsigns/australia.jpg", stream=True
-    ).raw
+    requests.get("https://www.ilankelman.org/stopsigns/australia.jpg", stream=True).raw
 )
 text = processor.apply_chat_template(
     messages, tokenize=False, add_generation_prompt=True

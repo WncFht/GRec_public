@@ -94,13 +94,9 @@ class LlavaNextProcessor(ProcessorMixin):
         self.num_additional_image_tokens = num_additional_image_tokens
         self.vision_feature_select_strategy = vision_feature_select_strategy
         self.image_token = (
-            tokenizer.image_token
-            if hasattr(tokenizer, "image_token")
-            else image_token
+            tokenizer.image_token if hasattr(tokenizer, "image_token") else image_token
         )
-        super().__init__(
-            image_processor, tokenizer, chat_template=chat_template
-        )
+        super().__init__(image_processor, tokenizer, chat_template=chat_template)
 
     def __call__(
         self,
@@ -165,10 +161,7 @@ class LlavaNextProcessor(ProcessorMixin):
 
         prompt_strings = text
         if image_inputs:
-            if (
-                self.patch_size is None
-                or self.vision_feature_select_strategy is None
-            ):
+            if self.patch_size is None or self.vision_feature_select_strategy is None:
                 logger.warning_once(
                     "Expanding inputs for image tokens in LLaVa-NeXT should be done in processing. "
                     "Please add `patch_size` and `vision_feature_select_strategy` to the model's processing config or set directly "
@@ -204,9 +197,7 @@ class LlavaNextProcessor(ProcessorMixin):
                     for sample in prompt_strings
                 ]
 
-        text_inputs = self.tokenizer(
-            prompt_strings, **output_kwargs["text_kwargs"]
-        )
+        text_inputs = self.tokenizer(prompt_strings, **output_kwargs["text_kwargs"])
 
         return BatchFeature(data={**text_inputs, **image_inputs})
 
@@ -293,6 +284,4 @@ class LlavaNextProcessor(ProcessorMixin):
     def model_input_names(self):
         tokenizer_input_names = self.tokenizer.model_input_names
         image_processor_input_names = self.image_processor.model_input_names
-        return list(
-            dict.fromkeys(tokenizer_input_names + image_processor_input_names)
-        )
+        return list(dict.fromkeys(tokenizer_input_names + image_processor_input_names))

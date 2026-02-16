@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # enhanced_gpu_stress.py
-import torch
-import sys
-import os
-from threading import Thread
 import argparse
+import sys
 import time
+from threading import Thread
+
+import torch
 
 
 def stress_gpu(device_id, duration=None, memory_ratio=0.95):
@@ -106,9 +106,7 @@ if __name__ == "__main__":
         default="all",
         help='要使用的GPU: "all", "remaining", "0,1,2", 或 "0-2"',
     )
-    parser.add_argument(
-        "--duration", type=int, default=None, help="运行时长（秒）"
-    )
+    parser.add_argument("--duration", type=int, default=None, help="运行时长（秒）")
     parser.add_argument(
         "--memory-ratio",
         type=float,
@@ -176,9 +174,7 @@ if __name__ == "__main__":
     # 创建并启动线程
     threads = []
     for gpu_id in gpu_list:
-        t = Thread(
-            target=stress_gpu, args=(gpu_id, args.duration, args.memory_ratio)
-        )
+        t = Thread(target=stress_gpu, args=(gpu_id, args.duration, args.memory_ratio))
         t.start()
         threads.append(t)
 

@@ -118,9 +118,7 @@ class Phi3VProcessor(ProcessorMixin):
 
         """
         if images is not None:
-            image_inputs = self.image_processor(
-                images, return_tensors=return_tensors
-            )
+            image_inputs = self.image_processor(images, return_tensors=return_tensors)
         else:
             image_inputs = {}
         inputs = self._convert_images_texts_to_inputs(
@@ -156,9 +154,7 @@ class Phi3VProcessor(ProcessorMixin):
                 Height of the image.
 
         """
-        return self.image_processor.calc_num_image_tokens_from_image_size(
-            width, height
-        )
+        return self.image_processor.calc_num_image_tokens_from_image_size(width, height)
 
     @property
     def special_image_token_id(self):
@@ -188,8 +184,7 @@ class Phi3VProcessor(ProcessorMixin):
 
         pattern = r"<\|image_\d+\|>"
         prompt_chunks = [
-            self.tokenizer(chunk).input_ids
-            for chunk in re.split(pattern, texts)
+            self.tokenizer(chunk).input_ids for chunk in re.split(pattern, texts)
         ]
 
         if "num_img_tokens" in images:
@@ -227,9 +222,7 @@ class Phi3VProcessor(ProcessorMixin):
             if len(X) > len(sep_list):
                 sep_list.append([])
             return [
-                ele
-                for sublist in zip(X, sep_list, strict=False)
-                for ele in sublist
+                ele for sublist in zip(X, sep_list, strict=False) for ele in sublist
             ]
 
         input_ids = []
@@ -270,6 +263,4 @@ class Phi3VProcessor(ProcessorMixin):
     def model_input_names(self):
         tokenizer_input_names = self.tokenizer.model_input_names
         image_processor_input_names = self.image_processor.model_input_names
-        return list(
-            dict.fromkeys(tokenizer_input_names + image_processor_input_names)
-        )
+        return list(dict.fromkeys(tokenizer_input_names + image_processor_input_names))

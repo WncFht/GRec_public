@@ -12,7 +12,6 @@ import traceback
 from collections import defaultdict
 
 from datasets import Dataset as HFDataset
-
 from trl import GRPOConfig
 
 from ..data_rl import FusionSeqRecDataset, SeqRecDataset
@@ -43,9 +42,7 @@ def _env_int(name: str, default: int | None = None) -> int | None:
 def _rank_info() -> tuple[int | None, int | None, int | None]:
     rank = _env_int("RANK", _env_int("PMI_RANK", _env_int("SLURM_PROCID")))
     local_rank = _env_int("LOCAL_RANK", _env_int("SLURM_LOCALID"))
-    world_size = _env_int(
-        "WORLD_SIZE", _env_int("PMI_SIZE", _env_int("SLURM_NTASKS"))
-    )
+    world_size = _env_int("WORLD_SIZE", _env_int("PMI_SIZE", _env_int("SLURM_NTASKS")))
     return rank, local_rank, world_size
 
 
@@ -179,13 +176,13 @@ def _log_cuda_snapshot() -> None:
                 try:
                     props = torch.cuda.get_device_properties(i)
                     total_gb = getattr(props, "total_memory", 0) / 1024**3
-                    cc = f"{getattr(props, 'major', '?')}.{getattr(props, 'minor', '?')}"
+                    cc = (
+                        f"{getattr(props, 'major', '?')}.{getattr(props, 'minor', '?')}"
+                    )
                 except Exception:
                     total_gb = 0
                     cc = "?"
-                _log(
-                    f"cuda[{i}]: name={name} cc={cc} total_mem_gb={total_gb:.2f}"
-                )
+                _log(f"cuda[{i}]: name={name} cc={cc} total_mem_gb={total_gb:.2f}")
     except Exception as e:
         _log(f"torch cuda snapshot failed: {e}", level="WARNING")
 
@@ -196,9 +193,7 @@ def debug_prefix_index(tokenizer, base_model_name: str):
     不会在训练流程中自动调用，如需查看可以在 main 里手动调用。
     """
     sample_item = "<a_1><b_1><c_1><d_1>"
-    text = (
-        f"### Response:<|im_end|><|im_start|>assistant\n{sample_item}<|im_end|>"
-    )
+    text = f"### Response:<|im_end|><|im_start|>assistant\n{sample_item}<|im_end|>"
     tokenized = tokenizer(text)
     ids = tokenized["input_ids"]
     tokens = tokenizer.convert_ids_to_tokens(ids)
@@ -353,12 +348,8 @@ def main():
         # 某些模型可能需要手动设置 pad_token_id
         if model.config.pad_token_id is None:
             model.config.pad_token_id = tokenizer.eos_token_id
-    print(
-        f"Using eos_token: {tokenizer.eos_token} (ID: {tokenizer.eos_token_id})"
-    )
-    print(
-        f"Using pad_token: {tokenizer.pad_token} (ID: {tokenizer.pad_token_id})"
-    )
+    print(f"Using eos_token: {tokenizer.eos_token} (ID: {tokenizer.eos_token_id})")
+    print(f"Using pad_token: {tokenizer.pad_token} (ID: {tokenizer.pad_token_id})")
 
     if parsed_args.debug_prefix_index:
         debug_prefix_index(tokenizer, parsed_args.base_model)
@@ -388,9 +379,7 @@ def main():
     train_records = []
     for ds in train_datasets:
         if hasattr(ds, "to_verl_records"):
-            train_records.extend(
-                ds.to_verl_records("train", tokenizer=tokenizer)
-            )
+            train_records.extend(ds.to_verl_records("train", tokenizer=tokenizer))
 
     train_dataset = HFDataset.from_list(train_records)
     train_dataset = train_dataset.shuffle(seed=parsed_args.seed)
@@ -402,12 +391,8 @@ def main():
         test_records = []
         for ds in test_datasets:
             if hasattr(ds, "to_verl_records"):
-                test_records.extend(
-                    ds.to_verl_records("test", tokenizer=tokenizer)
-                )
-        test_eval_dataset = (
-            HFDataset.from_list(test_records) if test_records else None
-        )
+                test_records.extend(ds.to_verl_records("test", tokenizer=tokenizer))
+        test_eval_dataset = HFDataset.from_list(test_records) if test_records else None
 
     valid_eval_dataset = None
     if parsed_args.eval_on_valid and valid_datasets:
@@ -416,9 +401,7 @@ def main():
         valid_records = []
         for ds in valid_datasets:
             if hasattr(ds, "to_verl_records"):
-                valid_records.extend(
-                    ds.to_verl_records("valid", tokenizer=tokenizer)
-                )
+                valid_records.extend(ds.to_verl_records("valid", tokenizer=tokenizer))
         valid_eval_dataset = (
             HFDataset.from_list(valid_records) if valid_records else None
         )
@@ -467,9 +450,7 @@ def main():
                 merged_hash_dict[k].update(vals)
 
     hash_dict = {k: sorted(list(v)) for k, v in merged_hash_dict.items()}
-    print(
-        f"Built hash_dict entries: {len(hash_dict)} with prefix_index={prefix_index}"
-    )
+    print(f"Built hash_dict entries: {len(hash_dict)} with prefix_index={prefix_index}")
 
     # print("10th of the hash_dict")
     # import pprint; pprint.pprint(dict(list(hash_dict.items())[:10]))
@@ -521,9 +502,7 @@ def main():
             reward_weights_list = parsed_weights
             print("Using reward_weights from CLI:", reward_weights_list)
     else:
-        print(
-            "Failed to parse reward_funcs from CLI, using --reward_type instead."
-        )
+        print("Failed to parse reward_funcs from CLI, using --reward_type instead.")
         reward_type = parsed_args.reward_type
         if reward_type == "rule":
             reward_fun = [format_reward, rule_reward]

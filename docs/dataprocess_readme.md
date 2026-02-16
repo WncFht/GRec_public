@@ -65,4 +65,3 @@ python scripts/extract_rep.py \
 ## 4. 备注
 
 - `data_process/qwen_embedding_batch.py` 目前与 `qwen_embeddings.py` 的功能不完全对齐；如无特殊需求，优先使用 `qwen_embeddings.py` 或 `scripts/extract_rep.py`。
-

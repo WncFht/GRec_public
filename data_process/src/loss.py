@@ -25,9 +25,7 @@ class SimpleContrastiveLoss:
                 dtype=torch.long,
             )
         logits = torch.matmul(x, y.transpose(0, 1))
-        loss = F.cross_entropy(
-            logits / self.temperature, target, reduction=reduction
-        )
+        loss = F.cross_entropy(logits / self.temperature, target, reduction=reduction)
         return loss
 
 
@@ -92,9 +90,7 @@ class InExampleContrastiveLoss:
             x = x[:, :ndim]
             y = y[:, :ndim]
         logits = (
-            torch.einsum(
-                "bod,bsd->bs", x.view(bsz, 1, ndim), y.view(bsz, -1, ndim)
-            )
+            torch.einsum("bod,bsd->bs", x.view(bsz, 1, ndim), y.view(bsz, -1, ndim))
             * self.temperature
         )
         preds = torch.argmax(logits, dim=-1)

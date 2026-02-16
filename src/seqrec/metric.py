@@ -37,9 +37,7 @@ def test(args: argparse.Namespace):
         model.to(device)
 
     # 设置tokenizer
-    tokenizer = (
-        processor.tokenizer if hasattr(processor, "tokenizer") else processor
-    )
+    tokenizer = processor.tokenizer if hasattr(processor, "tokenizer") else processor
     tokenizer.padding_side = "left"
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -93,9 +91,7 @@ def test(args: argparse.Namespace):
             metrics_results = {}
             total = 0
 
-            for step, batch in enumerate(
-                tqdm(test_loader, desc=f"Prompt {prompt_id}")
-            ):
+            for step, batch in enumerate(tqdm(test_loader, desc=f"Prompt {prompt_id}")):
                 inputs = batch[0]
                 targets = batch[1]
                 total += len(targets)
@@ -118,9 +114,7 @@ def test(args: argparse.Namespace):
                 output_ids = output["sequences"]
                 scores = output["sequences_scores"]
 
-                output = tokenizer.batch_decode(
-                    output_ids, skip_special_tokens=True
-                )
+                output = tokenizer.batch_decode(output_ids, skip_special_tokens=True)
                 # print(output)
                 # print(scores)
                 topk_res = get_topk_results(

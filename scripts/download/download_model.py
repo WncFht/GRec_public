@@ -34,9 +34,7 @@ def download_qwen_model(
 if __name__ == "__main__":
     # input DATASET and BASE_MODEL by args
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--base_model", type=str, default="Qwen/Qwen2.5-VL-3B-Instruct"
-    )
+    parser.add_argument("--base_model", type=str, default="Qwen/Qwen2.5-VL-3B-Instruct")
     args = parser.parse_args()
     BASE_MODEL = args.base_model
     OUTPUT_DIR = "./ckpt/base_model"

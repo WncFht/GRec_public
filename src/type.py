@@ -166,9 +166,7 @@ class TrainingArgs:
     lora_r: int = 8
     lora_alpha: int = 32
     lora_dropout: float = 0.05
-    lora_target_modules: str = (
-        "q_proj,v_proj,k_proj,o_proj,gate_proj,down_proj,up_proj"
-    )
+    lora_target_modules: str = "q_proj,v_proj,k_proj,o_proj,gate_proj,down_proj,up_proj"
     lora_modules_to_save: str = "embed_tokens,lm_head"
     resume_from_checkpoint: str | None = None
     warmup_ratio: float = 0.01
@@ -251,6 +249,4 @@ class Args:
     dataset_args: DatasetArgs = field(default_factory=DatasetArgs)
     train_args: TrainingArgs = field(default_factory=TrainingArgs)
     test_args: TestArgs = field(default_factory=TestArgs)
-    text_generation_args: TextGenerationArgs = field(
-        default_factory=TextGenerationArgs
-    )
+    text_generation_args: TextGenerationArgs = field(default_factory=TextGenerationArgs)

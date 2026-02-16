@@ -184,9 +184,7 @@ class HNSWIndex:
         # Process results - create a list of predictions for each query
         all_predictions = []
         for i in range(indices.shape[0]):
-            predictions = [
-                self.keys_dict[cand_type][int(idx)] for idx in indices[i]
-            ]
+            predictions = [self.keys_dict[cand_type][int(idx)] for idx in indices[i]]
             all_predictions.append(predictions)
 
         return scores.tolist(), all_predictions

@@ -56,7 +56,7 @@ class BiEncoderGradCache(nn.Module):
         :param fp16_or_bf16: If True, run mixed precision training, which requires scaler to also be set.
         :param scaler: A GradScaler object for automatic mixed precision training.
         """
-        super(BiEncoderGradCache, self).__init__()
+        super().__init__()
         self.models = models
         self.q_encoder = models[0]
         self.k_encoder = models[1]
@@ -99,14 +99,10 @@ class BiEncoderGradCache(nn.Module):
             isinstance(x, Tensor) for x in model_input.values()
         ):
             keys = list(model_input.keys())
-            chunked_tensors = [
-                model_input[k].split(chunk_size, dim=0) for k in keys
-            ]
+            chunked_tensors = [model_input[k].split(chunk_size, dim=0) for k in keys]
             return [
                 dict(zip(kk, tt, strict=False))
-                for kk, tt in zip(
-                    repeat(keys), zip(*chunked_tensors, strict=False)
-                )
+                for kk, tt in zip(repeat(keys), zip(*chunked_tensors, strict=False))
             ]
 
         if isinstance(model_input, list) and all(
@@ -145,9 +141,7 @@ class BiEncoderGradCache(nn.Module):
             return sum((self.get_input_tensors(x) for x in model_input), [])
 
         if isinstance(model_input, (dict, UserDict)):
-            return sum(
-                (self.get_input_tensors(x) for x in model_input.values()), []
-            )
+            return sum((self.get_input_tensors(x) for x in model_input.values()), [])
 
         if self._get_input_tensors_strict:
             raise NotImplementedError(
@@ -163,20 +157,17 @@ class BiEncoderGradCache(nn.Module):
         :param model_input: input to the model call
         :return: model output
         """
-        with (
-            autocast("cuda", dtype=self.dtype)
-            if self.fp16_or_bf16
-            else nullcontext()
-        ):
+        with autocast("cuda", dtype=self.dtype) if self.fp16_or_bf16 else nullcontext():
             if isinstance(model_input, Tensor):
                 return model(model_input)
             if isinstance(model_input, list):
                 return model(*model_input)
             if isinstance(model_input, (dict, UserDict)):
                 return model(**model_input)
-            if isinstance(model_input, tuple) and list(
-                map(type, model_input)
-            ) == [list, dict]:
+            if isinstance(model_input, tuple) and list(map(type, model_input)) == [
+                list,
+                dict,
+            ]:
                 model_args, model_kwargs = model_input
                 return model(*model_args, **model_kwargs)
             if isinstance(model_input, tuple):
@@ -193,9 +184,7 @@ class BiEncoderGradCache(nn.Module):
             return self.get_rep_fn(model_out)
         return model_out
 
-    def compute_loss(
-        self, loss_mapping=None, *reps: Tensor, **loss_kwargs
-    ) -> Tensor:
+    def compute_loss(self, loss_mapping=None, *reps: Tensor, **loss_kwargs) -> Tensor:
         """
         Compute the loss based on the representation tensors. The tensors should be ordered same as the list of models
         registered in this GradCache class instance.
@@ -230,16 +219,10 @@ class BiEncoderGradCache(nn.Module):
                     # in cases d is one-hot label for classification loss
                     d = reps[1]
                 else:
-                    d = (
-                        reps[1]
-                        .view(bsz, -1, hdim)
-                        .index_select(0, index=data_idxs)
-                    )
+                    d = reps[1].view(bsz, -1, hdim).index_select(0, index=data_idxs)
                     d = d.view(-1, hdim)
                 # print_rank(f"loss_name={loss_name}, q.shape={q.shape}, d.shape={d.shape}")
-                _loss, _loss_details = self.loss_fns[loss_name](
-                    q, d, **loss_kwargs
-                )
+                _loss, _loss_details = self.loss_fns[loss_name](q, d, **loss_kwargs)
                 loss += _loss
                 # print("finish loss fns")
                 if "labels" in _loss_details:
@@ -300,9 +283,7 @@ class BiEncoderGradCache(nn.Module):
         # reps = [r.detach().requires_grad_() for r in reps]
         reps = tuple(new_reps)
         with autocast(dtype=self.dtype) if self.fp16_or_bf16 else nullcontext():
-            loss, loss_details = self.compute_loss(
-                loss_mapping, *reps, **loss_kwargs
-            )
+            loss, loss_details = self.compute_loss(loss_mapping, *reps, **loss_kwargs)
 
         if deepspeed is None:
             if self.scaler:
@@ -313,9 +294,7 @@ class BiEncoderGradCache(nn.Module):
             deepspeed.backward(loss)
 
         cache = [
-            r.grad
-            for r in reps
-            if len(r.shape) > 1 and not is_binary_tensor(r[0])
+            r.grad for r in reps if len(r.shape) > 1 and not is_binary_tensor(r[0])
         ]
 
         return cache, loss.detach(), loss_details
@@ -339,9 +318,9 @@ class BiEncoderGradCache(nn.Module):
         for the last sub-batch's forward-backward pass.
         """
         if no_sync_except_last and deepspeed is None:
-            sync_contexts = [
-                model.no_sync for _ in range(len(model_inputs) - 1)
-            ] + [nullcontext]
+            sync_contexts = [model.no_sync for _ in range(len(model_inputs) - 1)] + [
+                nullcontext
+            ]
         else:
             sync_contexts = [nullcontext for _ in range(len(model_inputs))]
 

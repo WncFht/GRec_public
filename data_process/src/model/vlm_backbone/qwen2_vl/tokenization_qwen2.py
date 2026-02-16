@@ -205,9 +205,7 @@ class Qwen2Tokenizer(PreTrainedTokenizer):
                 if (i == 0 and line.startswith("#version:")) or not line:
                     continue
                 bpe_merges.append(tuple(line.split()))
-        self.bpe_ranks = dict(
-            zip(bpe_merges, range(len(bpe_merges)), strict=False)
-        )
+        self.bpe_ranks = dict(zip(bpe_merges, range(len(bpe_merges)), strict=False))
         # NOTE: the cache can grow without bound and will get really large for long running processes
         # (esp. for texts of language that do not use space between word, e.g. Chinese); technically
         # not a memory leak but appears as one.
@@ -251,9 +249,7 @@ class Qwen2Tokenizer(PreTrainedTokenizer):
             return token
 
         while True:
-            bigram = min(
-                pairs, key=lambda pair: self.bpe_ranks.get(pair, float("inf"))
-            )
+            bigram = min(pairs, key=lambda pair: self.bpe_ranks.get(pair, float("inf")))
             if bigram not in self.bpe_ranks:
                 break
             first, second = bigram
@@ -269,11 +265,7 @@ class Qwen2Tokenizer(PreTrainedTokenizer):
                     new_word.extend(word[i:j])
                     i = j
 
-                if (
-                    word[i] == first
-                    and i < len(word) - 1
-                    and word[i + 1] == second
-                ):
+                if word[i] == first and i < len(word) - 1 and word[i + 1] == second:
                     new_word.append(first + second)
                     i += 2
                 else:
@@ -296,9 +288,7 @@ class Qwen2Tokenizer(PreTrainedTokenizer):
             token = "".join(
                 self.byte_encoder[b] for b in token.encode("utf-8")
             )  # Maps all our bytes to unicode strings, avoiding control tokens of the BPE (spaces in our case)
-            bpe_tokens.extend(
-                bpe_token for bpe_token in self.bpe(token).split(" ")
-            )
+            bpe_tokens.extend(bpe_token for bpe_token in self.bpe(token).split(" "))
         return bpe_tokens
 
     # Copied from transformers.models.gpt2.tokenization_gpt2.GPT2Tokenizer._convert_token_to_id
@@ -343,9 +333,7 @@ class Qwen2Tokenizer(PreTrainedTokenizer):
         self, save_directory: str, filename_prefix: str | None = None
     ) -> tuple[str]:
         if not os.path.isdir(save_directory):
-            logger.error(
-                f"Vocabulary path ({save_directory}) should be a directory"
-            )
+            logger.error(f"Vocabulary path ({save_directory}) should be a directory")
             return None
         vocab_file = os.path.join(
             save_directory,
@@ -360,9 +348,7 @@ class Qwen2Tokenizer(PreTrainedTokenizer):
 
         with open(vocab_file, "w", encoding="utf-8") as f:
             f.write(
-                json.dumps(
-                    self.encoder, indent=2, sort_keys=True, ensure_ascii=False
-                )
+                json.dumps(self.encoder, indent=2, sort_keys=True, ensure_ascii=False)
                 + "\n"
             )
 

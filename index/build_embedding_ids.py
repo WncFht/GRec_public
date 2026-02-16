@@ -10,12 +10,8 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Generate *.emb-*-td.ids.json for an existing embedding file."
     )
-    parser.add_argument(
-        "--dataset", type=str, required=True, help="Dataset name"
-    )
-    parser.add_argument(
-        "--root", type=str, required=True, help="Dataset directory"
-    )
+    parser.add_argument("--dataset", type=str, required=True, help="Dataset name")
+    parser.add_argument("--root", type=str, required=True, help="Dataset directory")
     parser.add_argument(
         "--plm_name", type=str, required=True, help="Embedding model name"
     )

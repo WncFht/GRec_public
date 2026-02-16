@@ -64,9 +64,7 @@ def unicode_to_bytes() -> dict[str, bytes]:
     return {v: bytes([k]) for k, v in bytes_to_unicode().items()}
 
 
-def convert_to_readable_vocab(
-    tokenizer, verbose: bool = False
-) -> dict[int, str]:
+def convert_to_readable_vocab(tokenizer, verbose: bool = False) -> dict[int, str]:
     """将 tokenizer 的词汇表转换为可读字符串，兼容 SentencePiece 特殊字符。"""
     reversed_vocab = {v: k for k, v in tokenizer.vocab.items()}
     added_tokens = tokenizer.added_tokens_encoder
@@ -144,9 +142,7 @@ def detect_token_language(token: str) -> str:
             return lang
 
     # Check for mixed content or other patterns
-    if re.search(r"[A-Za-z]", token_stripped) and re.search(
-        r"[0-9]", token_stripped
-    ):
+    if re.search(r"[A-Za-z]", token_stripped) and re.search(r"[0-9]", token_stripped):
         return "Alphanumeric"
 
     return "Other"
@@ -426,9 +422,7 @@ def load_any_embeddings(
         [f for f in os.listdir(model_dir) if f.endswith(".safetensors")]
     )
     for st_file in safetensor_files:
-        emb = _load_safetensor_embeddings(
-            os.path.join(model_dir, st_file), layer_name
-        )
+        emb = _load_safetensor_embeddings(os.path.join(model_dir, st_file), layer_name)
         if emb is not None:
             print(f"Loaded embeddings from .safetensors: {st_file}")
             return emb
@@ -436,9 +430,7 @@ def load_any_embeddings(
     # 2) .bin
     bin_files = sorted([f for f in os.listdir(model_dir) if f.endswith(".bin")])
     for bin_file in bin_files:
-        emb = _load_bin_embeddings(
-            os.path.join(model_dir, bin_file), layer_name
-        )
+        emb = _load_bin_embeddings(os.path.join(model_dir, bin_file), layer_name)
         if emb is not None:
             print(f"Loaded embeddings from .bin: {bin_file}")
             return emb
@@ -494,9 +486,7 @@ def merge_lora_embeddings(
                         lora_B_key = key
 
                 if lora_A_key and lora_B_key:
-                    print(
-                        f"Merging LoRA weights from {lora_A_key} and {lora_B_key}"
-                    )
+                    print(f"Merging LoRA weights from {lora_A_key} and {lora_B_key}")
                     lora_A = f.get_tensor(lora_A_key)
                     lora_B = f.get_tensor(lora_B_key)
 
@@ -512,11 +502,11 @@ def merge_lora_embeddings(
 
                     # Add to base embeddings
                     merged_embeddings = base_embeddings.clone()
-                    merged_embeddings += lora_weights.T  # Transpose because LoRA is (hidden_dim, r) @ (r, vocab_size)
+                    merged_embeddings += (
+                        lora_weights.T
+                    )  # Transpose because LoRA is (hidden_dim, r) @ (r, vocab_size)
 
-                    print(
-                        f"Successfully merged LoRA adapters (scaling={scaling:.2f})"
-                    )
+                    print(f"Successfully merged LoRA adapters (scaling={scaling:.2f})")
                     return merged_embeddings
                 print("No embed_tokens LoRA weights found in adapter")
         else:
@@ -533,9 +523,7 @@ def merge_lora_embeddings(
                     lora_B_key = key
 
             if lora_A_key and lora_B_key:
-                print(
-                    f"Merging LoRA weights from {lora_A_key} and {lora_B_key}"
-                )
+                print(f"Merging LoRA weights from {lora_A_key} and {lora_B_key}")
                 lora_A = adapters[lora_A_key]
                 lora_B = adapters[lora_B_key]
 
@@ -553,9 +541,7 @@ def merge_lora_embeddings(
                 merged_embeddings = base_embeddings.clone()
                 merged_embeddings += lora_weights.T
 
-                print(
-                    f"Successfully merged LoRA adapters (scaling={scaling:.2f})"
-                )
+                print(f"Successfully merged LoRA adapters (scaling={scaling:.2f})")
                 return merged_embeddings
             print("No embed_tokens LoRA weights found in adapter")
     else:
@@ -955,9 +941,7 @@ def load_embeddings_from_model(
     all_files = safes + bins  # 优先级：safetensors 在前
 
     if not all_files:
-        raise FileNotFoundError(
-            f"No .safetensors or .bin found in {model_path}"
-        )
+        raise FileNotFoundError(f"No .safetensors or .bin found in {model_path}")
 
     # ------------------------------------------------------------
     # 3. 加载 base embedding
@@ -965,9 +949,7 @@ def load_embeddings_from_model(
     embeddings = None
     key_to_try = None if layer_name == "auto" else layer_name
     for fp in all_files:
-        embeddings = _load_single_file(
-            fp, key_to_try or "model.embed_tokens.weight"
-        )
+        embeddings = _load_single_file(fp, key_to_try or "model.embed_tokens.weight")
         if embeddings is not None:
             print(f"Loaded base embeddings from: {fp}")
             break
@@ -1015,9 +997,7 @@ def load_embeddings_from_model(
 
     # 若 vocab > embed 行数，扩展
     if embeddings.shape[0] < vocab_size:
-        new_emb = torch.zeros(
-            (vocab_size, embeddings.shape[1]), dtype=embeddings.dtype
-        )
+        new_emb = torch.zeros((vocab_size, embeddings.shape[1]), dtype=embeddings.dtype)
         new_emb[: embeddings.shape[0]] = embeddings
         embeddings = new_emb
         print(f"Resized embeddings to {vocab_size} tokens")
@@ -1050,9 +1030,7 @@ def load_embeddings_from_model(
         for tid in tqdm(sampled_original_ids, desc="Filtering by language"):
             name = readable_vocab.get(tid, tokenizer.decode(tid))
             clean = (
-                name.replace("ADDED_TOKEN:", "")
-                .replace("INVALID UTF-8:", "")
-                .strip()
+                name.replace("ADDED_TOKEN:", "").replace("INVALID UTF-8:", "").strip()
             )
             if detect_token_language(clean) in filter_languages:
                 filtered.append(tid)
@@ -1071,9 +1049,7 @@ def load_embeddings_from_model(
             token_languages.append(parse_token_category(name))
 
     # 安全索引
-    valid_idx = [
-        i for i, tid in enumerate(all_token_ids) if tid < embeddings.shape[0]
-    ]
+    valid_idx = [i for i, tid in enumerate(all_token_ids) if tid < embeddings.shape[0]]
     embeddings = embeddings[[all_token_ids[i] for i in valid_idx]].numpy()
     token_names = [token_names[i] for i in valid_idx]
     if analyze_languages:
@@ -1109,9 +1085,7 @@ def perform_dimension_reduction(
                 perplexity=min(args.perplexity, len(embeddings_pca) - 1),
                 n_iter=args.tsne_iterations,
                 metric="cosine" if args.use_cosine else "euclidean",
-                method="barnes_hut"
-                if embeddings_pca.shape[0] > 5000
-                else "exact",
+                method="barnes_hut" if embeddings_pca.shape[0] > 5000 else "exact",
             )
             embeddings_2d = tsne.fit_transform(embeddings_pca)
             title = f"t-SNE Visualization (PCA pre-reduced to {args.pca_dim}D)"
@@ -1168,9 +1142,7 @@ def create_static_visualization(
         for i, token_name in enumerate(token_names):
             if i % label_interval == 0:
                 display_name = (
-                    token_name[:20] + "..."
-                    if len(token_name) > 20
-                    else token_name
+                    token_name[:20] + "..." if len(token_name) > 20 else token_name
                 )
                 plt.annotate(
                     display_name,
@@ -1179,9 +1151,7 @@ def create_static_visualization(
                     textcoords="offset points",
                     fontsize=8,
                     alpha=0.8,
-                    bbox=dict(
-                        boxstyle="round,pad=0.3", facecolor="white", alpha=0.7
-                    ),
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.7),
                 )
 
     plt.title(title, fontsize=16, fontweight="bold")
@@ -1193,9 +1163,7 @@ def create_static_visualization(
 
     # Separate custom categories from languages
     custom_categories = ["Category A", "Category B", "Category C", "Category D"]
-    existing_custom = [
-        cat for cat in custom_categories if cat in unique_categories
-    ]
+    existing_custom = [cat for cat in custom_categories if cat in unique_categories]
     other_categories = [
         cat for cat in unique_categories if cat not in custom_categories
     ]
@@ -1484,9 +1452,7 @@ def main():
         default=None,
         help="Maximum total tokens to process",
     )
-    parser.add_argument(
-        "--seed", type=int, default=42, help="Random seed for sampling"
-    )
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for sampling")
 
     # Visualization method arguments
     parser.add_argument(
@@ -1667,9 +1633,7 @@ def main():
         print(f"\n=== {method.upper()} Visualization ===")
 
         # Perform dimension reduction
-        embeddings_2d, title = perform_dimension_reduction(
-            embeddings, method, args
-        )
+        embeddings_2d, title = perform_dimension_reduction(embeddings, method, args)
 
         # Add color mode to title
         title += " (Categories A-D + Languages)"

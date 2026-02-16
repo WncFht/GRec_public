@@ -65,17 +65,17 @@ check_dependencies() {
         log_error "未找到 python3"
         return 1
     fi
-    
+
     if ! command -v nvidia-smi &> /dev/null; then
         log_error "未找到 nvidia-smi"
         return 1
     fi
-    
+
     if [ ! -f "$PYTHON_SCRIPT" ]; then
         log_error "未找到 $PYTHON_SCRIPT"
         return 1
     fi
-    
+
     return 0
 }
 
@@ -91,15 +91,15 @@ start_gpus() {
     local gpu_spec="$1"
     shift
     local extra_args="$@"
-    
+
     if [ -z "$gpu_spec" ]; then
         log_error "请指定GPU"
         echo "错误: 请指定GPU"
         return 1
     fi
-    
+
     log_info "尝试启动GPU压力测试: GPU=$gpu_spec, 参数=$extra_args"
-    
+
     # 检查是否已有进程在运行
     if [ -f "$SCRIPT_PID_FILE" ]; then
         local old_pid=$(cat "$SCRIPT_PID_FILE")
@@ -113,20 +113,20 @@ start_gpus() {
             rm -f "$SCRIPT_PID_FILE"
         fi
     fi
-    
+
     echo "启动GPU压力测试: $gpu_spec"
     echo "额外参数: $extra_args"
     echo "日志文件: $PYTHON_LOG_FILE"
-    
+
     # 启动进程，将Python输出重定向到日志文件
     python3 "$PYTHON_SCRIPT" "$gpu_spec" $extra_args >> "$PYTHON_LOG_FILE" 2>&1 &
     local pid=$!
-    
+
     # 保存PID
     echo $pid > "$SCRIPT_PID_FILE"
-    
+
     log_info "GPU压力测试已启动，PID: $pid"
-    
+
     # 等待几秒检查是否成功启动
     sleep 3
     if ps -p "$pid" > /dev/null 2>&1; then
@@ -144,7 +144,7 @@ start_gpus() {
 # 停止GPU压力测试
 stop_gpus() {
     log_info "尝试停止GPU压力测试"
-    
+
     if [ ! -f "$SCRIPT_PID_FILE" ]; then
         log_warn "没有检测到运行中的GPU压力测试进程"
         echo "没有检测到运行中的GPU压力测试进程"
@@ -152,11 +152,11 @@ stop_gpus() {
         pkill -f "$PYTHON_SCRIPT" 2>/dev/null
         return 0
     fi
-    
+
     local pid=$(cat "$SCRIPT_PID_FILE")
     echo "正在停止GPU压力测试进程 (PID: $pid)..."
     log_info "正在停止GPU压力测试进程 (PID: $pid)"
-    
+
     # 发送终止信号
     if kill -TERM "$pid" 2>/dev/null; then
         # 等待进程结束
@@ -165,7 +165,7 @@ stop_gpus() {
             sleep 1
             count=$((count + 1))
         done
-        
+
         if ps -p "$pid" > /dev/null 2>&1; then
             echo "进程未正常退出，强制杀死..."
             log_warn "进程未正常退出，强制杀死 (PID: $pid)"
@@ -176,7 +176,7 @@ stop_gpus() {
     else
         log_warn "无法发送终止信号到进程 $pid"
     fi
-    
+
     rm -f "$SCRIPT_PID_FILE"
     echo "GPU压力测试已停止"
     log_info "GPU压力测试已停止"
@@ -186,11 +186,11 @@ stop_gpus() {
 kill_all() {
     log_info "强制杀死所有GPU压力测试进程"
     echo "强制杀死所有GPU压力测试进程..."
-    
+
     pkill -f "$PYTHON_SCRIPT" >> "$LOG_FILE" 2>&1
     sleep 1
     pkill -9 -f "$PYTHON_SCRIPT" 2>/dev/null >> "$LOG_FILE" 2>&1
-    
+
     rm -f "$SCRIPT_PID_FILE"
     echo "所有相关进程已杀死"
     log_info "所有相关进程已杀死"
@@ -200,7 +200,7 @@ kill_all() {
 show_status() {
     log_info "查看GPU压力测试状态"
     echo "=== GPU压力测试状态 ==="
-    
+
     if [ -f "$SCRIPT_PID_FILE" ]; then
         local pid=$(cat "$SCRIPT_PID_FILE")
         if ps -p "$pid" > /dev/null 2>&1; then
@@ -221,7 +221,7 @@ show_status() {
         echo "状态: 未运行"
         log_info "状态: 未运行"
     fi
-    
+
     echo ""
     echo "=== 当前GPU使用情况 ==="
     log_info "获取当前GPU使用情况"
@@ -237,9 +237,9 @@ monitor_gpus() {
     log_info "开始监控GPU使用情况"
     echo "=== 实时监控GPU使用情况 (按 Ctrl+C 停止) ==="
     echo "日志文件: $LOG_FILE"
-    
+
     trap 'log_info "监控已停止"; echo; return 0' INT
-    
+
     while true; do
         clear
         echo "监控时间: $(date)"
@@ -285,27 +285,27 @@ clear_logs() {
 main() {
     # 记录命令执行
     log_info "执行命令: $0 $*"
-    
+
     # 检查依赖
     if ! check_dependencies; then
         exit 1
     fi
-    
+
     if [ $# -eq 0 ]; then
         show_help
         exit 1
     fi
-    
+
     local command="$1"
     shift
-    
+
     case "$command" in
         start)
             # 收集所有参数直到遇到选项
             local gpu_spec=""
             local extra_args=""
             local collecting_gpus=true
-            
+
             while [ $# -gt 0 ]; do
                 case "$1" in
                     --*)
@@ -328,7 +328,7 @@ main() {
                         ;;
                 esac
             done
-            
+
             start_gpus "$gpu_spec" $extra_args
             ;;
         stop)

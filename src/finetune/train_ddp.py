@@ -61,9 +61,7 @@ class UnifiedTrainer:
         configure_tqdm_for_file_output(use_file_output=not debug_mode)
 
         # 记录训练模式
-        train_mode = (
-            "LoRA finetuning" if self.args.use_lora else "Full finetuning"
-        )
+        train_mode = "LoRA finetuning" if self.args.use_lora else "Full finetuning"
         self.logger.info(f"Starting multitask {train_mode}")
         self.logger.info(f"RUN_NAME: {self.args.run_name}")
 
@@ -112,9 +110,7 @@ class UnifiedTrainer:
             ),
             (
                 "TORCHINDUCTOR_CACHE_DIR",
-                os.path.join(
-                    os.path.expanduser("~"), ".cache", "torchinductor"
-                ),
+                os.path.join(os.path.expanduser("~"), ".cache", "torchinductor"),
             ),
         )
 
@@ -148,8 +144,7 @@ class UnifiedTrainer:
         load_best_model_at_end = not use_deepspeed
 
         eval_enabled = (
-            str(getattr(self.args, "save_and_eval_strategy", "epoch")).lower()
-            != "no"
+            str(getattr(self.args, "save_and_eval_strategy", "epoch")).lower() != "no"
         )
         needs_best_metric = eval_enabled
 
@@ -206,9 +201,7 @@ class UnifiedTrainer:
             label_names=["labels"],
             report_to=report_to,
             run_name=self.args.run_name,
-            eval_delay=1
-            if self.args.save_and_eval_strategy == "epoch"
-            else 200,
+            eval_delay=1 if self.args.save_and_eval_strategy == "epoch" else 200,
             metric_for_best_model=metric_for_best_model,
             greater_is_better=False if metric_for_best_model else None,
         )
@@ -231,14 +224,10 @@ class UnifiedTrainer:
         )
 
         # 加载数据集
-        train_data, valid_data = load_datasets(
-            self.args, self.logger, self.local_rank
-        )
+        train_data, valid_data = load_datasets(self.args, self.logger, self.local_rank)
         if bool(getattr(self.args, "eval_by_dataset", False)):
             requires_eval = (
-                str(
-                    getattr(self.args, "save_and_eval_strategy", "epoch")
-                ).lower()
+                str(getattr(self.args, "save_and_eval_strategy", "epoch")).lower()
                 != "no"
             )
             if not isinstance(valid_data, dict):
@@ -297,9 +286,7 @@ class UnifiedTrainer:
                 self.logger.info(
                     f"LoRA config: r={self.args.lora_r}, alpha={self.args.lora_alpha}, dropout={self.args.lora_dropout}"
                 )
-                self.logger.info(
-                    f"Target modules: {self.args.lora_target_modules}"
-                )
+                self.logger.info(f"Target modules: {self.args.lora_target_modules}")
                 if (
                     hasattr(self.args, "lora_modules_to_save")
                     and self.args.lora_modules_to_save
@@ -308,9 +295,7 @@ class UnifiedTrainer:
                         f"Modules to save: {self.args.lora_modules_to_save}"
                     )
 
-            self.logger.info(
-                f"Added {new_vocab_size - original_vocab_size} new tokens"
-            )
+            self.logger.info(f"Added {new_vocab_size - original_vocab_size} new tokens")
             self.logger.info(f"Original vocab size: {original_vocab_size}")
             self.logger.info(f"New vocab size: {new_vocab_size}")
             self.logger.info(f"Train samples: {len(train_data)}")
@@ -326,9 +311,7 @@ class UnifiedTrainer:
                     * self.world_size
                 )
             else:
-                effective_batch_size = (
-                    self.args.per_device_batch_size * self.world_size
-                )
+                effective_batch_size = self.args.per_device_batch_size * self.world_size
 
             self.logger.info(f"Effective batch size: {effective_batch_size}")
             self.logger.info(
@@ -438,11 +421,7 @@ class UnifiedTrainer:
             os.environ.get("ALLOW_TORCH_COMPILE_WITH_DEEPSPEED", "false")
         ).lower() in {"1", "true", "yes", "on"}
 
-        if (
-            use_torch_compile
-            and use_deepspeed
-            and not allow_compile_with_deepspeed
-        ):
+        if use_torch_compile and use_deepspeed and not allow_compile_with_deepspeed:
             if self.local_rank == 0:
                 self.logger.warning(
                     "Disable torch.compile because DeepSpeed+Trainer save path may hit "
@@ -464,9 +443,7 @@ class UnifiedTrainer:
                     "Skip torch.compile() because current torch/platform is unsupported"
                 )
         elif self.local_rank == 0:
-            self.logger.info(
-                "Skip torch.compile() because USE_TORCH_COMPILE is false"
-            )
+            self.logger.info("Skip torch.compile() because USE_TORCH_COMPILE is false")
 
         # 获取训练参数
         training_args = self._get_training_args()
@@ -499,9 +476,7 @@ class UnifiedTrainer:
         if embedding_hooks:
             for hook in embedding_hooks:
                 hook.remove()
-            self.logger.info(
-                f"Removed {len(embedding_hooks)} embedding gradient hooks"
-            )
+            self.logger.info(f"Removed {len(embedding_hooks)} embedding gradient hooks")
 
         # 保存模型和状态
         self.logger.info("Saving model and training state...")

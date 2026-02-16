@@ -180,14 +180,10 @@ class TrainLoopEngine:
                         raise ValueError(
                             "Failed to collect init data for K-Means initialization."
                         )
-                    init_data = torch.cat(collected, dim=0)[:init_size].to(
-                        self.device
-                    )
+                    init_data = torch.cat(collected, dim=0)[:init_size].to(self.device)
 
             if init_data is not None and init_data.numel() > 0:
-                flat_finite = torch.isfinite(init_data).view(
-                    init_data.size(0), -1
-                )
+                flat_finite = torch.isfinite(init_data).view(init_data.size(0), -1)
                 finite_mask = flat_finite.all(dim=1)
                 num_bad = int((~finite_mask).sum().item())
                 if num_bad > 0:
@@ -231,9 +227,7 @@ class TrainLoopEngine:
                 train_loader.sampler.set_epoch(epoch_idx)
 
             training_start_time = time()
-            train_loss, train_recon_loss = self.train_epoch(
-                train_loader, epoch_idx
-            )
+            train_loss, train_recon_loss = self.train_epoch(train_loader, epoch_idx)
             training_end_time = time()
 
             if self.distributed:
@@ -267,17 +261,13 @@ class TrainLoopEngine:
                     dataset = getattr(train_loader, "dataset", train_loader)
                     eval_loader = DataLoader(
                         dataset,
-                        num_workers=getattr(
-                            self.trainer.args, "num_workers", 4
-                        ),
-                        batch_size=getattr(
-                            self.trainer.args, "batch_size", 2048
-                        ),
+                        num_workers=getattr(self.trainer.args, "num_workers", 4),
+                        batch_size=getattr(self.trainer.args, "batch_size", 2048),
                         shuffle=False,
                         pin_memory=True,
                     )
-                collision_rate, avg_utilization = (
-                    self.trainer.eval_engine.valid_epoch(eval_loader)
+                collision_rate, avg_utilization = self.trainer.eval_engine.valid_epoch(
+                    eval_loader
                 )
 
                 if train_loss < self.trainer.best_loss:

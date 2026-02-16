@@ -54,11 +54,7 @@ def cached(func: Callable[..., Tensor]):
 
 
 def _cat_tensor_list(xx):
-    if (
-        isinstance(xx, list)
-        and len(xx) > 0
-        and all(isinstance(x, Tensor) for x in xx)
-    ):
+    if isinstance(xx, list) and len(xx) > 0 and all(isinstance(x, Tensor) for x in xx):
         return torch.cat(xx)
     return xx
 
@@ -75,7 +71,7 @@ def cat_input_tensor(func: Callable[..., Tensor]):
     @wraps(func)
     def cat_f(*args, **kwargs):
         args_cat = [_cat_tensor_list(x) for x in args]
-        kwargs_cat = dict((k, _cat_tensor_list(v)) for k, v in kwargs.values())
+        kwargs_cat = {k: _cat_tensor_list(v) for k, v in kwargs.values()}
         return func(*args_cat, **kwargs_cat)
 
     return cat_f
@@ -102,9 +98,9 @@ def gather_input_tensor(func: Callable[..., Tensor], axis=0):
     @wraps(func)
     def f(*args, **kwargs):
         args_gathered = [_maybe_gather_tensor(x, axis=axis) for x in args]
-        kwargs_gathered = dict(
-            (k, _maybe_gather_tensor(v, axis=axis)) for k, v in kwargs.values()
-        )
+        kwargs_gathered = {
+            k: _maybe_gather_tensor(v, axis=axis) for k, v in kwargs.values()
+        }
         return func(*args_gathered, **kwargs_gathered)
 
     return f

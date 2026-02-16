@@ -138,10 +138,7 @@ def embed_func(
         ((hv * np.tile(a, (len(hv), 1)).T).T + b) % MERSENNE_PRIME, MAX_HASH
     )
     hashvalues = np.vstack([phv, hashvalues]).min(axis=0)
-    Hs = [
-        bytes(hashvalues[start:end].byteswap().data)
-        for start, end in hashranges
-    ]
+    Hs = [bytes(hashvalues[start:end].byteswap().data) for start, end in hashranges]
     return {"__signatures__": Hs, "__id__": idx}
 
 
@@ -235,14 +232,10 @@ if __name__ == "__main__":
         revision: str = typer.Option("main", help="Dataset revision"),
         column: str = typer.Option("content", help="Dataset column"),
         cache_dir: str = typer.Option(".cache", help="Cache directory"),
-        ngram_size: int = typer.Option(
-            5, help="The ngram size to use for MinHash"
-        ),
+        ngram_size: int = typer.Option(5, help="The ngram size to use for MinHash"),
         num_perm: int = typer.Option(256, help="Number of permutations"),
         threshold: float = typer.Option(0.7, help="Minhash threshold"),
-        min_ngram_size: int = typer.Option(
-            5, help="Shorter documents will be removed"
-        ),
+        min_ngram_size: int = typer.Option(5, help="Shorter documents will be removed"),
         output: str = typer.Option(None, help="Store the deduplicated dataset"),
     ):
         global uf
@@ -270,9 +263,7 @@ if __name__ == "__main__":
             revision=revision,
             num_proc=os.cpu_count(),
         )
-        time_measures["load_dataset"] = (
-            time.time() - time_measures["load_dataset"]
-        )
+        time_measures["load_dataset"] = time.time() - time_measures["load_dataset"]
         DATA_SIZE = len(ds)
         PERMUTATIONS = np.array(
             [
@@ -311,14 +302,10 @@ if __name__ == "__main__":
             desc="Iterating MinHashes...",
         ):
             batch = embedded[i : i + batch_size]
-            for key, Hs in zip(
-                batch["__id__"], batch["__signatures__"], strict=False
-            ):
+            for key, Hs in zip(batch["__id__"], batch["__signatures__"], strict=False):
                 for H, hashtable in zip(Hs, HASH_TABLES, strict=False):
                     hashtable[H].add(key)
-        for table in tqdm(
-            HASH_TABLES, dynamic_ncols=True, desc="Clustering..."
-        ):
+        for table in tqdm(HASH_TABLES, dynamic_ncols=True, desc="Clustering..."):
             for cluster in table.values():
                 if len(cluster) <= 1:
                     continue
@@ -368,9 +355,7 @@ if __name__ == "__main__":
         logger.info(
             f"{'Duplicate Number':<{PAD}}: {DUP_SIZE} ({DUP_SIZE / DATA_SIZE:.2%})"
         )
-        logger.info(
-            f"{'Total Time':<{PAD}}: {time.time() - start_time:.2f} seconds"
-        )
+        logger.info(f"{'Total Time':<{PAD}}: {time.time() - start_time:.2f} seconds")
         logger.info(f"{'Deduplicated Dataset':<{PAD}}: {output}")
         logger.info("🤗 Happy Deduplicating 🤗")
 

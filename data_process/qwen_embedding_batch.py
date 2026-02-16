@@ -111,9 +111,7 @@ class ItemMultimodalExtractor:
             text = self.construct_item_text(item_data)
 
             # 加载图片
-            image_path = os.path.join(
-                image_dir, f"{item_data.get('item_id', '')}.jpg"
-            )
+            image_path = os.path.join(image_dir, f"{item_data.get('item_id', '')}.jpg")
             image = self.load_item_image(image_path)
 
             # 准备消息
@@ -207,9 +205,7 @@ class ItemMultimodalExtractor:
 
             # 扩展attention_mask到hidden_dim
             attention_mask_expanded = (
-                attention_mask.unsqueeze(-1)
-                .expand(last_hidden_state.size())
-                .float()
+                attention_mask.unsqueeze(-1).expand(last_hidden_state.size()).float()
             )
 
             # 计算加权平均
@@ -313,9 +309,7 @@ class ItemMultimodalExtractor:
         representation_matrix = []
 
         for num_id in sorted(representations.keys()):
-            representation_matrix.append(
-                representations[num_id]["representation"]
-            )
+            representation_matrix.append(representations[num_id]["representation"])
 
         if representation_matrix:
             representation_matrix = np.array(representation_matrix)
@@ -333,9 +327,7 @@ class ItemMultimodalExtractor:
         保持原有接口，根据batch_size选择处理方式
         """
         if batch_size > 1:
-            return self.extract_all_items_batch(
-                dataset_path, output_path, batch_size
-            )
+            return self.extract_all_items_batch(dataset_path, output_path, batch_size)
         # 原有的单个处理逻辑（保持向后兼容）
         return self.extract_all_items_single(dataset_path, output_path)
 
@@ -357,9 +349,7 @@ class ItemMultimodalExtractor:
         print(f"Extracting representations for {len(item_info)} items...")
 
         # 遍历所有物品
-        for num_id, item_data in tqdm(
-            item_info.items(), desc="Processing items"
-        ):
+        for num_id, item_data in tqdm(item_info.items(), desc="Processing items"):
             num_id = int(num_id)
             item_id = id2item[num_id]
 
@@ -372,14 +362,10 @@ class ItemMultimodalExtractor:
 
             try:
                 # 提取表征
-                representation = self.extract_item_representation_single(
-                    text, image
-                )
+                representation = self.extract_item_representation_single(text, image)
 
                 if representation is not None:
-                    print(
-                        f"Successfully extract representation of item {num_id}"
-                    )
+                    print(f"Successfully extract representation of item {num_id}")
                     representations[num_id] = {
                         "item_id": item_id,
                         "representation": representation.tolist(),
@@ -407,9 +393,7 @@ class ItemMultimodalExtractor:
         representation_matrix = []
 
         for num_id in sorted(representations.keys()):
-            representation_matrix.append(
-                representations[num_id]["representation"]
-            )
+            representation_matrix.append(representations[num_id]["representation"])
 
         if representation_matrix:
             representation_matrix = np.array(representation_matrix)
@@ -485,9 +469,7 @@ class ItemMultimodalExtractor:
                 torch.isnan(last_hidden_state).any()
                 or torch.isinf(last_hidden_state).any()
             ):
-                print(
-                    "Warning: NaN or Inf detected in hidden states, skipping..."
-                )
+                print("Warning: NaN or Inf detected in hidden states, skipping...")
                 return None
 
             # 计算有效token的平均 (排除padding token)
@@ -495,9 +477,7 @@ class ItemMultimodalExtractor:
 
             # 扩展attention_mask到hidden_dim
             attention_mask_expanded = (
-                attention_mask.unsqueeze(-1)
-                .expand(last_hidden_state.size())
-                .float()
+                attention_mask.unsqueeze(-1).expand(last_hidden_state.size()).float()
             )
 
             # 计算加权平均

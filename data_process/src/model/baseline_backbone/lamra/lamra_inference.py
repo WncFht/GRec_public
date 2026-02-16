@@ -156,18 +156,14 @@ class LamRAQwen2VL(nn.Module):
         )
 
         pooling_mask = attention_mask if pooling_mask is None else pooling_mask
-        left_padding = (
-            pooling_mask[:, -1].sum() == pooling_mask.shape[0]
-        )  # TODO
+        left_padding = pooling_mask[:, -1].sum() == pooling_mask.shape[0]  # TODO
         if left_padding:
             embeddings = outputs.last_hidden_state[:, -1]
         else:
             sequence_lengths = pooling_mask.sum(dim=1) - 1
             batch_size = outputs.last_hidden_state.shape[0]
             embeddings = outputs.last_hidden_state[
-                torch.arange(
-                    batch_size, device=outputs.last_hidden_state.device
-                ),
+                torch.arange(batch_size, device=outputs.last_hidden_state.device),
                 sequence_lengths,
             ]
         if self.normalize:
@@ -190,9 +186,7 @@ class LamRAQwen2VL(nn.Module):
                 instruction = self.default_instruction
             input_str = ""
             if img_path is None:
-                input_images = (
-                    None  # All examples in the same batch are consistent
-                )
+                input_images = None  # All examples in the same batch are consistent
             else:
                 img = fetch_image(img_path)
                 input_images.append(img)
@@ -242,9 +236,7 @@ class LamRAQwen2VL(nn.Module):
         embeddings = self.encode(sentences, is_query=False, **kwargs)
         return embeddings
 
-    def get_image_embeddings(
-        self, images: list[Image.Image] | DataLoader, **kwargs
-    ):
+    def get_image_embeddings(self, images: list[Image.Image] | DataLoader, **kwargs):
         return self.get_fused_embeddings(images=images, **kwargs)
 
     def get_text_embeddings(self, texts: list[str], **kwargs):
@@ -277,9 +269,7 @@ class LamRAQwen2VL(nn.Module):
             assert image_loader is not None
             n_batch = len(image_loader)
         else:
-            n_batch = len(texts) // batch_size + int(
-                len(texts) % batch_size > 0
-            )
+            n_batch = len(texts) // batch_size + int(len(texts) % batch_size > 0)
             image_loader = image_loader or [None] * n_batch
 
         all_embeddings = list()
@@ -297,13 +287,9 @@ class LamRAQwen2VL(nn.Module):
             image_loader,
             strict=False,
         ):
-            text_batch = (
-                none_batch if texts is None else texts[n : n + batch_size]
-            )
+            text_batch = none_batch if texts is None else texts[n : n + batch_size]
             img_batch = none_batch if img_batch is None else img_batch
-            embeddings = self.embed(
-                texts=text_batch, images=img_batch, **kwargs
-            )
+            embeddings = self.embed(texts=text_batch, images=img_batch, **kwargs)
             pbar.update(1)
             all_embeddings.append(embeddings.cpu())
         pbar.close()
@@ -388,9 +374,7 @@ def fetch_image(
         image_obj = image
     elif image.startswith("http://") or image.startswith("https://"):
         headers = {"User-Agent": "My User Agent 1.0"}
-        image_obj = Image.open(
-            requests.get(image, headers=headers, stream=True).raw
-        )
+        image_obj = Image.open(requests.get(image, headers=headers, stream=True).raw)
     elif image.startswith("file://"):
         image_obj = Image.open(image[7:])
     elif image.startswith("data:image"):

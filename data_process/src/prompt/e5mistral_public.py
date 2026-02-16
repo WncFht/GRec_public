@@ -84,20 +84,14 @@ def get_task_def_by_task_name_and_type(task_name: str) -> str:
         )
         # other cases where lower case match still doesn't work
         task_name_to_instruct["trec-covid"] = task_name_to_instruct["TRECCOVID"]
-        task_name_to_instruct["climate-fever"] = task_name_to_instruct[
-            "ClimateFEVER"
-        ]
-        task_name_to_instruct["dbpedia-entity"] = task_name_to_instruct[
-            "DBPedia"
-        ]
-        task_name_to_instruct["webis-touche2020"] = task_name_to_instruct[
-            "Touche2020"
-        ]
+        task_name_to_instruct["climate-fever"] = task_name_to_instruct["ClimateFEVER"]
+        task_name_to_instruct["dbpedia-entity"] = task_name_to_instruct["DBPedia"]
+        task_name_to_instruct["webis-touche2020"] = task_name_to_instruct["Touche2020"]
         task_name_to_instruct["fiqa"] = task_name_to_instruct["FiQA2018"]
         task_name_to_instruct["quora"] = task_name_to_instruct["QuoraRetrieval"]
-        task_name_to_instruct["instructed-conversation"] = (
-            task_name_to_instruct["InstructConversation"]
-        )
+        task_name_to_instruct["instructed-conversation"] = task_name_to_instruct[
+            "InstructConversation"
+        ]
 
         # for miracl evaluation
         task_name_to_instruct["miracl"] = (
