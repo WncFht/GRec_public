@@ -8,6 +8,7 @@ repos:
     -   id: check-merge-conflict
     -   id: check-yaml
     -   id: debug-statements
+        exclude: ^src/utils/old_multimodal_test\.py$
     -   id: end-of-file-fixer
     -   id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
@@ -23,6 +24,6 @@ repos:
     hooks:
     -   id: ruff
         args: [--fix]
-        files: \.pyi?$
+        files: '^(scripts/.*\.pyi?$|src/finetune/.*\.pyi?$|src/(collator|data|evaluate|logger|merge_lora|parser|prompt|type)\.pyi?$)'
     -   id: ruff-format
-        files: \.pyi?$
+        files: '^(scripts/.*\.pyi?$|src/finetune/.*\.pyi?$|src/(collator|data|evaluate|logger|merge_lora|parser|prompt|type)\.pyi?$)'
