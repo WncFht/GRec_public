@@ -19,7 +19,7 @@ import textwrap
 import warnings
 from collections import defaultdict
 from collections.abc import Callable, Sized
-from typing import Any, Optional, Union
+from typing import Any, Optional
 from unittest.mock import patch
 
 import torch
@@ -76,14 +76,17 @@ from .LogitProcessor import ConstrainedLogitsProcessor
 if is_peft_available():
     from peft import PeftConfig, get_peft_model
 
-
-# from vllm import LLM, SamplingParams
+try:
+    from vllm import LLM, SamplingParams
+except ImportError:
+    LLM = None
+    SamplingParams = None
 
 if is_wandb_available():
     import wandb
 # What we call a reward function is a callable that takes a list of prompts and completions and returns a list of
 # rewards. When it's a string, it's a model ID, so it's loaded as a pretrained model.
-RewardFunc = Union[str, PreTrainedModel, Callable[[list, list], list[float]]]
+RewardFunc = str | PreTrainedModel | Callable[[list, list], list[float]]
 
 
 class RepeatRandomSampler(Sampler):
@@ -522,7 +525,8 @@ class ReReTrainer(Trainer):
                         f"The requested device {vllm_device} is also being used for training. For higher throughput "
                         "and to avoid out-of-memory errors, it is recommended to use a dedicated device for vLLM. "
                         "If this is intentional, you may ignore this warning but should adjust "
-                        "`vllm_gpu_memory_utilization` accordingly."
+                        "`vllm_gpu_memory_utilization` accordingly.",
+                        stacklevel=2,
                     )
                 # vLLM is not compatible with accelerate. So we need to patch it to make sure we can (1) place the vLLM
                 # model on the desired device (world_size_patch) and (2) avoid a test that is not designed for our
@@ -535,6 +539,10 @@ class ReReTrainer(Trainer):
                     return_value=None,
                 )
                 with world_size_patch, profiling_patch:
+                    if LLM is None or SamplingParams is None:
+                        raise ImportError(
+                            "`use_vllm=True` requires `vllm` installed: `pip install vllm`."
+                        )
                     self.llm = LLM(
                         model=model.name_or_path,
                         device=vllm_device,
@@ -1118,7 +1126,6 @@ class ReReTrainer(Trainer):
             if self.add_gt:
                 repeat = len(prompts_text) // num_categories
                 new_prompt_completions = []
-                flag = False
                 # rep_ind = [random.randint(i, i+repeat-1) for i in range(0, len(prompts), repeat)]
                 for i in range(len(prompts_text)):
                     if (i + 1) % repeat == 0:
@@ -1234,7 +1241,7 @@ class ReReTrainer(Trainer):
 
         max_completion_tokens = completion_ids.size(1)
         reward_outputs: list[list[Any] | torch.Tensor] = []
-        for i, (reward_func, reward_processing_class) in enumerate(
+        for _i, (reward_func, reward_processing_class) in enumerate(
             zip(self.reward_funcs, self.reward_processing_classes, strict=False)
         ):
             if isinstance(

@@ -60,7 +60,7 @@ def main(args: argparse.Namespace):
         output_texts = tokenizer.batch_decode(output, skip_special_tokens=False)
 
         # extract the output behind the "Response:"
-        for i, o in enumerate(output_texts):
+        for _i, o in enumerate(output_texts):
             o = o.split("assistant")[-1]
             print("=" * 10, "Ours:", "=" * 10)
             print(o)

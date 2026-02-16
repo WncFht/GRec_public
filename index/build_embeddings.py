@@ -44,7 +44,7 @@ def generate_text(item2feature, features):
 
         try:
             item_id = int(item)
-        except:
+        except Exception:
             item_id = item
 
         item_text_list.append((item_id, " ".join(text)))

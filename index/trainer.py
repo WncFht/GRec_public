@@ -165,10 +165,10 @@ class Trainer:
             + set_color("time", "blue")
             + ": %.2fs, "
         ) % (epoch_idx, e_time - s_time)
-        train_loss_output += set_color("train loss", "blue") + ": %.4f" % loss
+        train_loss_output += set_color("train loss", "blue") + f": {loss:.4f}"
         train_loss_output += ", "
         train_loss_output += (
-            set_color("reconstruction loss", "blue") + ": %.4f" % recon_loss
+            set_color("reconstruction loss", "blue") + f": {recon_loss:.4f}"
         )
         return train_loss_output + "]"
 

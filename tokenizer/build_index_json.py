@@ -85,8 +85,8 @@ def codes_to_tokens(codes: np.ndarray) -> list[list[str]]:
     out: list[list[str]] = []
     for row in codes:
         toks = []
-        for l, c in enumerate(row.tolist()):
-            prefix = chr(ord("a") + l)
+        for layer_idx, c in enumerate(row.tolist()):
+            prefix = chr(ord("a") + layer_idx)
             toks.append(f"<{prefix}_{int(c)}>")
         out.append(toks)
     return out

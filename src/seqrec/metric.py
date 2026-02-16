@@ -55,13 +55,10 @@ def test(args: argparse.Namespace):
 
     if args.model_type == "llama":
         collator = TestCollator(args, tokenizer=processor)
-        split_word = "Response: "
     elif args.model_type in ["qwen"]:
         collator = ChatTemplateTestCollator(args, tokenizer=processor)
-        split_word = "assistant"
     else:
         collator = UnifiedTestCollator(args, processor_or_tokenizer=processor)
-        split_word = "assistant"
 
     all_items = test_data.get_all_items()
 

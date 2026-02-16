@@ -8,7 +8,6 @@ repos:
     -   id: check-merge-conflict
     -   id: check-yaml
     -   id: debug-statements
-        exclude: ^src/utils/old_multimodal_test\.py$
     -   id: end-of-file-fixer
     -   id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
@@ -25,7 +24,5 @@ repos:
     -   id: ruff
         args: [--fix]
         files: '^(scripts|src|index|convert|tokenizer)/.*\.pyi?$'
-        exclude: '^(src/(config\.py|data_rl\.py|generation_trie\.py|qwen3_finetune\.py|utils\.py|utils/old_multimodal_test\.py|rl/(minionerec_trainer|reward_fns)\.py|seqrec/(case|metric|metric_constrained_ddp|metric_ddp)\.py|text_generation/(case|case_lora)\.py|token/(analyzer|tsne)\.py)|index/(build_embeddings\.py|trainer\.py|utils\.py|engine/(checkpoint|train_loop)\.py|models/layers\.py)|convert/zero_to_fp32\.py|tokenizer/(build_index_json|res_kmeans)\.py)$'
     -   id: ruff-format
         files: '^(scripts|src|index|convert|tokenizer)/.*\.pyi?$'
-        exclude: '^(src/(config\.py|data_rl\.py|generation_trie\.py|qwen3_finetune\.py|utils\.py|utils/old_multimodal_test\.py|rl/(minionerec_trainer|reward_fns)\.py|seqrec/(case|metric|metric_constrained_ddp|metric_ddp)\.py|text_generation/(case|case_lora)\.py|token/(analyzer|tsne)\.py)|index/(build_embeddings\.py|trainer\.py|utils\.py|engine/(checkpoint|train_loop)\.py|models/layers\.py)|convert/zero_to_fp32\.py|tokenizer/(build_index_json|res_kmeans)\.py)$'

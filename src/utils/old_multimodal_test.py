@@ -14,8 +14,9 @@ from transformers import (
 
 from collator import UnifiedTestCollator
 from evaluate import get_metrics_results, get_topk_results
+from parser import parse_dataset_args, parse_global_args, parse_test_args
 from prompt import all_prompt
-from utils import *
+from utils import load_test_dataset, set_seed
 
 
 def load_model_with_new_tokens(args, device_map):
@@ -162,8 +163,11 @@ def test(args):
                     **inputs,
                     # max_new_tokens=args.max_new_tokens,
                     max_new_tokens=100,
-                    # prefix_allowed_tokens_fn=prefix_allowed_tokens,
-                    prefix_allowed_tokens_fn=None,
+                    prefix_allowed_tokens_fn=(
+                        prefix_allowed_tokens
+                        if args.use_constrained_generation
+                        else None
+                    ),
                     num_beams=args.num_beams,
                     num_return_sequences=args.num_beams,
                     output_scores=True,
@@ -182,10 +186,6 @@ def test(args):
                 output_texts = processor.tokenizer.batch_decode(
                     output_ids, skip_special_tokens=True
                 )
-
-                import pdb
-
-                pdb.set_trace()
 
                 # 获取topk结果
                 topk_res = get_topk_results(

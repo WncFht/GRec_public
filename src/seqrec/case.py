@@ -1,5 +1,4 @@
 import argparse
-import re
 
 import torch
 from transformers import GenerationConfig
@@ -53,8 +52,6 @@ def main(args: argparse.Namespace):
         # "<|im_start|>",
         # "<|im_end|>"
     }
-    # 2. 预编译空白符正则
-    WHITE_PAT = re.compile(r"\s+")
 
     def clean_text(text: str) -> str:
         """
@@ -117,7 +114,7 @@ def main(args: argparse.Namespace):
         print(f"input 长度: {input_len}")
         print("生成结果:")
         # 提取"Response:"后面的输出
-        for j, (id, text, score) in enumerate(
+        for _j, (id, text, score) in enumerate(
             zip(output_ids, output_texts, scores, strict=False)
         ):
             # response = clean_text(text)

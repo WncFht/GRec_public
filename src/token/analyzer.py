@@ -42,7 +42,9 @@ def cvt_readable_vocab(tokenizer, save_path: str | None = None) -> dict[int, str
     reversed_vocab = {v: k for k, v in tokenizer.vocab.items()}
     added_tokens = tokenizer.added_tokens_encoder
     uni2bytes_mapper = unicode_to_bytes()
-    uni2bytes = lambda c: b"".join([uni2bytes_mapper[ch] for ch in c])
+
+    def uni2bytes(token_text: str) -> bytes:
+        return b"".join([uni2bytes_mapper[ch] for ch in token_text])
 
     readable = {}
     for k, v in tqdm(
@@ -54,7 +56,7 @@ def cvt_readable_vocab(tokenizer, save_path: str | None = None) -> dict[int, str
                 readable[k] = f"ADDED_TOKEN: {v}"
             else:
                 readable[k] = uni2bytes(v).decode("utf-8")
-        except:
+        except Exception:
             readable[k] = f"INVALID UTF-8: {uni2bytes(v)}"
 
     # save readable vocab_r1.json
@@ -137,9 +139,9 @@ def parse_vocab(
             if pat.match(stripped_tok):
                 is_matched = True
                 if lang == "Added token":
-                    v = v.strip("ADDED_TOKEN: ")
+                    v = v.removeprefix("ADDED_TOKEN: ")
                 elif lang == "Invalid utf-8":
-                    v = v.strip("INVALID UTF-8: ")
+                    v = v.removeprefix("INVALID UTF-8: ")
                 vocab_by_lang.setdefault(lang, {})[k] = v
                 break
         if not is_matched:
@@ -195,7 +197,7 @@ def dedup_by_whitespace(
     """Find duplicate tokens by stripping whitespace"""
     total_tokens = len(vocab_by_lang[lang])
     dedup = set()
-    for k, v in vocab_by_lang[lang].items():
+    for _k, v in vocab_by_lang[lang].items():
         dedup.add(v.strip())
     if verbose:
         print(

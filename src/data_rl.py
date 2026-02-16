@@ -1005,10 +1005,10 @@ def samples_to_hf_dataset(samples: list[dict[str, str]]):
     """
     try:
         from datasets import Dataset as HFDataset
-    except Exception:
+    except Exception as err:
         raise RuntimeError(
             "Please install the `datasets` package to convert samples to HF Dataset"
-        )
+        ) from err
 
     if not samples:
         return HFDataset.from_dict({"prompt": [], "completion": []})

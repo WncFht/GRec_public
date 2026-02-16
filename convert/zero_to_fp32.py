@@ -378,7 +378,7 @@ def _zero2_merge_trainable_params(
         # live optimizer object, so we are checking that the numbers are within the right range
         align_to = 2 * world_size
 
-        def zero2_align(x):
+        def zero2_align(x, align_to=align_to):
             return align_to * math.ceil(x / align_to)
 
         if debug:

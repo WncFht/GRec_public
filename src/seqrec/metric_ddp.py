@@ -102,13 +102,10 @@ def test(args: argparse.Namespace):
 
     if args.model_type == "llama":
         collator = TestCollator(args, tokenizer=processor)
-        split_word = "Response: "  # 这个变量在原代码中定义了但未使用，保留
     elif args.model_type in ["qwen"]:
         collator = ChatTemplateTestCollator(args, tokenizer=processor)
-        split_word = "assistant"  # 这个变量在原代码中定义了但未使用，保留
     else:
         collator = UnifiedTestCollator(args, processor_or_tokenizer=processor)
-        split_word = "assistant"  # 这个变量在原代码中定义了但未使用，保留
 
     test_loader = DataLoader(
         test_data,

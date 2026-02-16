@@ -198,7 +198,7 @@ def ndcg_rule_reward(
             group_records = []
         return rewards
 
-    for i, (tokens, rm, fr) in enumerate(
+    for _i, (tokens, rm, fr) in enumerate(
         zip(completion_token_ids, reward_model, format_rewards, strict=False)
     ):
         gt_tokens = _strip_padding_tokens(_extract_gt_tokens(rm), pad_token_id)
@@ -240,7 +240,7 @@ def rule_reward(
     if completion_token_ids is None:
         raise RuntimeError("completion_token_ids must be provided for token matching.")
 
-    for i, (tokens, rm, fr) in enumerate(
+    for _i, (tokens, rm, fr) in enumerate(
         zip(completion_token_ids, reward_model, format_rewards, strict=False)
     ):
         gt_tokens = _extract_gt_tokens(rm)

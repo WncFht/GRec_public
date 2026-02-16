@@ -75,7 +75,7 @@ def parse_args() -> Args:
 
     # --- 允许命令行覆盖 YAML 配置 ---
     # 动态地为 Args 中的所有字段添加命令行参数
-    for section_name, section_dc in args.__dataclass_fields__.items():
+    for section_name, _section_dc in args.__dataclass_fields__.items():
         section_obj = getattr(args, section_name)
         for field_name, field_type in section_obj.__dataclass_fields__.items():
             full_arg_name = f"--{section_name}.{field_name}"
@@ -99,7 +99,7 @@ def parse_args() -> Args:
     final_args = parser.parse_args(remaining_argv)
 
     # 将命令行覆盖的参数更新到 Args 对象中
-    for section_name, section_dc in args.__dataclass_fields__.items():
+    for section_name, _section_dc in args.__dataclass_fields__.items():
         section_obj = getattr(args, section_name)
         for field_name in section_obj.__dataclass_fields__:
             arg_val = getattr(final_args, f"{section_name}.{field_name}", None)

@@ -10,7 +10,8 @@ from transformers import (
 )
 
 from collator import Collator
-from utils import *
+from parser import parse_dataset_args, parse_global_args, parse_train_args
+from utils import ensure_dir, load_datasets, set_seed
 
 
 def train(args):

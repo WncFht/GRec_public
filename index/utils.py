@@ -22,7 +22,7 @@ def set_color(log, color, highlight=True):
     ]
     try:
         index = color_set.index(color)
-    except:
+    except ValueError:
         index = len(color_set) - 1
     prev_log = "\033["
     if highlight:

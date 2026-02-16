@@ -424,7 +424,7 @@ def test(args: argparse.Namespace):
                 test_loader, desc=f"Prompt {prompt_id}", disable=(rank != 0)
             )
 
-            for step, batch in enumerate(iterable):
+            for _step, batch in enumerate(iterable):
                 inputs = batch[0]
                 targets = batch[1]
                 indices = batch[2] if rollout_file else None

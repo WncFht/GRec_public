@@ -1003,7 +1003,7 @@ def load_embeddings_from_model(
         print(f"Resized embeddings to {vocab_size} tokens")
 
     # tokenizer stats
-    stats = analyze_tokenizer_stats(tokenizer, model_path)
+    analyze_tokenizer_stats(tokenizer, model_path)
 
     # readable vocab & language 分析
     readable_vocab = {}
@@ -1128,7 +1128,7 @@ def create_static_visualization(
     colors = [color_map.get(cat, "#808080") for cat in categories]
 
     # Create scatter plot
-    scatter = plt.scatter(
+    plt.scatter(
         embeddings_2d[:, 0],
         embeddings_2d[:, 1],
         alpha=args.point_alpha,
@@ -1240,7 +1240,7 @@ def create_interactive_visualization(
 
     # Group tokens by category
     category_groups = {}
-    for i, (name, cat) in enumerate(zip(token_names, categories, strict=False)):
+    for i, (_name, cat) in enumerate(zip(token_names, categories, strict=False)):
         if cat not in category_groups:
             category_groups[cat] = []
         category_groups[cat].append(i)
@@ -1302,13 +1302,13 @@ def compute_token_similarities(
         for idx, score in zip(top_indices, top_scores, strict=False):
             try:
                 similar_token = tokenizer.decode(token_ids[idx])
-            except:
+            except Exception:
                 similar_token = f"<token_{token_ids[idx]}>"
             similar_tokens.append((similar_token, float(score)))
 
         try:
             token_name = tokenizer.decode(token_id)
-        except:
+        except Exception:
             token_name = f"<token_{token_id}>"
 
         similarities[token_name] = similar_tokens
@@ -1371,7 +1371,7 @@ def list_model_layers(model_path: str):
         print(f"  {key}")
 
     print("\n=== All Layers (first 50) ===")
-    for i, key in enumerate(sorted(all_keys)[:50]):
+    for key in sorted(all_keys)[:50]:
         print(f"  {key}")
 
     if len(all_keys) > 50:

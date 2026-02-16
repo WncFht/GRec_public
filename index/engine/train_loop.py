@@ -163,7 +163,7 @@ class TrainLoopEngine:
                             dtype=torch.float32,
                             device=self.device,
                         )
-                except Exception:
+                except Exception as err:
                     collected = []
                     collected_num = 0
                     for batch in train_data:
@@ -179,7 +179,7 @@ class TrainLoopEngine:
                     if not collected:
                         raise ValueError(
                             "Failed to collect init data for K-Means initialization."
-                        )
+                        ) from err
                     init_data = torch.cat(collected, dim=0)[:init_size].to(self.device)
 
             if init_data is not None and init_data.numel() > 0:

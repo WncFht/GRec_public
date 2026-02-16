@@ -67,7 +67,7 @@ def main(args: argparse.Namespace):
 
         print("生成结果:")
         # 提取"assistant"后面的输出
-        for j, text in enumerate(output_texts):
+        for _j, text in enumerate(output_texts):
             response = text.split("assistant")[-1].strip()
             print("=" * 10 + " Ours: " + "=" * 10)
             print(response[:500] + "..." if len(response) > 500 else response)

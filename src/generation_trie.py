@@ -1,5 +1,5 @@
 class Trie:
-    def __init__(self, sequences: list[list[int]] = []):
+    def __init__(self, sequences: list[list[int]] | None = None):
         self.trie_dict = {}
         self.len = 0
         if sequences:

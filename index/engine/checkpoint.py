@@ -95,8 +95,7 @@ class CheckpointManager:
             if ckpt_file
             else os.path.join(
                 self.trainer.ckpt_dir,
-                "epoch_%d_collision_%.4f_util_%.4f_model.pth"
-                % (epoch, collision_rate, avg_utilization),
+                f"epoch_{epoch}_collision_{collision_rate:.4f}_util_{avg_utilization:.4f}_model.pth",
             )
         )
         state = {

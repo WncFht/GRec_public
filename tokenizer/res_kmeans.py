@@ -58,13 +58,13 @@ class ResKmeans(nn.Module):
         if verbose and x.shape[0] > 0:
             probe_n = int(min(10_000, x.shape[0]))
             probe_idx = np.linspace(0, x.shape[0] - 1, probe_n, dtype=np.int64)
-        for l in range(self.n_layers):
+        for layer_idx in range(self.n_layers):
             t0 = time.time()
             if verbose:
                 niter = self.extra_kmeans_config.get("niter", None)
                 niter_str = str(niter) if niter is not None else "?"
                 print(
-                    f"[ResKmeans] layer {l}/{self.n_layers - 1} kmeans.train "
+                    f"[ResKmeans] layer {layer_idx}/{self.n_layers - 1} kmeans.train "
                     f"(n={x.shape[0]}, dim={self.dim}, k={self.codebook_size}, niter={niter_str})",
                     flush=True,
                 )
@@ -78,40 +78,40 @@ class ResKmeans(nn.Module):
             kmeans.train(x)
             if verbose:
                 print(
-                    f"[ResKmeans] layer {l} kmeans.train done in {time.time() - t0:.1f}s",
+                    f"[ResKmeans] layer {layer_idx} kmeans.train done in {time.time() - t0:.1f}s",
                     flush=True,
                 )
             t1 = time.time()
-            _, I = kmeans.index.search(x, 1)
+            _, assignments = kmeans.index.search(x, 1)
             if verbose:
                 print(
-                    f"[ResKmeans] layer {l} assignment done in {time.time() - t1:.1f}s",
+                    f"[ResKmeans] layer {layer_idx} assignment done in {time.time() - t1:.1f}s",
                     flush=True,
                 )
-            I = I.reshape([-1]).astype(np.int64, copy=False)
+            assignments = assignments.reshape([-1]).astype(np.int64, copy=False)
             t2 = time.time()
 
             centroids = kmeans.centroids.astype(np.float32, copy=False)
             chunk = 8192
             for start in range(0, x.shape[0], chunk):
                 end = min(start + chunk, x.shape[0])
-                x[start:end] -= centroids[I[start:end]]
+                x[start:end] -= centroids[assignments[start:end]]
 
             if verbose:
                 probe_resid = x[probe_idx]
                 flat = probe_resid.astype(np.float64, copy=False).ravel()
                 mse = float(flat.dot(flat) / flat.size)
-                print(f"{l} {{'loss': {mse:.6f}}}", flush=True)
+                print(f"{layer_idx} {{'loss': {mse:.6f}}}", flush=True)
 
-            self.centroids[l] = nn.Parameter(
+            self.centroids[layer_idx] = nn.Parameter(
                 torch.from_numpy(centroids.copy()), requires_grad=False
             )
             if verbose:
                 print(
-                    f"[ResKmeans] layer {l} residual update done in {time.time() - t2:.1f}s",
+                    f"[ResKmeans] layer {layer_idx} residual update done in {time.time() - t2:.1f}s",
                     flush=True,
                 )
-            print(f"layer {l} finished", flush=True)
+            print(f"layer {layer_idx} finished", flush=True)
 
     def encode(self, x, n_layers=None):
         if n_layers is None:
@@ -119,17 +119,19 @@ class ResKmeans(nn.Module):
         else:
             assert n_layers <= self.n_layers
         out = []
-        for l in range(n_layers):
+        for layer_idx in range(n_layers):
             x_norm_sq = x.pow(2.0).sum(dim=1, keepdim=True)
-            codebook_t_norm_sq = self.centroids[l].T.pow(2.0).sum(dim=0, keepdim=True)
+            codebook_t_norm_sq = (
+                self.centroids[layer_idx].T.pow(2.0).sum(dim=0, keepdim=True)
+            )
             distances = torch.addmm(
                 x_norm_sq + codebook_t_norm_sq,
                 x,
-                self.centroids[l].T,
+                self.centroids[layer_idx].T,
                 alpha=-2.0,
             )
             code = distances.argmin(dim=-1)
-            x = x - self.centroids[l][code]
+            x = x - self.centroids[layer_idx][code]
             out.append(code)
         out = torch.stack(out, dim=1)
         return out
@@ -140,7 +142,7 @@ class ResKmeans(nn.Module):
         )
         n_layers = code.shape[1]
         assert n_layers <= self.n_layers
-        for l in range(n_layers):
-            c = code[:, l]
-            out += self.centroids[l][c]
+        for layer_idx in range(n_layers):
+            c = code[:, layer_idx]
+            out += self.centroids[layer_idx][c]
         return out

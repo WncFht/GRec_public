@@ -448,7 +448,7 @@ def _load_lora_checkpoint(args, model, local_rank, log_func):
 def _freeze_only_embeddings(model, local_rank, log_func):
     """只训练embedding，冻结其他所有参数"""
     # 先冻结所有参数
-    for name, param in model.named_parameters():
+    for _name, param in model.named_parameters():
         param.requires_grad = False
 
     # 然后只解冻embedding相关参数
@@ -476,7 +476,7 @@ def _freeze_only_embeddings(model, local_rank, log_func):
     for path_name, path_getter in embedding_paths:
         embed_module = path_getter(model)
         if embed_module is not None:
-            for name, param in embed_module.named_parameters():
+            for _name, param in embed_module.named_parameters():
                 param.requires_grad = True
             if local_rank == 0:
                 log_func(f"解冻 {path_name} 参数")
@@ -499,7 +499,7 @@ def _freeze_only_embeddings(model, local_rank, log_func):
     for path_name, path_getter in lm_head_paths:
         lm_head_module = path_getter(model)
         if lm_head_module is not None:
-            for name, param in lm_head_module.named_parameters():
+            for _name, param in lm_head_module.named_parameters():
                 param.requires_grad = True
             if local_rank == 0:
                 log_func(f"解冻 {path_name} 参数")
@@ -527,12 +527,12 @@ def _apply_freeze_strategy(
         # 冻结视觉模型参数
         if args.freeze in ["visual", "all"]:
             if hasattr(model, "visual"):
-                for name, param in model.visual.named_parameters():
+                for _name, param in model.visual.named_parameters():
                     param.requires_grad = False
                 if local_rank == 0:
                     log_func("冻结视觉模型参数")
             if hasattr(model, "visual") and hasattr(model.visual, "merger"):
-                for name, param in model.visual.merger.named_parameters():
+                for _name, param in model.visual.merger.named_parameters():
                     param.requires_grad = False
                 if local_rank == 0:
                     log_func("冻结视觉模型融合层参数")
