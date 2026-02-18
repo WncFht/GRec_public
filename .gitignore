@@ -23,6 +23,8 @@ data/
 wandb_*.tar.gz
 grec_core_dirs_*.tar.gz
 grec_core_dirs_*.tar.gz.part.*
+results_*.tar.gz
+results_*.tar.gz.part.*
 
 verl/*
 /hope/

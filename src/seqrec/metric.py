@@ -1,6 +1,8 @@
 import argparse
+import csv
 import json
 import os
+import re
 
 import torch
 from torch.utils.data import DataLoader
@@ -15,6 +17,56 @@ from src.evaluate import get_metrics_results, get_topk_results
 from src.parser import parse_dataset_args, parse_global_args, parse_test_args
 from src.prompt import all_prompt
 from src.utils import load_model_for_inference, load_test_dataset, set_seed
+
+
+def _to_metric_name(metric_key: str) -> str:
+    metric = metric_key.strip().lower()
+    if metric.startswith("hit@"):
+        return f"HR@{metric.split('@', 1)[1]}"
+    if metric.startswith("ndcg@"):
+        return f"NDCG@{metric.split('@', 1)[1]}"
+    return metric_key
+
+
+def _round4(value):
+    try:
+        return round(float(value), 4)
+    except Exception:
+        return value
+
+
+def _extract_topk(metric_keys: list[str]) -> list[int]:
+    topk = set()
+    for key in metric_keys:
+        match = re.match(r"^(?:HR|NDCG)@(\d+)$", key)
+        if match:
+            topk.add(int(match.group(1)))
+    return sorted(topk)
+
+
+def _save_metrics_files(results_file: str, mean_results: dict):
+    output_dir = os.path.dirname(results_file) or "."
+    metrics_json_path = os.path.join(output_dir, "metrics.json")
+    metrics_tsv_path = os.path.join(output_dir, "metrics.tsv")
+
+    metrics_for_save = {_to_metric_name(k): _round4(v) for k, v in mean_results.items()}
+    with open(metrics_json_path, "w", encoding="utf-8") as f:
+        json.dump(metrics_for_save, f, indent=2, ensure_ascii=False)
+
+    topk = _extract_topk(list(metrics_for_save.keys()))
+    columns = [f"HR@{k}" for k in topk] + [f"NDCG@{k}" for k in topk]
+    columns = [c for c in columns if c in metrics_for_save]
+    if not columns:
+        columns = sorted(metrics_for_save.keys())
+
+    row_path = output_dir
+    row_name = row_path.split("/", 1)[1] if "/" in row_path else row_path
+    with open(metrics_tsv_path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f, delimiter="\t")
+        writer.writerow(["path", *columns])
+        writer.writerow([row_name, *[metrics_for_save.get(c, "") for c in columns]])
+
+    print(f"Metrics saved to: {metrics_json_path}, {metrics_tsv_path}")
 
 
 def test(args: argparse.Namespace):
@@ -174,10 +226,12 @@ def test(args: argparse.Namespace):
     save_data["base_model"] = args.base_model if args.lora else None
 
     # 确保结果目录存在
-    os.makedirs(os.path.dirname(args.results_file), exist_ok=True)
+    os.makedirs(os.path.dirname(args.results_file) or ".", exist_ok=True)
 
     with open(args.results_file, "w") as f:
         json.dump(save_data, f, indent=4)
+
+    _save_metrics_files(args.results_file, mean_results)
 
 
 if __name__ == "__main__":
