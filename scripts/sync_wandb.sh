@@ -69,7 +69,9 @@ package_source() {
   local archive_prefix
   local tmp_dir
   local run
+  local file
   local -a runs=()
+  local -a old_parts=()
 
   if [[ -z "$root_dir" || ! -d "$root_dir" ]]; then
     echo ">>> [${source_name}] Skip: source dir not found: $root_dir"
@@ -101,9 +103,21 @@ package_source() {
 
   # 分块压缩
   archive_prefix="$SNAP_DIR/wandb_${source_name}_$(date +%F-%H%M%S)"
+  # 避免同名前缀遗留旧分块（例如同秒重复执行）。
+  rm -f "$archive_prefix".part*
   echo ">>> [${source_name}] 开始分块压缩，每块 ≤ $(( CHUNK_SIZE / 1024 / 1024 )) MB ..."
   tar -C "$tmp_dir" -czf - . 2>/dev/null | \
       split -b "$CHUNK_SIZE" -d -a 3 - "$archive_prefix.part"
+
+  # 仅保留最新一套分块，清理当前 source 的历史压缩包。
+  while IFS= read -r -d '' file; do
+    [[ "$file" == "$archive_prefix".part* ]] && continue
+    old_parts+=("$file")
+  done < <(find "$SNAP_DIR" -maxdepth 1 -type f -name "wandb_${source_name}_*.part*" -print0)
+  if [[ ${#old_parts[@]} -gt 0 ]]; then
+    rm -f "${old_parts[@]}"
+    echo ">>> [${source_name}] 已清理历史分块：${#old_parts[@]} 个"
+  fi
 
   # 更新时间戳
   touch "$last_file"
