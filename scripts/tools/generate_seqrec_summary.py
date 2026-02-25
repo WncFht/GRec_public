@@ -25,8 +25,6 @@ METRIC_COLUMNS = [
 ]
 
 CB64_GROUP = "Instruments-rq4_cb64-64-64-64_sk0.0-0.0-0.0-0.003"
-GENREC_INSTR_GREC_GROUP = "Instruments-grec-sft-qwen4B-4-256-dsz0"
-GENREC_INSTR_MIMIONEREC_GROUP = "Instruments-mimionerec-sft-qwen4B-4-256-dsz0"
 
 
 @dataclass
@@ -200,15 +198,43 @@ def infer_genrec_stage(group: str) -> str:
     return "-"
 
 
+def infer_cb_width_from_name(name: str) -> int | None:
+    width_match = re.search(r"(?:^|-)4-(\d+)(?:-|$)", name)
+    if width_match:
+        return int(width_match.group(1))
+
+    cb_match = re.search(r"cb(\d+)", name, re.IGNORECASE)
+    if cb_match:
+        return int(cb_match.group(1))
+
+    return None
+
+
 def infer_genrec_task_hint(group: str) -> str:
     if group.startswith("Industrial_and_Scientific"):
         if "grpo" in group.lower():
             return "SFT(task1+task2+task3)->RL(task1+task4+task5)"
         return "SFT(task1+task2+task3)"
+
+    cb_width = infer_cb_width_from_name(group)
+    cb_note = f"cb4-{cb_width}" if cb_width is not None else "cb=unknown"
+
+    if group.startswith("Instruments-grec-grpo"):
+        from_sft_match = re.search(r"from-sft(\d+)", group)
+        from_sft_note = (
+            f", init=from-sft{from_sft_match.group(1)}" if from_sft_match else ""
+        )
+        return (
+            f"{cb_note}, qwen3-4B emb, split=grec(leave-2-out), "
+            f"SFT->RL(task1+task4+task5){from_sft_note}"
+        )
+
     if group.startswith("Instruments-grec-sft"):
-        return "cb4-256, qwen3-4B emb, split=grec(leave-2-out)"
+        return f"{cb_note}, qwen3-4B emb, split=grec(leave-2-out)"
+
     if group.startswith("Instruments-mimionerec-sft"):
-        return "cb4-256, qwen3-4B emb, split=mimionerec(global 8:1:1)"
+        return f"{cb_note}, qwen3-4B emb, split=mimionerec(global 8:1:1)"
+
     return "-"
 
 
@@ -293,6 +319,71 @@ def sort_by_ndcg10_desc(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     )
 
 
+def best_row_by_metric(
+    rows: list[dict[str, Any]], metric: str = "NDCG@10"
+) -> dict[str, Any] | None:
+    if not rows:
+        return None
+    return sorted(
+        rows,
+        key=lambda x: (
+            x.get(metric) if x.get(metric) is not None else -1.0,
+            x.get("checkpoint_step") if x.get("checkpoint_step") is not None else -1,
+        ),
+        reverse=True,
+    )[0]
+
+
+def best_rows_by_cb(
+    rows: list[dict[str, Any]], metric: str = "NDCG@10"
+) -> dict[int, dict[str, Any]]:
+    out: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        cb = infer_cb_width_from_name(str(row.get("group", "")))
+        if cb is None:
+            continue
+        val = row.get(metric)
+        if val is None:
+            continue
+        prev = out.get(cb)
+        if prev is None:
+            out[cb] = row
+            continue
+        prev_val = prev.get(metric)
+        prev_step = prev.get("checkpoint_step")
+        cur_step = row.get("checkpoint_step")
+        if prev_val is None or float(val) > float(prev_val):
+            out[cb] = row
+        elif float(val) == float(prev_val) and (cur_step or -1) > (prev_step or -1):
+            out[cb] = row
+    return out
+
+
+def rank_cbs_by_metric(
+    cb_rows: dict[int, dict[str, Any]], metric: str = "NDCG@10"
+) -> list[int]:
+    return sorted(
+        cb_rows.keys(),
+        key=lambda cb: (
+            cb_rows[cb].get(metric) if cb_rows[cb].get(metric) is not None else -1.0
+        ),
+        reverse=True,
+    )
+
+
+def spearman_rank_correlation(order_a: list[int], order_b: list[int]) -> float | None:
+    if len(order_a) < 2 or len(order_a) != len(order_b):
+        return None
+    if set(order_a) != set(order_b):
+        return None
+
+    rank_a = {cb: i + 1 for i, cb in enumerate(order_a)}
+    rank_b = {cb: i + 1 for i, cb in enumerate(order_b)}
+    d2_sum = sum((rank_a[cb] - rank_b[cb]) ** 2 for cb in rank_a)
+    n = len(order_a)
+    return 1 - (6 * d2_sum) / (n * (n * n - 1))
+
+
 def write_tsv(rows: list[dict[str, Any]], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     header = [
@@ -350,6 +441,16 @@ def markdown_table(
     return [header, align, *body]
 
 
+def append_conclusion(lines: list[str], points: list[str]) -> None:
+    if not points:
+        return
+    lines.append("### 本节结论")
+    lines.append("")
+    for point in points:
+        lines.append(f"- {point}")
+    lines.append("")
+
+
 def build_markdown(rows: list[dict[str, Any]], cfg: PathsConfig) -> str:
     grec_rows = [r for r in rows if r["source"] == "GRec"]
     genrec_rows = [r for r in rows if r["source"] == "GenRec"]
@@ -360,11 +461,17 @@ def build_markdown(rows: list[dict[str, Any]], cfg: PathsConfig) -> str:
     genrec_industry = [
         r for r in genrec_rows if r["dataset_scope"] == "Industrial_and_Scientific"
     ]
-    genrec_instr_grec = [
-        r for r in genrec_instr if r["group"] == GENREC_INSTR_GREC_GROUP
+    genrec_instr_grec_sft = [
+        r for r in genrec_instr if r["group"].startswith("Instruments-grec-sft")
     ]
-    genrec_instr_mimionerec = [
-        r for r in genrec_instr if r["group"] == GENREC_INSTR_MIMIONEREC_GROUP
+    genrec_instr_mimionerec_sft = [
+        r for r in genrec_instr if r["group"].startswith("Instruments-mimionerec-sft")
+    ]
+    genrec_instr_grec_rl = [
+        r for r in genrec_instr if r["group"].startswith("Instruments-grec-grpo")
+    ]
+    genrec_instr_grec_cb256_sft = [
+        r for r in genrec_instr_grec_sft if infer_cb_width_from_name(r["group"]) == 256
     ]
 
     rq4_rows = []
@@ -386,11 +493,22 @@ def build_markdown(rows: list[dict[str, Any]], cfg: PathsConfig) -> str:
     cb64_rows = [r for r in grec_rows if r["group"] == CB64_GROUP]
     cb64_rows = sort_by_ndcg10_desc(cb64_rows)
 
-    ind_sft = next((r for r in genrec_industry if r["train_stage"] == "sft"), None)
-    ind_rl = next((r for r in genrec_industry if "rl" in r["train_stage"]), None)
+    ind_sft = best_row_by_metric(
+        [r for r in genrec_industry if r["train_stage"] == "sft"], "NDCG@10"
+    )
+    ind_rl = best_row_by_metric(
+        [r for r in genrec_industry if "rl" in r["train_stage"]], "NDCG@10"
+    )
 
+    best_grec_overall = grec_sorted[0] if grec_sorted else None
     best_grec_instr = sort_by_ndcg10_desc(grec_instr)[0] if grec_instr else None
     best_genrec_instr = sort_by_ndcg10_desc(genrec_instr)[0] if genrec_instr else None
+    best_genrec_instr_sft = best_row_by_metric(
+        [r for r in genrec_instr if r["train_stage"] == "sft"], "NDCG@10"
+    )
+    best_genrec_instr_rl = best_row_by_metric(
+        [r for r in genrec_instr if "rl" in r["train_stage"]], "NDCG@10"
+    )
 
     lines: list[str] = []
     lines.append("# SeqRec 结果汇总（GRec + GenRec）")
@@ -401,6 +519,26 @@ def build_markdown(rows: list[dict[str, Any]], cfg: PathsConfig) -> str:
         f"- GenRec 数据源: `{cfg.genrec_results_root}`（{len(genrec_rows)} runs）"
     )
     lines.append(f"- 汇总表: `{to_rel_str(cfg.output_tsv, cfg.workspace_root)}`")
+    lines.append("")
+
+    lines.append("## 目录")
+    lines.append("")
+    for toc_item in [
+        "总体结论（TL;DR）",
+        "可比性说明（重要）",
+        "GenRec 任务定义（task1~task5）",
+        "GRec 总榜（按 NDCG@10）",
+        "RQ4 Codebook Sweep（Instruments, instruct+tasks-item2index-seqrec-fusionseqrec）",
+        "cb64 组内对比（带实验注释）",
+        "GenRec: Industrial_and_Scientific（仅组内比较）",
+        "GenRec: Instruments（单独列出，不与 Industrial 混比）",
+        "GenRec: Instruments-grec SFT Codebook Sweep",
+        "GenRec: Instruments-grec RL 轨迹（GRPO，含 checkpoint-0 基线）",
+        "训练框架 × Codebook 一致性分析（Instruments）",
+        "Instruments: grec vs mimionerec 深入对比（GenRec, cb256 SFT）",
+        "Instruments 交叉框架对比（仅作参考）",
+    ]:
+        lines.append(f"1. {toc_item}")
     lines.append("")
 
     lines.append("## 自动生成脚本")
@@ -417,10 +555,40 @@ def build_markdown(rows: list[dict[str, Any]], cfg: PathsConfig) -> str:
     lines.append("```")
     lines.append("")
 
+    lines.append("## 总体结论（TL;DR）")
+    lines.append("")
+    tldr_points: list[str] = []
+    if best_grec_overall:
+        tldr_points.append(
+            "GRec 当前全表最优为 "
+            f"`{best_grec_overall['group']}/{best_grec_overall['checkpoint']}` "
+            f"(`NDCG@10={fmt(best_grec_overall.get('NDCG@10'))}`, "
+            f"`HR@10={fmt(best_grec_overall.get('HR@10'))}`)。"
+        )
+    if best_genrec_instr:
+        tldr_points.append(
+            "GenRec 当前 Instruments 最优为 "
+            f"`{best_genrec_instr['group']}/{best_genrec_instr['checkpoint']}` "
+            f"(`NDCG@10={fmt(best_genrec_instr.get('NDCG@10'))}`, "
+            f"`HR@10={fmt(best_genrec_instr.get('HR@10'))}`)。"
+        )
+    if (
+        ind_sft
+        and ind_rl
+        and ind_sft.get("NDCG@10") is not None
+        and ind_rl.get("NDCG@10") is not None
+    ):
+        tldr_points.append(
+            "Industrial_and_Scientific 上，`best(GRPO)-best(SFT)` 为 "
+            f"`NDCG@10 {fmt_signed(safe_delta(ind_rl.get('NDCG@10'), ind_sft.get('NDCG@10')))}`，"
+            f"`HR@10 {fmt_signed(safe_delta(ind_rl.get('HR@10'), ind_sft.get('HR@10')))}`。"
+        )
+    append_conclusion(lines, tldr_points)
+
     lines.append("## 可比性说明（重要）")
     lines.append("")
     lines.append(
-        "- `GenRec` 的前两条结果是 `Industrial_and_Scientific` 数据集，不应直接与 `Instruments` 结果混比。"
+        "- `GenRec` 同时包含 `Industrial_and_Scientific` 与 `Instruments` 两个数据集结果，应先做组内比较，再做跨组参考。"
     )
     lines.append(
         "- `Industrial_and_Scientific-qwen2.5-3b-instruct-grpo` 可作为 `Industrial_and_Scientific-sft-dsz0-4gpu-eq8` 的 SFT 后续 RL（GRPO）结果对比。"
@@ -441,6 +609,13 @@ def build_markdown(rows: list[dict[str, Any]], cfg: PathsConfig) -> str:
         "- `GenRec` 任务构成来自 `GenRec/preprocess_data_sft_rl.py:474` 与 `GenRec/preprocess_data_sft_rl.py:540`：SFT 使用 `task1+task2+task3`，RL 使用 `task1+task4+task5`。"
     )
     lines.append("")
+    append_conclusion(
+        lines,
+        [
+            "跨框架比较时需要先按数据集分层，再按任务定义与 split 方式对齐，避免把不可比差异当作模型差异。",
+            "Instruments 上的 `grec`/`mimionerec` 与 RL/SFT 结论都应视为“切分策略 + 训练目标”的联合结果。",
+        ],
+    )
 
     lines.append("## GenRec 任务定义（task1~task5）")
     lines.append("")
@@ -491,6 +666,12 @@ def build_markdown(rows: list[dict[str, Any]], cfg: PathsConfig) -> str:
         )
     )
     lines.append("")
+    append_conclusion(
+        lines,
+        [
+            "GenRec 的 SFT 与 RL 并非同一任务集合，RL 的收益应解读为 `task1+task4+task5` 下的能力重分配，而非纯粹延续 SFT 指标。"
+        ],
+    )
 
     lines.append("## GRec 总榜（按 NDCG@10）")
     lines.append("")
@@ -522,6 +703,20 @@ def build_markdown(rows: list[dict[str, Any]], cfg: PathsConfig) -> str:
         )
     )
     lines.append("")
+    grec_rank_conclusion: list[str] = []
+    if best_grec_overall:
+        grec_rank_conclusion.append(
+            "全量 GRec 结果中，"
+            f"`{best_grec_overall['group']}/{best_grec_overall['checkpoint']}` "
+            "当前为 NDCG@10 最优。"
+        )
+    if best_grec_instr:
+        grec_rank_conclusion.append(
+            "在 Instruments 子集里，"
+            f"`{best_grec_instr['group']}/{best_grec_instr['checkpoint']}` "
+            "是当前最优参考点。"
+        )
+    append_conclusion(lines, grec_rank_conclusion)
 
     if rq4_rows:
         lines.append(
@@ -561,6 +756,20 @@ def build_markdown(rows: list[dict[str, Any]], cfg: PathsConfig) -> str:
             )
         )
         lines.append("")
+        rq4_valid = [row for _, row in rq4_rows if row.get("NDCG@10") is not None]
+        if rq4_valid:
+            rq4_best = max(rq4_valid, key=lambda x: float(x["NDCG@10"]))
+            rq4_worst = min(rq4_valid, key=lambda x: float(x["NDCG@10"]))
+            append_conclusion(
+                lines,
+                [
+                    "在当前 GRec RQ4 sweep 中，"
+                    f"`{rq4_best['group']}/{rq4_best['checkpoint']}` 最优，"
+                    f"`{rq4_worst['group']}/{rq4_worst['checkpoint']}` 最弱。",
+                    "最优与最弱的 `NDCG@10` 差值为 "
+                    f"`{fmt_signed(safe_delta(rq4_best.get('NDCG@10'), rq4_worst.get('NDCG@10')))}`。",
+                ],
+            )
 
     if cb64_rows:
         lines.append("## cb64 组内对比（带实验注释）")
@@ -595,6 +804,18 @@ def build_markdown(rows: list[dict[str, Any]], cfg: PathsConfig) -> str:
             )
         )
         lines.append("")
+        cb64_valid = [row for row in cb64_rows if row.get("NDCG@10") is not None]
+        if cb64_valid:
+            cb64_best = cb64_valid[0]
+            cb64_worst = cb64_valid[-1]
+            append_conclusion(
+                lines,
+                [
+                    "同为 `cb64` 时，不同训练配方的波动显著，说明“训练框架/任务组合”对指标影响很大。",
+                    "该组 `NDCG@10` 的 best-worst 差值为 "
+                    f"`{fmt_signed(safe_delta(cb64_best.get('NDCG@10'), cb64_worst.get('NDCG@10')))}`。",
+                ],
+            )
 
     if genrec_industry:
         lines.append("## GenRec: Industrial_and_Scientific（仅组内比较）")
@@ -628,13 +849,21 @@ def build_markdown(rows: list[dict[str, Any]], cfg: PathsConfig) -> str:
             )
         )
         lines.append("")
-        if ind_sft and ind_rl and ind_sft.get("NDCG@10") and ind_rl.get("NDCG@10"):
+        industry_points: list[str] = []
+        if (
+            ind_sft
+            and ind_rl
+            and ind_sft.get("NDCG@10") is not None
+            and ind_rl.get("NDCG@10") is not None
+        ):
             ndcg_delta = ind_rl["NDCG@10"] - ind_sft["NDCG@10"]
-            hr_delta = (ind_rl.get("HR@10") or 0.0) - (ind_sft.get("HR@10") or 0.0)
-            lines.append(
-                f"- `GRPO - SFT` 增益：`NDCG@10 {ndcg_delta:+.4f}`，`HR@10 {hr_delta:+.4f}`。"
+            hr_delta = safe_delta(ind_rl.get("HR@10"), ind_sft.get("HR@10"))
+            industry_points.append(
+                f"`best(GRPO) - best(SFT)` 为 `NDCG@10 {ndcg_delta:+.4f}`，"
+                f"`HR@10 {fmt_signed(hr_delta)}`，"
+                f"其中 RL=`{ind_rl['checkpoint']}`，SFT=`{ind_sft['checkpoint']}`。"
             )
-            lines.append("")
+        append_conclusion(lines, industry_points)
 
     if genrec_instr:
         lines.append("## GenRec: Instruments（单独列出，不与 Industrial 混比）")
@@ -645,6 +874,7 @@ def build_markdown(rows: list[dict[str, Any]], cfg: PathsConfig) -> str:
                 {
                     "group": f"`{row['group']}`",
                     "checkpoint": f"`{row['checkpoint']}`",
+                    "stage": row["train_stage"],
                     "tasks_hint": row["tasks_hint"],
                     "NDCG@10": row["NDCG@10"],
                     "HR@10": row["HR@10"],
@@ -658,6 +888,7 @@ def build_markdown(rows: list[dict[str, Any]], cfg: PathsConfig) -> str:
                 [
                     ("Run", "group"),
                     ("Checkpoint", "checkpoint"),
+                    ("Stage", "stage"),
                     ("Config Note", "tasks_hint"),
                     ("NDCG@10", "NDCG@10"),
                     ("HR@10", "HR@10"),
@@ -667,9 +898,438 @@ def build_markdown(rows: list[dict[str, Any]], cfg: PathsConfig) -> str:
             )
         )
         lines.append("")
+        instruments_points: list[str] = []
+        if best_genrec_instr:
+            instruments_points.append(
+                "GenRec Instruments 当前最优为 "
+                f"`{best_genrec_instr['group']}/{best_genrec_instr['checkpoint']}` "
+                f"(`NDCG@10={fmt(best_genrec_instr.get('NDCG@10'))}`, "
+                f"`HR@10={fmt(best_genrec_instr.get('HR@10'))}`)。"
+            )
+        if best_genrec_instr_sft and best_genrec_instr_rl:
+            instruments_points.append(
+                "按当前记录的 best 对比，`best(RL)-best(SFT)` 为 "
+                f"`NDCG@10 {fmt_signed(safe_delta(best_genrec_instr_rl.get('NDCG@10'), best_genrec_instr_sft.get('NDCG@10')))}`，"
+                f"`HR@10 {fmt_signed(safe_delta(best_genrec_instr_rl.get('HR@10'), best_genrec_instr_sft.get('HR@10')))}`。"
+            )
+        append_conclusion(lines, instruments_points)
 
-    if genrec_instr_grec or genrec_instr_mimionerec:
-        lines.append("## Instruments: grec vs mimionerec 深入对比（GenRec）")
+    if genrec_instr_grec_sft:
+        lines.append("## GenRec: Instruments-grec SFT Codebook Sweep")
+        lines.append("")
+        grec_sft_best_by_group: dict[str, dict[str, Any]] = {}
+        for row in genrec_instr_grec_sft:
+            group_name = str(row["group"])
+            prev = grec_sft_best_by_group.get(group_name)
+            if prev is None:
+                grec_sft_best_by_group[group_name] = row
+                continue
+
+            cur_metric = row.get("NDCG@10") if row.get("NDCG@10") is not None else -1.0
+            prev_metric = (
+                prev.get("NDCG@10") if prev.get("NDCG@10") is not None else -1.0
+            )
+            if cur_metric > prev_metric:
+                grec_sft_best_by_group[group_name] = row
+
+        cb32_row = next(
+            (
+                row
+                for group_name, row in grec_sft_best_by_group.items()
+                if infer_cb_width_from_name(group_name) == 32
+            ),
+            None,
+        )
+
+        sweep_rows = []
+        for group_name, row in sorted(
+            grec_sft_best_by_group.items(),
+            key=lambda item: (
+                infer_cb_width_from_name(item[0])
+                if infer_cb_width_from_name(item[0]) is not None
+                else 10**9,
+                item[0],
+            ),
+        ):
+            cb_width = infer_cb_width_from_name(group_name)
+            sweep_rows.append(
+                {
+                    "cb": cb_width if cb_width is not None else "-",
+                    "group": f"`{group_name}`",
+                    "checkpoint": f"`{row['checkpoint']}`",
+                    "NDCG@10": row["NDCG@10"],
+                    "HR@10": row["HR@10"],
+                    "NDCG@50": row["NDCG@50"],
+                    "HR@50": row["HR@50"],
+                    "delta_vs_cb32": (
+                        "-"
+                        if cb32_row is None
+                        else fmt_signed(
+                            safe_delta(row.get("NDCG@10"), cb32_row.get("NDCG@10"))
+                        )
+                    ),
+                }
+            )
+        lines.extend(
+            markdown_table(
+                sweep_rows,
+                [
+                    ("Codebook", "cb"),
+                    ("Run", "group"),
+                    ("Best Checkpoint", "checkpoint"),
+                    ("NDCG@10", "NDCG@10"),
+                    ("HR@10", "HR@10"),
+                    ("NDCG@50", "NDCG@50"),
+                    ("HR@50", "HR@50"),
+                    ("ΔNDCG@10 vs cb32", "delta_vs_cb32"),
+                ],
+            )
+        )
+        lines.append("")
+
+        valid_sweep_rows = [
+            row
+            for row in grec_sft_best_by_group.values()
+            if row.get("NDCG@10") is not None
+        ]
+        sft_sweep_points: list[str] = []
+        if valid_sweep_rows:
+            best_sweep = max(valid_sweep_rows, key=lambda x: float(x["NDCG@10"]))
+            worst_sweep = min(valid_sweep_rows, key=lambda x: float(x["NDCG@10"]))
+            sweep_gap = safe_delta(
+                best_sweep.get("NDCG@10"), worst_sweep.get("NDCG@10")
+            )
+            sft_sweep_points.append(
+                f"最优 codebook 组为 `{best_sweep['group']}/{best_sweep['checkpoint']}` "
+                f"(`NDCG@10={fmt(best_sweep.get('NDCG@10'))}`, `HR@10={fmt(best_sweep.get('HR@10'))}`)。"
+            )
+            sft_sweep_points.append(
+                f"最优与最弱 codebook 组的 `NDCG@10` 差值为 `{fmt_signed(sweep_gap)}`。"
+            )
+        append_conclusion(lines, sft_sweep_points)
+
+    if genrec_instr_grec_rl:
+        lines.append(
+            "## GenRec: Instruments-grec RL 轨迹（GRPO，含 checkpoint-0 基线）"
+        )
+        lines.append("")
+
+        traj_rows = []
+        rl_groups: dict[str, list[dict[str, Any]]] = {}
+        for row in genrec_instr_grec_rl:
+            rl_groups.setdefault(str(row["group"]), []).append(row)
+
+        for group_name in sorted(rl_groups.keys()):
+            rl_ordered = sorted(
+                rl_groups[group_name],
+                key=lambda x: (
+                    x["checkpoint_step"]
+                    if x.get("checkpoint_step") is not None
+                    else 10**12
+                ),
+            )
+
+            prev_for_delta: dict[str, Any] | None = None
+            from_sft_match = re.search(r"from-sft(\d+)", group_name)
+            cb_width = infer_cb_width_from_name(group_name)
+            if from_sft_match and cb_width is not None:
+                from_sft_step = int(from_sft_match.group(1))
+                base_sft_candidates = [
+                    row
+                    for row in genrec_instr_grec_sft
+                    if infer_cb_width_from_name(str(row["group"])) == cb_width
+                    and row.get("checkpoint_step") == from_sft_step
+                ]
+                base_sft = best_row_by_metric(base_sft_candidates, "NDCG@10")
+                if base_sft is not None:
+                    traj_rows.append(
+                        {
+                            "group": f"`{group_name}`",
+                            "checkpoint": f"`checkpoint-0(from-sft{from_sft_step})`",
+                            "step": 0,
+                            "NDCG@10": base_sft.get("NDCG@10"),
+                            "HR@10": base_sft.get("HR@10"),
+                            "NDCG@50": base_sft.get("NDCG@50"),
+                            "HR@50": base_sft.get("HR@50"),
+                            "d_ndcg10": "-",
+                            "d_hr10": "-",
+                        }
+                    )
+                    prev_for_delta = base_sft
+
+            for row in rl_ordered:
+                traj_rows.append(
+                    {
+                        "group": f"`{row['group']}`",
+                        "checkpoint": f"`{row['checkpoint']}`",
+                        "step": row["checkpoint_step"],
+                        "NDCG@10": row["NDCG@10"],
+                        "HR@10": row["HR@10"],
+                        "NDCG@50": row["NDCG@50"],
+                        "HR@50": row["HR@50"],
+                        "d_ndcg10": fmt_signed(
+                            safe_delta(
+                                row.get("NDCG@10"),
+                                None
+                                if prev_for_delta is None
+                                else prev_for_delta.get("NDCG@10"),
+                            )
+                        ),
+                        "d_hr10": fmt_signed(
+                            safe_delta(
+                                row.get("HR@10"),
+                                None
+                                if prev_for_delta is None
+                                else prev_for_delta.get("HR@10"),
+                            )
+                        ),
+                    }
+                )
+                prev_for_delta = row
+
+        lines.extend(
+            markdown_table(
+                traj_rows,
+                [
+                    ("Run", "group"),
+                    ("Checkpoint", "checkpoint"),
+                    ("Step", "step"),
+                    ("NDCG@10", "NDCG@10"),
+                    ("HR@10", "HR@10"),
+                    ("NDCG@50", "NDCG@50"),
+                    ("HR@50", "HR@50"),
+                    ("ΔNDCG@10 vs prev", "d_ndcg10"),
+                    ("ΔHR@10 vs prev", "d_hr10"),
+                ],
+            )
+        )
+        lines.append("")
+
+        best_grec_rl = best_row_by_metric(genrec_instr_grec_rl, "NDCG@10")
+        best_grec_sft = best_row_by_metric(genrec_instr_grec_sft, "NDCG@10")
+        rl_points: list[str] = []
+        if best_grec_rl:
+            rl_points.append(
+                f"RL 最优 checkpoint: `{best_grec_rl['group']}/{best_grec_rl['checkpoint']}` "
+                f"(`NDCG@10={fmt(best_grec_rl.get('NDCG@10'))}`, `HR@10={fmt(best_grec_rl.get('HR@10'))}`)。"
+            )
+
+        if (
+            best_grec_rl
+            and best_grec_sft
+            and best_grec_rl.get("NDCG@10") is not None
+            and best_grec_sft.get("NDCG@10") is not None
+        ):
+            rl_points.append(
+                f"`best(RL) - best(grec SFT)`："
+                f"`NDCG@10 {fmt_signed(safe_delta(best_grec_rl.get('NDCG@10'), best_grec_sft.get('NDCG@10')))}`，"
+                f"`HR@10 {fmt_signed(safe_delta(best_grec_rl.get('HR@10'), best_grec_sft.get('HR@10')))}`。"
+            )
+
+        if best_grec_rl:
+            from_sft_match = re.search(r"from-sft(\d+)", str(best_grec_rl["group"]))
+            cb_width = infer_cb_width_from_name(str(best_grec_rl["group"]))
+            if from_sft_match and cb_width is not None:
+                from_sft_step = int(from_sft_match.group(1))
+                base_sft_candidates = [
+                    row
+                    for row in genrec_instr_grec_sft
+                    if infer_cb_width_from_name(str(row["group"])) == cb_width
+                    and row.get("checkpoint_step") == from_sft_step
+                ]
+                base_sft = best_row_by_metric(base_sft_candidates, "NDCG@10")
+                if (
+                    base_sft
+                    and best_grec_rl.get("NDCG@10") is not None
+                    and base_sft.get("NDCG@10") is not None
+                ):
+                    rl_points.append(
+                        f"对齐初始化基线 `from-sft{from_sft_step}` 后："
+                        f"`NDCG@10 {fmt_signed(safe_delta(best_grec_rl.get('NDCG@10'), base_sft.get('NDCG@10')))}`，"
+                        f"`HR@10 {fmt_signed(safe_delta(best_grec_rl.get('HR@10'), base_sft.get('HR@10')))}`。"
+                    )
+        append_conclusion(lines, rl_points)
+
+    framework_a_rows = [
+        r
+        for r in grec_instr
+        if r["group"].startswith("Instruments-rq4_cb")
+        and "qwen2.5-3b-instruct-sft__tasks-item2index-seqrec-fusionseqrec"
+        in r["model"]
+    ]
+    framework_b_rows = list(genrec_instr_grec_sft)
+    framework_c_rows = list(genrec_instr_grec_rl)
+
+    if framework_a_rows or framework_b_rows or framework_c_rows:
+        lines.append("## 训练框架 × Codebook 一致性分析（Instruments）")
+        lines.append("")
+        lines.append("### 对比口径")
+        lines.append("")
+        lines.append(
+            "- 框架 A: `GRec instruct-sft + tasks-item2index-seqrec-fusionseqrec`（RQ4 cb sweep）。"
+        )
+        lines.append("- 框架 B: `GenRec Instruments-grec SFT`。")
+        lines.append("- 框架 C: `GenRec Instruments-grec RL (GRPO)`（当前仅 cb256）。")
+        lines.append("- 比较方式: 各框架在每个 cb 上取 `NDCG@10` 最优 checkpoint。")
+        lines.append("")
+
+        framework_a_best_by_cb = best_rows_by_cb(framework_a_rows, "NDCG@10")
+        framework_b_best_by_cb = best_rows_by_cb(framework_b_rows, "NDCG@10")
+        shared_cbs = sorted(
+            set(framework_a_best_by_cb.keys()) & set(framework_b_best_by_cb.keys())
+        )
+
+        if shared_cbs:
+            lines.append("### 共享 cb 对照（A vs B）")
+            lines.append("")
+            compare_rows = []
+            for cb in shared_cbs:
+                row_a = framework_a_best_by_cb[cb]
+                row_b = framework_b_best_by_cb[cb]
+                compare_rows.append(
+                    {
+                        "cb": cb,
+                        "a_ckpt": f"`{row_a['checkpoint']}`",
+                        "a_ndcg10": fmt(row_a.get("NDCG@10")),
+                        "a_hr10": fmt(row_a.get("HR@10")),
+                        "b_ckpt": f"`{row_b['checkpoint']}`",
+                        "b_ndcg10": fmt(row_b.get("NDCG@10")),
+                        "b_hr10": fmt(row_b.get("HR@10")),
+                        "d_ndcg10": fmt_signed(
+                            safe_delta(row_a.get("NDCG@10"), row_b.get("NDCG@10"))
+                        ),
+                        "d_hr10": fmt_signed(
+                            safe_delta(row_a.get("HR@10"), row_b.get("HR@10"))
+                        ),
+                    }
+                )
+            lines.extend(
+                markdown_table(
+                    compare_rows,
+                    [
+                        ("Codebook", "cb"),
+                        ("A Best Ckpt", "a_ckpt"),
+                        ("A NDCG@10", "a_ndcg10"),
+                        ("A HR@10", "a_hr10"),
+                        ("B Best Ckpt", "b_ckpt"),
+                        ("B NDCG@10", "b_ndcg10"),
+                        ("B HR@10", "b_hr10"),
+                        ("A-B NDCG@10", "d_ndcg10"),
+                        ("A-B HR@10", "d_hr10"),
+                    ],
+                )
+            )
+            lines.append("")
+
+        if framework_c_rows:
+            lines.append("### cb256 RL 补充（框架 C）")
+            lines.append("")
+            framework_c_cb256 = [
+                r
+                for r in framework_c_rows
+                if infer_cb_width_from_name(str(r["group"])) == 256
+            ]
+            framework_c_best_cb256 = best_row_by_metric(framework_c_cb256, "NDCG@10")
+            framework_b_cb256 = framework_b_best_by_cb.get(256)
+            framework_a_cb256 = framework_a_best_by_cb.get(256)
+
+            cb256_rows: list[dict[str, Any]] = []
+            if framework_a_cb256:
+                cb256_rows.append(
+                    {
+                        "framework": "A (GRec instruct-sft)",
+                        "checkpoint": f"`{framework_a_cb256['checkpoint']}`",
+                        "NDCG@10": framework_a_cb256.get("NDCG@10"),
+                        "HR@10": framework_a_cb256.get("HR@10"),
+                    }
+                )
+            if framework_b_cb256:
+                cb256_rows.append(
+                    {
+                        "framework": "B (GenRec grec-sft)",
+                        "checkpoint": f"`{framework_b_cb256['checkpoint']}`",
+                        "NDCG@10": framework_b_cb256.get("NDCG@10"),
+                        "HR@10": framework_b_cb256.get("HR@10"),
+                    }
+                )
+            if framework_c_best_cb256:
+                cb256_rows.append(
+                    {
+                        "framework": "C (GenRec grec-rl)",
+                        "checkpoint": f"`{framework_c_best_cb256['checkpoint']}`",
+                        "NDCG@10": framework_c_best_cb256.get("NDCG@10"),
+                        "HR@10": framework_c_best_cb256.get("HR@10"),
+                    }
+                )
+
+            if cb256_rows:
+                lines.extend(
+                    markdown_table(
+                        cb256_rows,
+                        [
+                            ("Framework", "framework"),
+                            ("Best Checkpoint", "checkpoint"),
+                            ("NDCG@10", "NDCG@10"),
+                            ("HR@10", "HR@10"),
+                        ],
+                    )
+                )
+                lines.append("")
+
+        framework_points: list[str] = []
+        if shared_cbs:
+            order_a = rank_cbs_by_metric(
+                {cb: framework_a_best_by_cb[cb] for cb in shared_cbs}, "NDCG@10"
+            )
+            order_b = rank_cbs_by_metric(
+                {cb: framework_b_best_by_cb[cb] for cb in shared_cbs}, "NDCG@10"
+            )
+            rho = spearman_rank_correlation(order_a, order_b)
+            framework_points.append(
+                f"共享 cb 为 `{', '.join(str(cb) for cb in shared_cbs)}`；"
+                f"按 `NDCG@10` 的排序分别为 "
+                f"`A: {' > '.join(f'cb{cb}' for cb in order_a)}`，"
+                f"`B: {' > '.join(f'cb{cb}' for cb in order_b)}`。"
+            )
+            if rho is not None:
+                framework_points.append(f"排序 Spearman 相关系数约为 `{rho:.3f}`。")
+                if rho >= 0.6:
+                    framework_points.append("cb 结论整体较一致。")
+                elif rho >= 0:
+                    framework_points.append(
+                        "cb 结论仅弱一致，存在明显框架依赖差异（结论不完全一致）。"
+                    )
+                else:
+                    framework_points.append("cb 结论方向相反，跨框架不一致。")
+
+        framework_c_best_cb256 = best_row_by_metric(
+            [
+                r
+                for r in framework_c_rows
+                if infer_cb_width_from_name(str(r["group"])) == 256
+            ],
+            "NDCG@10",
+        )
+        framework_b_cb256 = framework_b_best_by_cb.get(256)
+        framework_a_cb256 = framework_a_best_by_cb.get(256)
+        if framework_c_best_cb256 and framework_b_cb256:
+            framework_points.append(
+                "在 `cb256` 上，`C(best) - B(best)` 为 "
+                f"`NDCG@10 {fmt_signed(safe_delta(framework_c_best_cb256.get('NDCG@10'), framework_b_cb256.get('NDCG@10')))}`，"
+                f"`HR@10 {fmt_signed(safe_delta(framework_c_best_cb256.get('HR@10'), framework_b_cb256.get('HR@10')))}`。"
+            )
+        if framework_c_best_cb256 and framework_a_cb256:
+            framework_points.append(
+                "在 `cb256` 上，`C(best) - A(best)` 为 "
+                f"`NDCG@10 {fmt_signed(safe_delta(framework_c_best_cb256.get('NDCG@10'), framework_a_cb256.get('NDCG@10')))}`，"
+                f"`HR@10 {fmt_signed(safe_delta(framework_c_best_cb256.get('HR@10'), framework_a_cb256.get('HR@10')))}`。"
+            )
+        append_conclusion(lines, framework_points)
+
+    if genrec_instr_grec_cb256_sft or genrec_instr_mimionerec_sft:
+        lines.append("## Instruments: grec vs mimionerec 深入对比（GenRec, cb256 SFT）")
+        lines.append("")
+        lines.append("- 本节仅比较 `cb256` 的 SFT 对照组，避免 codebook 宽度影响。")
         lines.append("")
         lines.append("### 配置与数据构造差异")
         lines.append("")
@@ -705,13 +1365,14 @@ def build_markdown(rows: list[dict[str, Any]], cfg: PathsConfig) -> str:
             "- 两份 YAML 的 backbone、batch size、LR、epoch、deepspeed 基本一致；核心实验变量是数据切分。"
         )
         lines.append("")
+        gm_points: list[str] = []
 
-        best_genrec_grec_instr = (
-            sort_by_ndcg10_desc(genrec_instr_grec)[0] if genrec_instr_grec else None
+        best_genrec_grec_instr = best_row_by_metric(
+            genrec_instr_grec_cb256_sft, "NDCG@10"
         )
         best_genrec_mimionerec_instr = (
-            sort_by_ndcg10_desc(genrec_instr_mimionerec)[0]
-            if genrec_instr_mimionerec
+            best_row_by_metric(genrec_instr_mimionerec_sft, "NDCG@10")
+            if genrec_instr_mimionerec_sft
             else None
         )
 
@@ -788,13 +1449,17 @@ def build_markdown(rows: list[dict[str, Any]], cfg: PathsConfig) -> str:
                     f"`NDCG@50 {fmt_signed(d_ndcg50)}`，`HR@50 {fmt_signed(d_hr50)}`。"
                 )
                 lines.append("")
+                gm_points.append(
+                    "`mimionerec(best) - grec(best)` 为 "
+                    f"`NDCG@10 {fmt_signed(d_ndcg10)}`，`HR@10 {fmt_signed(d_hr10)}`。"
+                )
 
         lines.append("### Checkpoint 轨迹")
         lines.append("")
         traj_rows = []
         for variant_name, variant_rows in [
-            ("`grec`", genrec_instr_grec),
-            ("`mimionerec`", genrec_instr_mimionerec),
+            ("`grec(cb256)`", genrec_instr_grec_cb256_sft),
+            ("`mimionerec(cb256)`", genrec_instr_mimionerec_sft),
         ]:
             ordered = sorted(
                 variant_rows,
@@ -845,9 +1510,9 @@ def build_markdown(rows: list[dict[str, Any]], cfg: PathsConfig) -> str:
             )
             lines.append("")
 
-        if genrec_instr_grec:
+        if genrec_instr_grec_cb256_sft:
             grec_ordered = sorted(
-                genrec_instr_grec,
+                genrec_instr_grec_cb256_sft,
                 key=lambda x: (
                     x["checkpoint_step"]
                     if x.get("checkpoint_step") is not None
@@ -863,9 +1528,13 @@ def build_markdown(rows: list[dict[str, Any]], cfg: PathsConfig) -> str:
                     f"- `grec` 最近一次从 `{g_prev['checkpoint']}` 到 `{g_last['checkpoint']}`："
                     f"`NDCG@10 {fmt_signed(d_last_ndcg10)}`，`HR@10 {fmt_signed(d_last_hr10)}`。"
                 )
-        if genrec_instr_mimionerec:
+                gm_points.append(
+                    f"`grec(cb256)` 最近一次从 `{g_prev['checkpoint']}` 到 `{g_last['checkpoint']}`："
+                    f"`NDCG@10 {fmt_signed(d_last_ndcg10)}`，`HR@10 {fmt_signed(d_last_hr10)}`。"
+                )
+        if genrec_instr_mimionerec_sft:
             mimi_ordered = sorted(
-                genrec_instr_mimionerec,
+                genrec_instr_mimionerec_sft,
                 key=lambda x: (
                     x["checkpoint_step"]
                     if x.get("checkpoint_step") is not None
@@ -906,7 +1575,11 @@ def build_markdown(rows: list[dict[str, Any]], cfg: PathsConfig) -> str:
                     lines.append(
                         "- `mimionerec` 当前已记录 checkpoints 上 `NDCG@10` 与 `HR@10` 呈单调上升。"
                     )
+                    gm_points.append(
+                        "`mimionerec(cb256)` 在当前已记录 checkpoints 上，`NDCG@10` 与 `HR@10` 呈单调上升。"
+                    )
         lines.append("")
+        append_conclusion(lines, gm_points)
 
     if best_grec_instr and best_genrec_instr:
         lines.append("## Instruments 交叉框架对比（仅作参考）")
@@ -920,6 +1593,14 @@ def build_markdown(rows: list[dict[str, Any]], cfg: PathsConfig) -> str:
         )
         lines.append(f"- 差值 (GRec - GenRec): `{delta:+.4f}`")
         lines.append("")
+        append_conclusion(
+            lines,
+            [
+                "当前最优点对比下，"
+                f"`GRec - GenRec` 的 `NDCG@10` 差值为 `{delta:+.4f}`；"
+                "但该值仅代表“各自最优配置”的差异，不代表严格同配方下的框架增益。"
+            ],
+        )
 
     return "\n".join(lines) + "\n"
 
